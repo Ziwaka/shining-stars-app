@@ -33,10 +33,11 @@ export default function RootLayout({ children }) {
             <div className="flex items-center gap-4 md:gap-8">
               <Link href="/" className="flex items-center gap-3 group">
                 {/* Logo Image from Public Folder */}
-                <img 
+               <img 
                   src="/logo.JPG" 
-                  alt="Logo" 
+                  alt="Shining Stars Logo" 
                   className="w-10 h-10 md:w-12 md:h-12 rounded-xl object-contain shadow-md border-2 border-slate-950 transition-transform group-hover:scale-110"
+                  onError={(e) => { e.target.src = "https://ui-avatars.com/api/?name=SS&background=020617&color=fbbf24"; }} 
                 />
                 <div className="flex flex-col leading-none">
                   <span className="font-black text-slate-950 text-lg md:text-xl tracking-tighter uppercase italic">SHINING STARS</span>
