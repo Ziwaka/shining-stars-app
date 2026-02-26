@@ -34,7 +34,7 @@ export default function RootLayout({ children }) {
               <Link href="/" className="flex items-center gap-3 group">
                 {/* Logo Image from Public Folder */}
                 <img 
-                  src="/logo.jpg" 
+                  src="/logo.JPG" 
                   alt="Logo" 
                   className="w-10 h-10 md:w-12 md:h-12 rounded-xl object-contain shadow-md border-2 border-slate-950 transition-transform group-hover:scale-110"
                 />
