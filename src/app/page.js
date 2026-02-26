@@ -15,7 +15,7 @@ export default function LuxurySingleScreenPage() {
       {/* --- TOP SECTION: LOGO & BRANDING --- */}
       <div className="relative z-10 w-full flex flex-col items-center pt-16 px-6 text-center space-y-8">
         <div className="bg-white/10 p-4 rounded-[32px] border border-[#FFD700]/30 backdrop-blur-xl shadow-2xl">
-          <img src="/logo.JPG" alt="Logo" className="w-20 h-20 md:w-24 md:h-24 object-contain" />
+          <img src="/logo.jpg" alt="Logo" className="w-20 h-20 md:w-24 md:h-24 object-contain" />
         </div>
 
         <div className="space-y-4">
