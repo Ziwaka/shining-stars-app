@@ -5,7 +5,6 @@ export default function LuxurySingleScreenPage() {
   const router = useRouter();
 
   return (
-    /* 🌟 Scroll ဆွဲ၍ရအောင် 'relative min-h-screen' ဖြင့် အသေအချာ ပြင်ဆင်ထားပါသည် */
     <div className="relative min-h-screen w-full flex flex-col items-center justify-between bg-[#4c1d95] text-white selection:bg-[#FFD700] m-0 p-0 overflow-x-hidden">
       
       {/* Background Atmosphere Overlays */}
@@ -15,6 +14,7 @@ export default function LuxurySingleScreenPage() {
       {/* --- TOP SECTION: LOGO & BRANDING --- */}
       <div className="relative z-10 w-full flex flex-col items-center pt-16 px-6 text-center space-y-8">
         <div className="bg-white/10 p-4 rounded-[32px] border border-[#FFD700]/30 backdrop-blur-xl shadow-2xl">
+          {/* 🌟 FIXED: အစ်ကို့ မူရင်းအတိုင်း /logo.jpg စာလုံးအသေးဖြင့် ပြန်လည်ထားရှိပါသည် */}
           <img src="/logo.jpg" alt="Logo" className="w-20 h-20 md:w-24 md:h-24 object-contain" />
         </div>
 
@@ -59,7 +59,6 @@ export default function LuxurySingleScreenPage() {
       {/* --- BOTTOM SECTION: ESTABLISHED INFO --- */}
       <div className="relative z-10 w-full text-center pb-10 px-4 flex flex-col items-center justify-center">
          
-         {/* 🌟 အစ်ကို လိုချင်သော စာသားအပြည့်အစုံကို သပ်ရပ်စွာ နေရာချပေးထားပါသည် */}
          <p className="text-[10px] md:text-xs font-black uppercase tracking-[0.3em] md:tracking-[0.5em] text-white/60 mb-2">
            SHINING STARS - MA THWE PRIVATE HIGH SCHOOL
          </p>
