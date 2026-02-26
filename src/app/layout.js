@@ -19,7 +19,19 @@ export default function RootLayout({ children }) {
 
   return (
     <html lang="en">
-      {/* 🌟 မလိုအပ်သော Flex များ အကုန်ဖြုတ်ပြီး မူရင်းရိုးရှင်းသော body သာ ပြန်ထားပါသည် */}
+      {/* 🌟 ADD TO HOMESCREEN MAGIC: ဖုန်းပေါ်မှာ Logo ပေါ်လာစေရန် အထူးပြုလုပ်ချက်များ */}
+      <head>
+        <title>Shining Stars</title>
+        <meta name="application-name" content="Shining Stars" />
+        <meta name="apple-mobile-web-app-title" content="Shining Stars" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        
+        {/* iOS နှင့် Android Homescreen များအတွက် Logo လမ်းကြောင်း အတိအကျ */}
+        <link rel="apple-touch-icon" href="/logo.jpg" />
+        <link rel="icon" href="/logo.jpg" />
+      </head>
+      
       <body className="antialiased bg-slate-50 text-slate-950 font-black">
         
         {!isFullScreenPage && user && (
@@ -42,7 +54,7 @@ export default function RootLayout({ children }) {
           </nav>
         )}
 
-        {/* 🌟 ရှင်းလင်းသော Content Wrapper (Flex အရှုပ်အရှင်း မရှိတော့ပါ) */}
+        {/* Content Wrapper */}
         <div className={isFullScreenPage ? "" : "pt-24"}>
           {children}
         </div>
