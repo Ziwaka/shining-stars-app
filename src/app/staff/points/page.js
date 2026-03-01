@@ -121,8 +121,8 @@ export default function StaffAccessHub() {
                         <h3 className={`text-lg md:text-xl font-black uppercase italic tracking-tighter ${isEffectivelyLocked ? 'text-slate-400' : 'text-slate-950'}`}>
                           {tool.name}
                         </h3>
-                        <p className="text-[10px] uppercase tracking-[0.3em] font-black max-w-[200px] truncate mx-auto
-                           ${isEffectivelyLocked ? 'text-rose-400' : 'text-slate-400'}">
+                        <p className={`text-[10px] uppercase tracking-[0.3em] font-black max-w-[200px] truncate mx-auto
+                           ${isEffectivelyLocked ? 'text-rose-400' : 'text-slate-400'}`}>
                           {isEffectivelyLocked ? "RESTRICTED ACCESS" : (showGMBadge ? "GM AUTHORIZED" : "AUTHORIZED MODULE")}
                         </p>
                       </div>
