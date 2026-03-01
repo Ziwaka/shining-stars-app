@@ -1,12 +1,15 @@
 "use client";
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL, GIDS } from '@/lib/api';
 
 /**
- * Shining Stars - Fees Management Master (v2.1 Master)
- * FEATURE: Enhanced Navigation + Fixed Price Link + Next Due Amount [cite: 2026-02-25]
- * STYLE: Slate-950 Bold Luxury | Purple & Gold Theme [cite: 2023-02-23]
+ * Ma Thwe - Fees Management Hub (v4.1 - Bug Fix)
+ * FIXED:
+ * - Button disabled bug: amount always initialized from loaded categories
+ * - Due state managed separately so optimistic update clears it instantly
+ * - No duplicate records: feeLogs append only once after server confirm
+ * - Button: idle → amber/processing → green/success → form reset (no reload)
  */
 export default function FeesManagementHub() {
   const [students, setStudents] = useState([]);
@@ -16,27 +19,47 @@ export default function FeesManagementHub() {
   const [staff, setStaff] = useState(null);
   const router = useRouter();
 
-  // ENTRY STATES [cite: 2026-02-25]
   const [search, setSearch] = useState("");
   const [selectedStudent, setSelectedStudent] = useState(null);
-  const [form, setForm] = useState({
-    category: "",
-    amount: "",
+  const [btnState, setBtnState] = useState("idle"); // "idle" | "processing" | "success"
+
+  // activeDue managed as its own state so we can clear it instantly on settle
+  // null = no due | { amount, dueDate } = outstanding
+  const [activeDue, setActiveDue] = useState(null);
+
+  const categoriesRef = useRef([]);
+  const initializedRef = useRef(false); // ✅ guard: run init only once
+
+  const buildDefaultForm = (cats) => ({
+    category: cats?.[0]?.Setting_Name || "",
+    amount: String(cats?.[0]?.Value_1 || "0"),
     date: new Date().toISOString().split('T')[0],
     nextAmount: "0",
     dueDate: "",
     remark: ""
   });
 
+  const [form, setForm] = useState(buildDefaultForm([]));
+
   useEffect(() => {
+    // ✅ FIXED: empty dependency [] so this runs ONCE only, never on re-render
+    // Guard ref prevents StrictMode double-invoke from double-fetching
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
     const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || "null");
-    if (!auth || auth['Can_Manage_Fees'] !== true) { router.push('/staff'); return; }
+    if (!auth) { router.push('/login'); return; }
+
+    const isManagement = auth.userRole === 'management' || auth.Position === 'GM';
+    const hasFeesPermission = auth['Can_Manage_Fees'] === true || String(auth['Can_Manage_Fees']).trim().toUpperCase() === "TRUE";
+
+    if (!isManagement && !hasFeesPermission) { router.push('/staff'); return; }
     setStaff(auth);
 
     const initFinanceHub = async () => {
       try {
         const [sRes, fRes, cRes] = await Promise.all([
-          fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getData', targetGid: GIDS.STUDENT_DIR }) }),
+          fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getData', targetGid: GIDS.STUDENT_DIR, sheetName: 'Student_Directory' }) }),
           fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getData', sheetName: 'Fees_Management' }) }),
           fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getConfig', category: 'Fee_Categories' }) })
         ]);
@@ -44,169 +67,412 @@ export default function FeesManagementHub() {
         const fData = await fRes.json();
         const cData = await cRes.json();
 
-        if (sData.success) setStudents(sData.data.filter(s => !s.Status || s.Status.toString().toLowerCase() === "active"));
+        if (sData.success) {
+          setStudents(sData.data.filter(s => {
+            const stat = String(s.Status || "").trim().toUpperCase();
+            return s.Status === true || stat === "TRUE" || stat === "ACTIVE" || stat === "";
+          }));
+        }
         if (fData.success) setFeeLogs(fData.data);
         if (cData.success && cData.data.length > 0) {
-          setCategories(cData.data);
-          setForm(prev => ({ ...prev, category: cData.data[0].Setting_Name, amount: cData.data[0].Value_1 || "" }));
+          const cats = cData.data;
+          categoriesRef.current = cats;
+          setCategories(cats);
+          setForm(buildDefaultForm(cats));
         }
-      } finally { setLoading(false); }
+      } finally {
+        setLoading(false); // ✅ only called once, never again
+      }
     };
     initFinanceHub();
-  }, [router]);
+  }, []); // ✅ FIXED: was [router] which caused re-runs → now empty array
 
-  const handleCategoryChange = (val) => {
-    const selected = categories.find(c => c.Setting_Name === val);
-    setForm({ ...form, category: val, amount: selected?.Value_1 || "" });
+  // ─── Derived State ────────────────────────────────────────────────────────
+  const currentStudentId = selectedStudent?.['Enrollment No.'] || selectedStudent?.Student_ID || selectedStudent?.ID;
+
+  const studentLedger = feeLogs.filter(
+    log => String(log.Student_ID) === String(currentStudentId)
+  );
+
+  // Paid records (Amount_Paid > 0), newest first
+  const paidRecords = studentLedger
+    .filter(log => Number(log.Amount_Paid || 0) > 0)
+    .slice()
+    .reverse();
+
+  const totalPaidSum = paidRecords.reduce((sum, r) => sum + Number(r.Amount_Paid || 0), 0);
+
+  // ✅ FIX: Recalculate activeDue from ledger when student changes
+  // activeDue state is source of truth for display,
+  // but we sync it from ledger when selectedStudent changes
+  useEffect(() => {
+    if (!currentStudentId) { setActiveDue(null); return; }
+    const ledger = feeLogs.filter(log => String(log.Student_ID) === String(currentStudentId));
+    const last = ledger.length > 0 ? ledger[ledger.length - 1] : null;
+    const dueAmt = Number(last?.Next_Due_Amount || 0);
+    setActiveDue(dueAmt > 0 ? { amount: dueAmt, dueDate: last?.Next_Due_Date || "" } : null);
+  }, [currentStudentId, feeLogs]);
+
+  // ─── Handlers ─────────────────────────────────────────────────────────────
+  const handleSettleDue = () => {
+    if (!activeDue) return;
+    setForm(prev => ({
+      ...prev,
+      category: "DUE SETTLEMENT",
+      amount: activeDue.amount.toString(),
+      remark: `Settlement for due dated ${activeDue.dueDate}`,
+      nextAmount: "0",
+      dueDate: ""
+    }));
+    window.scrollTo({ top: 350, behavior: 'smooth' });
+  };
+
+  const handleCategoryChange = (catName) => {
+    const cat = categories.find(c => c.Setting_Name === catName);
+    setForm(prev => ({
+      ...prev,
+      category: catName,
+      // only overwrite amount if category has a preset value
+      amount: cat?.Value_1 ? String(cat.Value_1) : prev.amount
+    }));
   };
 
   const handleSubmit = async () => {
-    if (!selectedStudent || !form.amount) { alert("ERROR: Link Profile and Enter Amount!"); return; }
-    setLoading(true);
+    if (!selectedStudent || !form.amount || btnState !== "idle") return;
 
-    const data = [{
+    setBtnState("processing");
+
+    const sId = selectedStudent['Enrollment No.'] || selectedStudent.Student_ID || selectedStudent.ID;
+    const nextDueAmt = form.nextAmount || "0";
+    const payload = [{
       Date: form.date,
-      Student_ID: selectedStudent['Enrollment No.'],
+      Student_ID: sId,
       Fee_Category: form.category,
       Amount_Paid: form.amount,
-      Next_Due_Date: form.dueDate,
-      Next_Due_Amount: form.nextAmount,
+      Next_Due_Date: form.dueDate || "",
+      Next_Due_Amount: nextDueAmt,
       Status: "PAID",
-      Recorded_By: staff.Name,
+      Recorded_By: staff?.Name || "",
       Remark: form.remark
     }];
 
     try {
-      const res = await fetch(WEB_APP_URL, { 
-        method: 'POST', 
-        body: JSON.stringify({ action: 'recordNote', sheetName: 'Fees_Management', data }) 
+      const res = await fetch(WEB_APP_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'recordNote', sheetName: 'Fees_Management', data: payload })
       });
-      if ((await res.json()).success) {
-        alert("FINANCIAL UPDATE SUCCESSFUL ★");
-        window.location.reload(); 
+      const result = await res.json();
+
+      if (result.success) {
+        // ✅ FIX: Append to feeLogs (triggers activeDue useEffect to recalculate)
+        const newLog = {
+          Student_ID: String(sId),
+          Date: form.date,
+          Fee_Category: form.category,
+          Amount_Paid: form.amount,
+          Next_Due_Date: form.dueDate || "",
+          Next_Due_Amount: nextDueAmt,
+          Status: "PAID",
+          Recorded_By: staff?.Name || "",
+          Remark: form.remark
+        };
+        setFeeLogs(prev => [...prev, newLog]);
+
+        // ✅ FIX: If this was a settlement (nextAmount=0), clear due immediately
+        if (Number(nextDueAmt) === 0) {
+          setActiveDue(null);
+        } else {
+          setActiveDue({ amount: Number(nextDueAmt), dueDate: form.dueDate || "" });
+        }
+
+        setBtnState("success");
+
+        // After 1.5s → reset to idle + clear form
+        setTimeout(() => {
+          setBtnState("idle");
+          setForm(buildDefaultForm(categoriesRef.current));
+        }, 1500);
+
+      } else {
+        setBtnState("idle");
+        alert("Server Error: " + (result.message || "Unknown error"));
       }
-    } finally { setLoading(false); }
+    } catch (e) {
+      setBtnState("idle");
+      alert("Network Error. Please check connection.");
+    }
   };
 
-  const filteredStudents = search.trim() === "" 
-    ? students.slice(0, 5) 
-    : students.filter(s => s['Name (ALL CAPITAL)']?.toLowerCase().includes(search.toLowerCase()) || s['Enrollment No.']?.toString().includes(search)).slice(0, 5);
+  // ─── Filtered Students ────────────────────────────────────────────────────
+  const filteredStudents = search.trim() === ""
+    ? students.slice(0, 8)
+    : students.filter(s => {
+        const nameMatch = (s['Name (ALL CAPITAL)'] || s.Name || "").toLowerCase().includes(search.toLowerCase());
+        const idMatch = (s['Enrollment No.'] || s.Student_ID || "").toString().includes(search);
+        return nameMatch || idMatch;
+      }).slice(0, 10);
 
-  const studentLedger = feeLogs.filter(log => log.Student_ID == selectedStudent?.['Enrollment No.']);
+  // ─── Loading Screen ───────────────────────────────────────────────────────
+  if (loading) return (
+    <div className="min-h-screen bg-[#F0F9FF] flex flex-col items-center justify-center font-black text-[#4c1d95] animate-pulse uppercase italic">
+      Synchronizing Secure Hub...
+    </div>
+  );
 
-  if (loading) return <div className="min-h-screen bg-[#0F071A] flex items-center justify-center font-black text-[#fbbf24] animate-pulse text-3xl uppercase italic tracking-tighter">Authorizing Finance Hub...</div>;
-
+  // ─── Main UI ──────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#0F071A] p-6 md:p-14 font-black selection:bg-[#fbbf24] text-slate-950">
-      <div className="max-w-[1800px] mx-auto space-y-12">
-        
-        {/* NAVIGATION HEADER [cite: 2026-02-25] */}
-        <div className="bg-gradient-to-br from-[#4c1d95] via-[#2D1B4E] to-[#0F071A] p-10 md:p-16 rounded-[4rem] border-b-[15px] border-[#fbbf24] shadow-3xl flex flex-col md:flex-row justify-between items-center gap-10">
-          <div className="flex items-center gap-6">
-            <button onClick={() => router.push('/staff')} className="bg-[#fbbf24] p-6 rounded-[2.5rem] hover:bg-white transition-all shadow-2xl active:scale-90 border-b-6 border-amber-600 group" title="Back to Staff Hub">
-              <span className="text-3xl group-hover:scale-125 inline-block transition-transform">🔙</span>
-            </button>
-            <button onClick={() => router.push('/')} className="bg-white/10 p-6 rounded-[2.5rem] hover:bg-white/20 transition-all border border-white/10 group" title="Back to Home">
-              <span className="text-3xl group-hover:scale-125 inline-block transition-transform">🏠</span>
-            </button>
-            <h1 className="text-5xl md:text-8xl italic uppercase font-black text-white tracking-tighter leading-none ml-4">Fees Hub</h1>
+    <div className="min-h-screen bg-[#F0F9FF] font-black text-slate-950">
+      <div className="max-w-[1200px] mx-auto p-4 pb-20 space-y-6">
+
+        {/* ── HEADER ── */}
+        <div className="bg-[#4c1d95] p-6 rounded-[2.5rem] border-b-[8px] border-[#fbbf24] shadow-xl space-y-6">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => router.push('/staff')}
+              className="w-12 h-12 bg-[#fbbf24] rounded-2xl flex items-center justify-center text-2xl shadow-lg active:scale-90 transition-transform"
+            >←</button>
+            <h1 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Fees Hub</h1>
           </div>
-          <div className="text-center md:text-right">
-            <p className="text-[#fbbf24] text-[10px] uppercase font-black tracking-[0.5em] italic">Access Verified: {staff.Name} • Finance Protocol</p>
+
+          {selectedStudent && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-white/10 p-4 rounded-2xl border border-white/10">
+                <p className="text-[#fbbf24] text-[8px] uppercase font-black tracking-widest">Total Paid</p>
+                <p className="text-xl text-white italic truncate">{totalPaidSum.toLocaleString()} MMK</p>
+              </div>
+              <div className="bg-rose-500/20 p-4 rounded-2xl border border-rose-500/30">
+                <p className="text-rose-300 text-[8px] uppercase font-black tracking-widest">Outstanding Due</p>
+                <p className="text-xl text-rose-400 italic truncate">
+                  {activeDue ? activeDue.amount.toLocaleString() : "0"} MMK
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── 1. SELECT STUDENT ── */}
+        <div className="bg-white p-6 rounded-[2.5rem] shadow-lg space-y-4 border-b-4 border-slate-100">
+          <h2 className="text-[10px] font-black uppercase text-slate-400 italic">1. Identify Student</h2>
+          <input
+            type="text"
+            placeholder="SEARCH NAME OR ID..."
+            className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl text-slate-950 font-black italic text-sm outline-none focus:border-[#fbbf24]"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <div className="flex overflow-x-auto gap-3 pb-2 custom-scrollbar">
+            {filteredStudents.map((s, idx) => {
+              const sId = s['Enrollment No.'] || s.Student_ID;
+              const isActive = String(currentStudentId) === String(sId);
+              return (
+                <button
+                  key={idx}
+                  onClick={() => setSelectedStudent(s)}
+                  className={`shrink-0 p-4 px-6 rounded-2xl border-2 flex flex-col transition-all ${
+                    isActive
+                      ? 'bg-[#fbbf24] border-[#fbbf24] scale-105 shadow-md'
+                      : 'bg-slate-50 border-slate-100 text-slate-400'
+                  }`}
+                >
+                  <span className="text-[8px] font-black mb-1 opacity-60">ID: {sId}</span>
+                  <p className="text-xs uppercase italic font-black whitespace-nowrap">
+                    {s['Name (ALL CAPITAL)'] || s.Name}
+                  </p>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-12">
-          
-          {/* LEFT: STUDENT PICKER [cite: 2026-02-25] */}
-          <div className="xl:col-span-3 space-y-8 bg-white/5 p-12 rounded-[4.5rem] border border-white/10 shadow-2xl relative overflow-hidden">
-            <h2 className="text-2xl uppercase italic text-[#fbbf24] font-black border-l-8 border-[#fbbf24] pl-6 tracking-tighter">Profile Protocol</h2>
-            <input 
-              type="text" placeholder="SEARCH NAME OR ID..." 
-              className="w-full bg-[#0F071A] border-4 border-white/10 p-8 rounded-[2.5rem] text-[#fbbf24] font-black italic text-xl outline-none focus:border-[#fbbf24] shadow-inner placeholder:opacity-20"
-              value={search} onChange={(e) => setSearch(e.target.value)}
-            />
+        {/* ── 2. PAYMENT ENTRY FORM ── */}
+        <div className="bg-white p-8 rounded-[3rem] border-b-[12px] border-indigo-950 shadow-2xl space-y-6">
+          <h2 className="text-[10px] font-black uppercase text-indigo-900 italic">2. Financial Entry</h2>
+          <div className="space-y-4">
+
+            {/* Date */}
+            <div className="space-y-1">
+              <label className="text-[9px] uppercase text-slate-400 font-black ml-4 italic">Payment Date</label>
+              <input
+                type="date"
+                className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-black italic text-sm outline-none focus:border-indigo-950"
+                value={form.date}
+                onChange={(e) => setForm({ ...form, date: e.target.value })}
+              />
+            </div>
+
+            {/* Category */}
+            <div className="space-y-1">
+              <label className="text-[9px] uppercase text-slate-400 font-black ml-4 italic">Category</label>
+              <select
+                className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-black italic text-base outline-none focus:border-indigo-950 appearance-none"
+                value={form.category}
+                onChange={(e) => handleCategoryChange(e.target.value)}
+              >
+                {categories.map((c, i) => (
+                  <option key={i} value={c.Setting_Name}>{c.Setting_Name}</option>
+                ))}
+                <option value="DUE SETTLEMENT">DUE SETTLEMENT</option>
+              </select>
+            </div>
+
+            {/* Amount */}
+            <div className="space-y-1">
+              <label className="text-[9px] uppercase text-slate-400 font-black ml-4 italic">Amount (MMK)</label>
+              <input
+                type="number"
+                className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-black italic text-2xl text-emerald-600 outline-none focus:border-emerald-400"
+                value={form.amount}
+                onChange={(e) => setForm({ ...form, amount: e.target.value })}
+              />
+            </div>
+
+            {/* Next Due */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-[9px] uppercase text-rose-500 font-black ml-4 italic">Next Due MMK</label>
+                <input
+                  type="number"
+                  className="w-full bg-rose-50 border-2 border-rose-100 p-4 rounded-2xl font-black italic text-sm text-rose-600 outline-none focus:border-rose-400"
+                  value={form.nextAmount}
+                  onChange={(e) => setForm({ ...form, nextAmount: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] uppercase text-rose-500 font-black ml-4 italic">Due Date</label>
+                <input
+                  type="date"
+                  className="w-full bg-rose-50 border-2 border-rose-100 p-4 rounded-2xl font-black italic text-sm text-rose-600 outline-none focus:border-rose-400"
+                  value={form.dueDate}
+                  onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
+                />
+              </div>
+            </div>
+
+            {/* Remark */}
+            <div className="space-y-1">
+              <label className="text-[9px] uppercase text-slate-400 font-black ml-4 italic">Remark / Memo</label>
+              <input
+                type="text"
+                className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-black italic text-sm outline-none focus:border-indigo-200"
+                value={form.remark}
+                onChange={(e) => setForm({ ...form, remark: e.target.value })}
+              />
+            </div>
+
+            {/* Submit Button - 3 States */}
+            <button
+              onClick={handleSubmit}
+              disabled={!selectedStudent || !form.amount || btnState !== "idle"}
+              className={`w-full py-6 rounded-[2rem] text-lg font-black uppercase shadow-xl transition-all duration-200 border-b-8 active:translate-y-2
+                ${btnState === "idle"
+                  ? "bg-slate-950 text-white border-indigo-700 hover:bg-indigo-950"
+                  : ""}
+                ${btnState === "processing"
+                  ? "bg-amber-400 text-slate-950 border-amber-600 scale-[0.98] cursor-not-allowed"
+                  : ""}
+                ${btnState === "success"
+                  ? "bg-emerald-500 text-white border-emerald-700 scale-100 cursor-not-allowed"
+                  : ""}
+                ${(!selectedStudent || !form.amount) && btnState === "idle"
+                  ? "opacity-40 cursor-not-allowed"
+                  : ""}
+              `}
+            >
+              {btnState === "idle" && "Record Registry ★"}
+              {btnState === "processing" && (
+                <span className="flex items-center justify-center gap-3">
+                  <span className="inline-block w-4 h-4 border-4 border-slate-950/30 border-t-slate-950 rounded-full animate-spin"></span>
+                  PROCESSING...
+                </span>
+              )}
+              {btnState === "success" && "✓ PAID — RECORDED"}
+            </button>
+          </div>
+        </div>
+
+        {/* ── 3. SMART LEDGER ── */}
+        <div className="bg-slate-950 p-8 rounded-[3rem] shadow-2xl space-y-6">
+          <h2 className="text-[10px] font-black uppercase italic text-[#fbbf24] flex items-center gap-2">
+            <span className="w-1.5 h-4 bg-[#fbbf24] rounded-full"></span>
+            3. Ledger History
+          </h2>
+
+          {!selectedStudent ? (
+            <p className="text-white/20 text-center italic py-10 uppercase text-[10px]">Select a student profile.</p>
+          ) : (
             <div className="space-y-4">
-              {filteredStudents.map((s, idx) => (
-                <button key={idx} onClick={() => setSelectedStudent(s)} className={`w-full p-8 rounded-[3rem] border-2 flex justify-between items-center transition-all ${selectedStudent?.['Enrollment No.'] === s['Enrollment No.'] ? 'bg-[#fbbf24] border-[#fbbf24] text-[#1A0B2E] scale-105 shadow-2xl' : 'bg-white/5 border-white/10 text-white hover:border-[#fbbf24]'}`}>
-                  <div className="text-left font-black italic uppercase leading-none">
-                    <span className="text-[9px] px-4 py-1.5 rounded-full mb-2 inline-block bg-white/10">{s.Grade}</span>
-                    <p className="text-xl">{s['Name (ALL CAPITAL)']}</p>
+
+              {/* ── Outstanding Due Banner (only shown when due exists) ── */}
+              {activeDue && (
+                <div className="bg-rose-500 p-6 rounded-[2.5rem] border-b-8 border-rose-900 shadow-2xl">
+                  <div className="flex justify-between items-start mb-3">
+                    <span className="text-[8px] font-black uppercase px-3 py-1 rounded-full bg-white text-rose-600 shadow-md">
+                      OUTSTANDING DUE
+                    </span>
+                    <span className="text-[8px] text-white/60 font-black uppercase">
+                      DUE: {activeDue.dueDate || "N/A"}
+                    </span>
                   </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* CENTER: ENTRY FORM [cite: 2026-02-25] */}
-          <div className="xl:col-span-5 bg-white p-14 rounded-[5rem] border-b-[20px] border-indigo-900 shadow-3xl space-y-10">
-            <h2 className="text-3xl uppercase italic text-indigo-900 font-black border-l-8 border-indigo-900 pl-8 tracking-tighter">Payment Entry</h2>
-            
-            <div className="space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-3">
-                  <label className="text-[11px] uppercase text-slate-400 font-black ml-6 italic">Fee Category</label>
-                  <select className="w-full bg-slate-50 border-4 border-slate-100 p-8 rounded-[2.5rem] font-black italic text-xl outline-none focus:border-indigo-900 shadow-inner appearance-none" value={form.category} onChange={(e) => handleCategoryChange(e.target.value)}>
-                    {categories.map((c, i) => <option key={i} value={c.Setting_Name}>{c.Setting_Name}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-3">
-                  <label className="text-[11px] uppercase text-slate-400 font-black ml-6 italic">Amount (MMK)</label>
-                  <input type="number" className="w-full bg-slate-50 border-4 border-slate-100 p-8 rounded-[2.5rem] font-black italic text-3xl outline-none focus:border-[#fbbf24] text-emerald-600" value={form.amount} onChange={(e) => setForm({...form, amount: e.target.value})} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-3">
-                  <label className="text-[11px] uppercase text-rose-500 font-black ml-6 italic">Next Due Amount</label>
-                  <input type="number" className="w-full bg-rose-50 border-4 border-rose-100 p-8 rounded-[2.5rem] font-black italic text-2xl outline-none text-rose-600 shadow-inner" value={form.nextAmount} onChange={(e) => setForm({...form, nextAmount: e.target.value})} />
-                </div>
-                <div className="space-y-3">
-                  <label className="text-[11px] uppercase text-rose-500 font-black ml-6 italic">Next Due Date</label>
-                  <input type="date" className="w-full bg-rose-50 border-4 border-rose-100 p-8 rounded-[2.5rem] font-black italic outline-none text-rose-600 shadow-inner" value={form.dueDate} onChange={(e) => setForm({...form, dueDate: e.target.value})} />
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-[11px] uppercase text-slate-400 font-black ml-6 italic">Remark / Memo</label>
-                <textarea rows="2" className="w-full bg-slate-50 border-4 border-slate-100 p-8 rounded-[2.5rem] font-black italic outline-none focus:border-[#fbbf24] shadow-inner" value={form.remark} onChange={(e) => setForm({...form, remark: e.target.value})} />
-              </div>
-
-              <button onClick={handleSubmit} disabled={!selectedStudent || !form.amount} className="w-full py-10 bg-[#1A0B2E] text-white rounded-[4rem] text-2xl font-black uppercase italic shadow-2xl hover:bg-[#fbbf24] hover:text-[#1A0B2E] transition-all border-b-10 border-amber-500 disabled:opacity-20 active:scale-95">Record Registry ★</button>
-            </div>
-          </div>
-
-          {/* RIGHT: LEDGER [cite: 2026-02-25] */}
-          <div className="xl:col-span-4 bg-white/5 p-12 rounded-[5rem] border border-white/10 shadow-3xl space-y-10 overflow-hidden">
-            <h2 className="text-3xl uppercase italic text-indigo-400 font-black border-l-8 border-indigo-400 pl-8 tracking-tighter">Student Ledger</h2>
-            {selectedStudent ? (
-              <div className="space-y-6 max-h-[750px] overflow-y-auto custom-scrollbar pr-6">
-                {studentLedger.length > 0 ? studentLedger.reverse().map((log, i) => (
-                  <div key={i} className="bg-white p-10 rounded-[3.5rem] border-b-[12px] border-indigo-900 shadow-2xl transition-all hover:translate-y-[-5px]">
-                    <div className="flex justify-between items-start mb-6">
-                      <span className="text-[10px] font-black uppercase bg-emerald-100 px-5 py-2 rounded-full text-emerald-700">PAID</span>
-                      <span className="text-xs text-slate-400 font-black italic">{log.Date}</span>
+                  <div className="flex justify-between items-end">
+                    <div>
+                      <p className="text-[8px] text-white/70 font-black uppercase italic mb-1">Balance Due</p>
+                      <p className="text-3xl font-black text-white italic leading-none">
+                        {activeDue.amount.toLocaleString()} <span className="text-sm">MMK</span>
+                      </p>
                     </div>
-                    <p className="text-[10px] uppercase text-indigo-900 font-black mb-1 italic tracking-widest">{log.Fee_Category}</p>
-                    <p className="text-4xl font-black text-slate-950 italic leading-none">{Number(log.Amount_Paid).toLocaleString()} MMK</p>
-                    <div className="mt-8 pt-6 border-t-2 border-slate-100 grid grid-cols-2 gap-4">
-                       <div>
-                         <p className="text-[8px] uppercase text-rose-500 font-black italic">Next Amount</p>
-                         <p className="text-lg font-black text-rose-600">{Number(log.Next_Due_Amount || 0).toLocaleString()} MMK</p>
-                       </div>
-                       <div className="text-right">
-                         <p className="text-[8px] uppercase text-rose-500 font-black italic">Next Due Date</p>
-                         <p className="text-lg font-black text-rose-600">{log.Next_Due_Date || "N/A"}</p>
-                       </div>
-                    </div>
+                    <button
+                      onClick={handleSettleDue}
+                      className="bg-white text-rose-600 px-6 py-3 rounded-full font-black uppercase italic text-[10px] shadow-xl active:scale-95 transition-all"
+                    >
+                      Settle Now ⚡
+                    </button>
                   </div>
-                )) : <div className="text-center py-40 border-4 border-dashed border-white/10 rounded-[4rem] text-white/10 uppercase font-black italic tracking-[0.4em]">No financial archive.</div>}
-              </div>
-            ) : <div className="text-center py-40 text-white/10 uppercase font-black italic tracking-[0.4em]">Link profile to view ledger.</div>}
-          </div>
+                </div>
+              )}
+
+              {/* ── Paid History ── */}
+              {paidRecords.length > 0 ? (
+                paidRecords.map((log, i) => (
+                  <div key={i} className="bg-white p-5 rounded-[2rem] border-b-[6px] border-indigo-200 relative overflow-hidden">
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="text-[7px] font-black uppercase px-3 py-1 rounded-full shadow-sm bg-emerald-100 text-emerald-700">
+                        PAID
+                      </span>
+                      <span className="text-[8px] text-slate-400 font-black italic">{log.Date}</span>
+                    </div>
+                    <p className="text-[8px] uppercase text-indigo-900 font-black truncate mb-1">{log.Fee_Category}</p>
+                    <p className="text-2xl font-black text-slate-950 italic leading-none">
+                      {Number(log.Amount_Paid || 0).toLocaleString()} <span className="text-[10px]">MMK</span>
+                    </p>
+                    {log.Remark ? (
+                      <p className="text-[8px] text-slate-400 font-black italic mt-2 truncate">※ {log.Remark}</p>
+                    ) : null}
+
+                  </div>
+                ))
+              ) : (
+                <p className="text-white/20 text-center italic py-6 uppercase text-[10px]">No payment history.</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
-      <style jsx global>{` body { font-weight: 900 !important; } .custom-scrollbar::-webkit-scrollbar { width: 10px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #fbbf24; border-radius: 20px; border: 3px solid #0F071A; } `}</style>
+
+      <style jsx global>{`
+        body {
+          background-color: #F0F9FF;
+          font-weight: 900 !important;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar { height: 4px; width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #fbbf24; border-radius: 10px; }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        .animate-spin {
+          animation: spin 0.7s linear infinite;
+        }
+      `}</style>
     </div>
   );
 }

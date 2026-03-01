@@ -2,60 +2,61 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-/**
- * Shining Stars - Staff & Management Access Hub (v14.0 Pro Flow)
- * FIX: Unlocked House Score Adjust for Staff members [cite: 2026-02-26]
- * FEATURE: Grouped access to Student, Staff, and Financial modules [cite: 2026-02-26]
- * STYLE: Professional Soft Blue (#F0F9FF) & Slate-950 Bold Luxury [cite: 2023-02-23]
- */
 export default function StaffAccessHub() {
   const [user, setUser] = useState(null);
   const [isGM, setIsGM] = useState(false); 
   const router = useRouter();
 
   useEffect(() => {
-    const auth = JSON.parse(localStorage.getItem('user') || "null");
+    const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || "null");
     if (!auth) { 
       router.push('/login'); 
     } else {
       setUser(auth);
-      if (auth.userRole === 'management') {
+      if (auth.userRole === 'management' || auth.Position === 'GM') {
         setIsGM(true);
       }
     }
   }, [router]);
 
-  // 🌟 MASTER ACCESS DEFINITIONS
+  if (!user) return null;
+
+  // 🌟 Sheet မှ Permission (TRUE/FALSE) များကို စစ်ဆေးရန် 🌟
+  const hasPermission = (field) => {
+    const val = user[field];
+    return val === true || val === "TRUE" || val === "true";
+  };
+
+  // 🌟 DYNAMIC TOOL GROUPS 🌟
+  // normalLocked ဆိုသည်မှာ သာမန် Staff များအတွက် Lock ချထားခြင်း ရှိမရှိ စစ်ဆေးခြင်းဖြစ်သည်။
+  // GM ဝင်လာပါက normalLocked ဖြစ်နေသော ခလုတ်များတွင် "GM Access ✨" Badge ပြပေးပါမည်။
   const toolGroups = [
     {
       group: "Student & House Operations",
       items: [
-        { name: 'Student Directory', path: '/staff/student-dir', icon: '👤', locked: false },
-        { name: 'Hostel Hub', path: '/staff/hostel', icon: '🏠', locked: false },
-        // 🌟 UNLOCKED: Staff တွေ အမှတ်ပေးလို့ရအောင် ပြန်ဖွင့်ပေးလိုက်ပါပြီ [cite: 2026-02-26]
-        { name: 'House Score Adjust', path: '/staff/points', icon: '⚖️', locked: false } 
+        { name: 'Student Directory', path: '/staff/student-dir', icon: '👤', normalLocked: !hasPermission('Can_View_Student') },
+        { name: 'Hostel Hub', path: '/staff/hostel', icon: '🏠', normalLocked: !hasPermission('Can_Manage_Hostel') },
+        { name: 'House Score Adjust', path: '/staff/points', icon: '⚖️', normalLocked: !hasPermission('Can_Adjust_Points') } 
       ]
     },
     {
       group: "Staff & Internal Registry",
       items: [
-        // Restricted to GM only
-        { name: 'Staff Directory', path: '/staff/staff-dir', icon: '👔', locked: true },
-        { name: 'Leave Hub (Staff)', path: '/management/leave', icon: '📄', locked: true },
-        { name: 'Staff Performance', path: '/management/performance', icon: '🏆', locked: true }
+        { name: 'Staff Contacts', path: '/staff/contacts', icon: '📞', normalLocked: false }, // အားလုံးဝင်ခွင့်ရှိသည်
+        { name: 'Master Staff Profile', path: '/staff/staff-dir', icon: '👔', normalLocked: !hasPermission('Can_View_Staff') },
+        { name: 'Leave Hub (Staff)', path: '/management/leave', icon: '📄', normalLocked: !hasPermission('Can_Record_Attendance_&_Leave') },
+        { name: 'Staff Performance', path: '/management/performance', icon: '🏆', normalLocked: true } // မူလက ပိတ်ထားသည် (GM သာရမည်)
       ]
     },
     {
       group: "Administrative & Finance",
       items: [
-        { name: 'Financial Registry', path: '/staff/fees', icon: '💰', locked: false },
-        { name: 'Registry Notes', path: '/staff/notes', icon: '📒', locked: false },
-        { name: 'Mgt Dashboard', path: '/management/mgt-dashboard', icon: '🛡️', locked: true }
+        { name: 'Financial Registry', path: '/staff/fees', icon: '💰', normalLocked: !hasPermission('Can_Manage_Fees') },
+        { name: 'Registry Notes', path: '/staff/notes', icon: '📒', normalLocked: !hasPermission('Can_Record_Note') },
+        { name: 'Mgt Dashboard', path: '/management/mgt-dashboard', icon: '🛡️', normalLocked: true } // မူလက ပိတ်ထားသည် (GM သာရမည်)
       ]
     }
   ];
-
-  if (!user) return null;
 
   return (
     <div className="min-h-screen bg-[#F0F9FF] font-black text-slate-950 p-6 md:p-14 pb-48">
@@ -79,7 +80,7 @@ export default function StaffAccessHub() {
                {user.Name || user.username}
             </h1>
             <div className="flex flex-wrap items-center justify-center md:justify-start gap-4">
-               <span className="text-[#fbbf24] text-xl md:text-2xl font-black italic tracking-widest uppercase">• ID: {user.Student_ID || user.id || "STAFF-PRO"}</span>
+               <span className="text-[#fbbf24] text-xl md:text-2xl font-black italic tracking-widest uppercase">• ID: {user.ID || user.Student_ID || "STAFF-PRO"}</span>
                <span className="h-4 w-px bg-white/20 hidden md:block"></span>
                <p className="text-slate-400 text-xs md:text-sm uppercase font-black tracking-[0.3em] italic">Status: <span className="text-white">Authorized Access</span></p>
             </div>
@@ -95,34 +96,46 @@ export default function StaffAccessHub() {
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {group.items.map((tool, i) => {
-                  // 🌟 Logic: Unlock everything for GM, or follow individual 'locked' status for Staff [cite: 2026-02-26]
-                  const effectivelyLocked = isGM ? false : tool.locked;
+                  
+                  // 🌟 FINAL ACCESS LOGIC 🌟
+                  // GM ဆိုလျှင် အားလုံးပွင့်မည်။ မဟုတ်လျှင် normalLocked အတိုင်းဖြစ်သည်။
+                  const isEffectivelyLocked = isGM ? false : tool.normalLocked;
+                  // သာမန် Staff ပိတ်ထားသော်လည်း ယခုဝင်နေသူမှာ GM ဖြစ်နေပါက Badge ပြမည်။
+                  const showGMBadge = isGM && tool.normalLocked;
 
                   return (
                     <button
                       key={i}
-                      onClick={() => !effectivelyLocked && router.push(tool.path)}
+                      onClick={() => !isEffectivelyLocked && router.push(tool.path)}
                       className={`relative group p-10 rounded-[3rem] border-b-[12px] transition-all duration-300 flex flex-col items-center text-center gap-6 shadow-xl
-                        ${effectivelyLocked 
+                        ${isEffectivelyLocked 
                           ? 'bg-slate-200 border-slate-300 opacity-60 cursor-not-allowed' 
                           : 'bg-white border-slate-100 hover:border-[#fbbf24] hover:-translate-y-2 active:scale-95'
                         }`}
                     >
-                      <span className={`text-6xl md:text-7xl transition-transform duration-500 ${!effectivelyLocked && 'group-hover:scale-125'}`}>
+                      <span className={`text-6xl md:text-7xl transition-transform duration-500 ${!isEffectivelyLocked && 'group-hover:scale-125'}`}>
                         {tool.icon}
                       </span>
                       
                       <div className="space-y-2">
-                        <h3 className={`text-lg md:text-xl font-black uppercase italic tracking-tighter ${effectivelyLocked ? 'text-slate-400' : 'text-slate-950'}`}>
+                        <h3 className={`text-lg md:text-xl font-black uppercase italic tracking-tighter ${isEffectivelyLocked ? 'text-slate-400' : 'text-slate-950'}`}>
                           {tool.name}
                         </h3>
-                        <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400 font-black">
-                          {effectivelyLocked ? "GM ONLY ACCESS" : "AUTHORIZED MODULE"}
+                        <p className="text-[10px] uppercase tracking-[0.3em] font-black max-w-[200px] truncate mx-auto
+                           ${isEffectivelyLocked ? 'text-rose-400' : 'text-slate-400'}">
+                          {isEffectivelyLocked ? "RESTRICTED ACCESS" : (showGMBadge ? "GM AUTHORIZED" : "AUTHORIZED MODULE")}
                         </p>
                       </div>
 
-                      {/* GM UNLOCKED BADGE */}
-                      {isGM && tool.locked && (
+                      {/* 🔒 LOCK ICON IF RESTRICTED */}
+                      {isEffectivelyLocked && (
+                        <div className="absolute top-6 right-8 text-slate-400 text-2xl opacity-50">
+                          🔒
+                        </div>
+                      )}
+
+                      {/* ✨ GM UNLOCKED BADGE */}
+                      {showGMBadge && (
                         <div className="absolute top-6 right-8 bg-emerald-500 text-white text-[9px] px-3 py-1 rounded-lg font-black uppercase tracking-widest shadow-md animate-pulse">
                            GM Access ✨
                         </div>

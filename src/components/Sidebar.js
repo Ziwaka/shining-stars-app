@@ -5,20 +5,20 @@ export default function DashboardLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // ✅ Logout function
+  // ✅ Logout function — FIXED: "token" မဟုတ်ဘဲ "user" key ဖျက်ရမည်
   const handleLogout = () => {
-    // Example: clear token/session
-    localStorage.removeItem("token");
-    // Redirect to login page
+    localStorage.removeItem("user");
+    sessionStorage.removeItem("user");
     router.push("/login");
   };
 
+  // ✅ FIXED: Paths တွေ project structure နဲ့ ကိုက်ညီအောင် ပြင်ထားသည်
   const menuItems = [
-    { name: 'Dashboard', path: '/dashboard', icon: '🏠' },
-    { name: 'Official Profile', path: '/dashboard/profile', icon: '👤' },
-    { name: 'Attendance Record', path: '/dashboard/attendance', icon: '🗓️' },
-    { name: 'Notifications', path: '/dashboard/announcements', icon: '🔔' },
-    { name: 'Settings', path: '/dashboard/settings', icon: '⚙️' },
+    { name: 'Staff Home', path: '/staff', icon: '🏠' },
+    { name: 'My Profile', path: '/staff/profile', icon: '👤' },
+    { name: 'Leave Hub', path: '/staff/leave', icon: '🗓️' },
+    { name: 'Staff Directory', path: '/staff/staff-dir', icon: '👔' },
+    { name: 'Student Directory', path: '/staff/student-dir', icon: '🎓' },
   ];
 
   return (

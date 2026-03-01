@@ -3,229 +3,178 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL, GIDS } from '@/lib/api';
 
-/**
- * Shining Stars - Student Directory & Performance Hub (v12.0 Master)
- * FEATURE: Unified Dashboard (Scores + Points + Notes + Fees) [cite: 2026-02-25]
- * STYLE: Slate-950 Bold Luxury | Purple, Gold, Blue Theme [cite: 2023-02-23]
- */
-export default function StudentPerformanceHub() {
+export default function StudentDirectoryOnly() {
   const [students, setStudents] = useState([]);
-  const [allData, setAllData] = useState({ scores: [], points: [], notes: [], fees: [] });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [selectedStudent, setSelectedStudent] = useState(null);
-  const [activeTab, setActiveTab] = useState("PROFILE"); // PROFILE or PERFORMANCE [cite: 2026-02-25]
+  const [gradeFilter, setGradeFilter] = useState("ALL");
   const router = useRouter();
 
-  useEffect(() => {
-    const fetchUniversalData = async () => {
-      try {
-        const [sRes, scRes, pRes, nRes, fRes] = await Promise.all([
-          fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getData', targetGid: GIDS.STUDENT_DIR }) }),
-          fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getData', sheetName: 'Score_Records' }) }),
-          fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getData', sheetName: 'House_Points' }) }),
-          fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getData', sheetName: 'Student_Notes_Log' }) }),
-          fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getData', sheetName: 'Fees_Management' }) })
-        ]);
-        
-        const [s, sc, p, n, f] = await Promise.all([sRes.json(), scRes.json(), pRes.json(), nRes.json(), fRes.json()]);
-        
-        if (s.success) setStudents(s.data);
-        setAllData({ 
-          scores: sc.success ? sc.data : [], 
-          points: p.success ? p.data : [], 
-          notes: n.success ? n.data : [], 
-          fees: f.success ? f.data : [] 
-        });
-      } catch (err) { console.error("Sync Failure."); }
-      finally { setLoading(false); }
-    };
-    fetchUniversalData();
-  }, []);
-
-  // PERFORMANCE CALCULATIONS [cite: 2026-02-25]
-  const getStudentMetrics = (id) => {
-    const studentScores = allData.scores.filter(x => x.Student_ID == id);
-    const studentPoints = allData.points.filter(x => x.Student_ID == id);
-    const studentNotes = allData.notes.filter(x => x.Student_ID == id);
-    const studentFees = allData.fees.filter(x => x.Student_ID == id);
-
-    const totalPoints = studentPoints.reduce((sum, x) => sum + (Number(x.Points) || 0), 0);
-    const avgScore = studentScores.length ? (studentScores.reduce((sum, x) => sum + (Number(x.Score) || 0), 0) / studentScores.length).toFixed(1) : "N/A";
-    const totalPaid = studentFees.reduce((sum, x) => sum + (Number(x.Amount_Paid) || 0), 0);
-
-    return { studentScores, studentPoints, studentNotes, studentFees, totalPoints, avgScore, totalPaid };
+  const getDrivePreview = (url) => {
+    if (!url || typeof url !== 'string') return null;
+    try {
+      let fileId = "";
+      if (url.includes('id=')) fileId = url.split('id=')[1].split('&')[0];
+      else if (url.includes('/d/')) fileId = url.split('/d/')[1].split('/')[0];
+      return fileId ? `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000` : url;
+    } catch (e) { return null; }
   };
 
-  const filtered = students.filter(s => s['Name (ALL CAPITAL)']?.toLowerCase().includes(search.toLowerCase()) || s['Enrollment No.']?.toString().includes(search));
+  useEffect(() => {
+    const fetchStudents = async () => {
+      try {
+        const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getData', targetGid: GIDS.STUDENT_DIR }) });
+        const data = await res.json();
+        if (data.success) setStudents(data.data);
+      } finally { setLoading(false); }
+    };
+    fetchStudents();
+  }, []);
 
-  if (loading) return (
-    <div className="min-h-screen bg-[#0F071A] flex items-center justify-center font-black text-[#fbbf24] animate-pulse text-3xl uppercase italic tracking-tighter">
-      Scanning Unified Performance Registry...
-    </div>
-  );
+  const gradeStats = students.reduce((acc, s) => {
+    const g = s.Grade || "Unknown";
+    acc[g] = (acc[g] || 0) + 1;
+    return acc;
+  }, {});
+
+  const uniqueGrades = Object.keys(gradeStats).sort((a, b) => {
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  });
+
+  const filteredStudents = students.filter(s => {
+    const matchSearch = s['Name (ALL CAPITAL)']?.toLowerCase().includes(search.toLowerCase()) || 
+                        s['အမည်']?.includes(search) || 
+                        s['Name (Myanmar)']?.includes(search) || 
+                        s['Enrollment No.']?.toString().includes(search);
+    const matchGrade = gradeFilter === "ALL" || s.Grade === gradeFilter;
+    return matchSearch && matchGrade;
+  });
+
+  const showGradesView = gradeFilter === "ALL" && search.trim() === "";
+
+  if (loading) return <div className="min-h-screen bg-[#0F071A] flex items-center justify-center font-black text-[#FFD700] animate-pulse text-2xl md:text-3xl uppercase italic tracking-tighter px-6 text-center">Loading Directory...</div>;
 
   return (
-    <div className="min-h-screen bg-[#0F071A] p-4 md:p-14 font-black selection:bg-[#fbbf24] text-slate-950">
-      <div className="max-w-[1800px] mx-auto space-y-12">
+    <div className="min-h-screen bg-[#0F071A] p-3 md:p-10 font-black selection:bg-[#FFD700] text-slate-950 font-serif-numbers overflow-x-hidden">
+      <div className="max-w-[1600px] mx-auto space-y-6 md:space-y-10">
         
         {/* HEADER */}
-        <div className="bg-gradient-to-br from-[#4c1d95] via-[#1e3a8a] to-[#0F071A] p-10 md:p-16 rounded-[4rem] border-b-[15px] border-[#fbbf24] shadow-3xl flex flex-col md:flex-row justify-between items-center gap-10">
-          <div className="flex items-center gap-6">
-            <button onClick={() => router.push('/staff')} className="bg-[#fbbf24] p-6 rounded-[2.5rem] hover:bg-white transition-all shadow-2xl active:scale-90 border-b-6 border-amber-600 group">
-              <span className="text-3xl">🔙</span>
-            </button>
-            <h1 className="text-5xl md:text-8xl italic uppercase font-black text-white tracking-tighter leading-none">Student Hub</h1>
+        <div className="bg-gradient-to-br from-[#4c1d95] via-[#2e1065] to-[#0F071A] p-6 md:p-12 rounded-[2rem] md:rounded-[3.5rem] border-b-[6px] md:border-b-[12px] border-[#FFD700] shadow-3xl flex items-center gap-4 md:gap-8 relative overflow-hidden">
+          <button onClick={handleBack} className="bg-[#FFD700] p-3 md:p-5 rounded-[1.5rem] md:rounded-[2rem] hover:bg-white transition-all shadow-2xl active:scale-90 border-b-4 md:border-b-6 border-amber-600 flex-shrink-0 z-10">
+            <span className="text-xl md:text-3xl">🔙</span>
+          </button>
+          <div className="z-10 min-w-0">
+            <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl italic uppercase font-black text-white tracking-tighter leading-none truncate">Student Hub</h1>
+            <p className="text-[#FFD700] mt-2 tracking-[0.2em] md:tracking-[0.4em] uppercase text-[8px] md:text-[10px] bg-black/30 inline-block px-3 md:px-4 py-1.5 rounded-full border border-white/10 truncate max-w-full">
+              {gradeFilter === "ALL" ? "Master Directory" : `CLASS: GRADE ${gradeFilter}`}
+            </p>
           </div>
+          <div className="absolute -right-10 -bottom-10 text-[150px] opacity-5">🎓</div>
         </div>
 
-        {/* SEARCH BOX */}
-        <input type="text" placeholder="နာမည် သို့မဟုတ် ID ဖြင့် ရှာဖွေပါ..." className="w-full bg-[#1A0B2E] border-4 border-[#2563eb]/20 p-8 rounded-[3rem] text-[#fef3c7] font-black italic text-2xl outline-none focus:border-[#fbbf24] shadow-2xl placeholder:opacity-10" onChange={(e) => setSearch(e.target.value)} />
+        {/* SEARCH BAR */}
+        <div className="relative">
+          <input 
+            type="text" 
+            placeholder="Search by Name, Myanmar Name or ID..." 
+            className="w-full bg-[#1A0B2E] border-2 md:border-4 border-[#4c1d95] p-5 md:p-8 rounded-[1.5rem] md:rounded-[2.5rem] text-white font-bold italic text-base md:text-xl outline-none focus:border-[#FFD700] shadow-2xl transition-all" 
+            onChange={(e) => setSearch(e.target.value)} 
+            value={search}
+          />
+          {search && (
+             <button onClick={() => setSearch("")} className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-2xl">✕</button>
+          )}
+        </div>
 
-        {/* LIST GRID */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 pb-40">
-          {filtered.map((s, idx) => (
-            <button key={idx} onClick={() => { setSelectedStudent(s); setActiveTab("PROFILE"); }} className="bg-[#fef3c7] p-8 rounded-[4rem] border-b-[18px] border-[#1e3a8a] shadow-3xl flex items-center gap-6 hover:scale-105 active:scale-95 transition-all text-left group overflow-hidden">
-               <div className="w-24 h-24 bg-white rounded-[2.5rem] overflow-hidden flex items-center justify-center shadow-2xl border-4 border-white flex-shrink-0">
-                  <span className="text-4xl opacity-20">👤</span>
-               </div>
-               <div className="flex-1 overflow-hidden">
-                  <h3 className="text-xl uppercase font-black italic text-slate-950 truncate leading-none mb-2">{s['Name (ALL CAPITAL)']}</h3>
-                  <p className="text-xs text-[#2563eb] font-black tracking-widest leading-none">ID: {s['Enrollment No.']}</p>
-               </div>
+        {/* BACK TO GRADES BUTTON */}
+        {!showGradesView && gradeFilter !== "ALL" && (
+          <div className="flex items-center justify-between bg-white/5 border border-white/10 p-3 md:p-4 rounded-2xl">
+            <span className="text-white font-bold italic text-sm md:text-base px-2">Showing Grade: <span className="text-[#FFD700]">{gradeFilter}</span></span>
+            <button onClick={() => setGradeFilter("ALL")} className="bg-rose-500 hover:bg-rose-600 text-white text-[10px] md:text-xs font-black tracking-widest uppercase px-5 py-2.5 rounded-full shadow-lg transition-all">
+               Clear Filter
             </button>
-          ))}
-        </div>
+          </div>
+        )}
 
-        {/* UNIFIED MASTER MODAL [cite: 2026-02-25] */}
-        {selectedStudent && (() => {
-          const m = getStudentMetrics(selectedStudent['Enrollment No.']);
-          return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-              <div className="absolute inset-0 bg-[#0F071A]/98 backdrop-blur-3xl" onClick={() => setSelectedStudent(null)}></div>
-              <div className="relative bg-white w-full max-w-[1700px] h-[90vh] rounded-[5rem] border-b-[20px] border-[#fbbf24] shadow-2xl overflow-hidden flex flex-col">
-                
-                {/* MODAL HEADER & TABS [cite: 2026-02-25] */}
-                <div className="bg-gradient-to-r from-[#4c1d95] to-[#1e3a8a] p-10 flex flex-col md:flex-row justify-between items-center gap-8">
-                  <div className="flex items-center gap-8">
-                    <div className="w-32 h-32 bg-white rounded-[3rem] p-2 shadow-2xl">
-                      <div className="w-full h-full bg-slate-100 rounded-[2.5rem] flex items-center justify-center text-6xl">👤</div>
-                    </div>
-                    <div>
-                      <h2 className="text-4xl font-black text-[#fbbf24] uppercase italic leading-none">{selectedStudent['Name (ALL CAPITAL)']}</h2>
-                      <p className="text-white/60 font-black italic mt-3 tracking-[0.4em]">ID: {selectedStudent['Enrollment No.']} • GRADE: {selectedStudent.Grade}</p>
-                    </div>
-                  </div>
-                  <div className="flex bg-black/20 p-3 rounded-[3rem] gap-2">
-                    {["PROFILE", "PERFORMANCE"].map(tab => (
-                      <button key={tab} onClick={() => setActiveTab(tab)} className={`px-12 py-4 rounded-full font-black italic uppercase tracking-widest text-xs transition-all ${activeTab === tab ? 'bg-[#fbbf24] text-black shadow-xl' : 'text-white/40 hover:text-white'}`}>{tab}</button>
-                    ))}
-                  </div>
-                  <button onClick={() => setSelectedStudent(null)} className="text-4xl text-white/20 hover:text-rose-500 font-black transition-all">✕</button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-12 custom-scrollbar">
-                  {activeTab === "PROFILE" ? (
-                    /* TAB 1: BASIC INFO [cite: 2026-02-25] */
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                      <InfoItem label="ဖခင်အမည်" value={selectedStudent["Father's Name"]} />
-                      <InfoItem label="မိခင်အမည်" value={selectedStudent["Mother's Name"]} />
-                      <InfoItem label="ဖုန်း (၁)" value={selectedStudent["Parent Phone 1"]} color="text-blue-600" />
-                      <InfoItem label="ဖုန်း (၂)" value={selectedStudent["Parent Phone 2"]} color="text-blue-600" />
-                      <InfoItem label="အဆောင်/ကျောင်း" value={selectedStudent["School/Hostel"]} />
-                      <InfoItem label="အသင်း" value={selectedStudent.House} />
-                      <div className="md:col-span-2 lg:col-span-3 bg-slate-50 p-10 rounded-[3.5rem] border-2 border-slate-100">
-                        <p className="text-[10px] uppercase text-slate-400 font-black mb-4 italic tracking-widest">နေရပ်လိပ်စာ</p>
-                        <p className="text-2xl font-black text-slate-950 leading-relaxed italic">{selectedStudent.Address}</p>
-                      </div>
-                    </div>
-                  ) : (
-                    /* TAB 2: PERFORMANCE HUB [cite: 2026-02-25] */
-                    <div className="space-y-12">
-                      {/* STATS OVERVIEW [cite: 2026-02-25] */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                        <PerfStat label="Academic Avg" value={m.avgScore} unit="PERCENT" color="text-violet-600" icon="🎓" />
-                        <PerfStat label="House Points" value={m.totalPoints} unit="POINTS" color="text-amber-500" icon="⭐" />
-                        <PerfStat label="Total Finance" value={m.totalPaid.toLocaleString()} unit="MMK PAID" color="text-emerald-600" icon="💰" />
-                      </div>
-
-                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-                        {/* TEACHER OBSERVATIONS [cite: 2026-02-25] */}
-                        <div className="bg-[#fef3c7] p-10 rounded-[4rem] border-b-[15px] border-amber-600/20 shadow-xl space-y-6">
-                           <h3 className="text-2xl font-black uppercase italic text-amber-900 border-l-8 border-amber-600 pl-6">Observation Logs</h3>
-                           <div className="space-y-4 max-h-[400px] overflow-y-auto pr-4 custom-scrollbar">
-                              {m.studentNotes.length > 0 ? m.studentNotes.reverse().map((n, i) => (
-                                <div key={i} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-amber-100">
-                                  <p className="text-xl font-black italic text-slate-950 leading-relaxed">"{n.Note_Detail}"</p>
-                                  <div className="flex justify-between items-center mt-4 pt-4 border-t border-slate-50 text-[9px] font-black uppercase text-amber-800 italic">
-                                    <span>BY: {n.Recorded_By}</span>
-                                    <span>{n.Date}</span>
-                                  </div>
-                                </div>
-                              )) : <p className="text-amber-900/30 uppercase font-black italic text-center py-10">No Behavioral Logs.</p>}
-                           </div>
-                        </div>
-
-                        {/* EXAM RECORDS [cite: 2026-02-25] */}
-                        <div className="bg-indigo-50 p-10 rounded-[4rem] border-b-[15px] border-indigo-900/20 shadow-xl space-y-6">
-                           <h3 className="text-2xl font-black uppercase italic text-indigo-900 border-l-8 border-indigo-900 pl-6">Academic Archive</h3>
-                           <div className="grid grid-cols-1 gap-4 max-h-[400px] overflow-y-auto pr-4 custom-scrollbar">
-                              {m.studentScores.length > 0 ? m.studentScores.reverse().map((s, i) => (
-                                <div key={i} className="bg-white p-6 rounded-[2.5rem] shadow-sm flex justify-between items-center group hover:bg-indigo-900 hover:text-white transition-all">
-                                   <div>
-                                      <p className="text-[8px] font-black uppercase opacity-50 mb-1">{s.Subject}</p>
-                                      <p className="text-xl font-black italic leading-none">{s.Term}</p>
-                                   </div>
-                                   <div className="text-right">
-                                      <p className="text-3xl font-black italic leading-none">{s.Score}</p>
-                                      <p className="text-[8px] font-black uppercase opacity-50 mt-1">Result: {s.Result}</p>
-                                   </div>
-                                </div>
-                              )) : <p className="text-indigo-900/30 uppercase font-black italic text-center py-10">No Academic Records.</p>}
-                           </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+        {/* 🌟 VIEW 1: PREMIUM GRADE FOLDERS 🌟 */}
+        {showGradesView && (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6 pb-20 animate-in fade-in zoom-in-95 duration-500">
+            {uniqueGrades.map((g, idx) => (
+              <button 
+                key={idx} 
+                onClick={() => setGradeFilter(g)}
+                className="group bg-gradient-to-br from-[#1e1b4b] to-[#0f172a] p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] border-t border-t-white/10 border-b-[6px] md:border-b-[8px] border-b-[#4c1d95] shadow-xl flex flex-col items-center justify-center gap-3 hover:-translate-y-2 hover:border-b-[#FFD700] hover:shadow-[0_20px_40px_-10px_rgba(255,215,0,0.3)] transition-all"
+              >
+                {/* 🌟 PREMIUM ICON: Glowing Academic Cap instead of basic Folder 🌟 */}
+                <div className="w-16 h-16 md:w-20 md:h-20 bg-[#FFD700]/10 rounded-[1.2rem] flex items-center justify-center shadow-[0_0_20px_rgba(255,215,0,0.1)] group-hover:bg-[#FFD700]/20 group-hover:shadow-[0_0_30px_rgba(255,215,0,0.4)] transition-all duration-500">
+                  <svg className="w-8 h-8 md:w-10 md:h-10 text-[#FFD700] group-hover:scale-110 transition-transform duration-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.697 50.697 0 0112 13.489a50.702 50.702 0 017.74-3.342M6.75 15a.75.75 0 100-1.5.75.75 0 000 1.5zm0 0v-3.675A55.378 55.378 0 0112 8.443m-7.007 11.55A5.981 5.981 0 006.75 15.75v-1.5" />
+                  </svg>
                 </div>
                 
-                <div className="p-10 bg-slate-50 flex justify-center">
-                   <button onClick={() => setSelectedStudent(null)} className="px-20 py-6 bg-[#0F071A] text-[#fbbf24] rounded-full font-black uppercase italic tracking-[0.4em] shadow-2xl hover:scale-105 active:scale-90 transition-all border-b-8 border-black">Close Registry Access</button>
+                <h2 className="text-lg md:text-2xl font-black text-white italic mt-1 text-center break-words w-full">GRADE {g}</h2>
+                <div className="bg-black/50 px-3 py-1 rounded-full">
+                   <p className="text-[#FFD700] text-[8px] md:text-[9px] tracking-widest uppercase font-bold">{gradeStats[g]} Students</p>
                 </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* 🌟 VIEW 2: STUDENT LIST (FIXED OVERFLOW) 🌟 */}
+        {!showGradesView && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 pb-40 animate-in fade-in slide-in-from-bottom-10 duration-500">
+            
+            {filteredStudents.length === 0 ? (
+              <div className="col-span-full text-center py-20 text-white/40 font-black italic text-xl uppercase tracking-widest">
+                No students found.
               </div>
-            </div>
-          );
-        })()}
-
+            ) : (
+              filteredStudents.map((s, idx) => {
+                const previewImg = getDrivePreview(s.Photo_URL);
+                return (
+                  <button 
+                    key={idx} 
+                    onClick={() => router.push(`/staff/student-dir/${encodeURIComponent(s['Enrollment No.'])}`)} 
+                    className="bg-[#1e1b4b] p-4 md:p-6 rounded-[1.5rem] md:rounded-[2rem] border-b-[6px] md:border-b-[8px] border-[#4c1d95] shadow-2xl flex items-center gap-4 hover:-translate-y-2 active:scale-95 transition-all text-left group min-w-0"
+                  >
+                     {/* Student Photo */}
+                     <div className="w-16 h-16 md:w-20 md:h-20 bg-white/10 rounded-xl md:rounded-[1rem] overflow-hidden flex items-center justify-center shadow-inner border-2 md:border-[3px] border-white/20 flex-shrink-0 relative">
+                        {previewImg ? (
+                          <img 
+                            src={previewImg} 
+                            referrerPolicy="no-referrer" 
+                            className="w-full h-full object-cover" 
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                          />
+                        ) : null}
+                        <span className="absolute inset-0 flex items-center justify-center text-3xl opacity-20 text-white z-[-1]">👤</span>
+                     </div>
+                     
+                     {/* 🌟 FIX: Student Info (Whitespace-normal and Line-clamp used to prevent overflow) 🌟 */}
+                     <div className="flex-1 min-w-0 pr-1">
+                        {/* Name will wrap up to 2 lines beautifully instead of shooting out of the box */}
+                        <h3 className="text-sm md:text-base uppercase font-black italic text-white whitespace-normal break-words line-clamp-2 leading-tight mb-2 group-hover:text-[#FFD700] transition-colors">
+                          {s['Name (ALL CAPITAL)']}
+                        </h3>
+                        
+                        {/* Badges Container (Wraps cleanly if screen is small) */}
+                        <div className="flex flex-wrap gap-1 mt-1">
+                           <span className="text-[8px] md:text-[9px] text-purple-300 font-bold tracking-widest uppercase bg-black/40 px-2 py-1 rounded border border-white/5">
+                             ID: {s['Enrollment No.']}
+                           </span>
+                           <span className="text-[8px] md:text-[9px] text-[#FFD700] font-black tracking-widest uppercase bg-black/40 px-2 py-1 rounded border border-white/5">
+                             GRADE: {s.Grade}
+                           </span>
+                        </div>
+                     </div>
+                  </button>
+                )
+              })
+            )}
+          </div>
+        )}
       </div>
-      <style jsx global>{`
-        body { font-weight: 900 !important; color: #020617 !important; }
-        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #fbbf24; border-radius: 20px; }
-      `}</style>
-    </div>
-  );
-}
-
-// UI HELPERS [cite: 2023-02-23, 2026-02-25]
-function InfoItem({ label, value, color = "text-slate-950" }) {
-  return (
-    <div className="bg-slate-50 p-8 rounded-[3.5rem] border-2 border-slate-100 flex flex-col group hover:border-[#4c1d95] transition-all">
-      <p className="text-[9px] uppercase text-slate-400 font-black italic mb-2 tracking-widest">{label}</p>
-      <p className={`text-2xl font-black italic ${color} leading-none truncate`}>{value || "—"}</p>
-    </div>
-  );
-}
-
-function PerfStat({ label, value, unit, color, icon }) {
-  return (
-    <div className="bg-white p-10 rounded-[4rem] border-b-[12px] border-slate-100 shadow-2xl flex justify-between items-center group hover:translate-y-[-5px] transition-all">
-      <div className="space-y-1">
-        <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-400">{label}</p>
-        <p className={`text-5xl font-black italic tracking-tighter ${color}`}>{value}</p>
-        <p className="text-[8px] font-black uppercase text-slate-300 italic tracking-widest">{unit}</p>
-      </div>
-      <span className="text-6xl opacity-5 group-hover:opacity-100 transition-opacity">{icon}</span>
     </div>
   );
 }

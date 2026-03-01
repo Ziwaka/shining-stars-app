@@ -74,7 +74,18 @@ export default function LeaveRequestFormWithProfile() {
 
     try {
       const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'recordNote', sheetName: 'Leave_Records', data: entry }) });
-      if ((await res.json()).success) { alert("SUCCESS: Registry Logged ★"); window.location.reload(); }
+      const result = await res.json();
+      if (result.success) {
+        // ✅ Success — form reset, no page reload
+        setForm({ type: "Sick Leave", start: "", end: "", reason: "", reporter: "", relation: "", phone: "", method: "Phone Call" });
+        setSelectedUser(null);
+        setSearch("");
+        setView("NEW_LEAVE");
+        // Brief success flash
+        alert("✓ Leave Recorded Successfully!");
+      } else {
+        alert("Error: " + (result.message || "Unknown error"));
+      }
     } finally { setIsSyncing(false); }
   };
 
@@ -214,8 +225,19 @@ export default function LeaveRequestFormWithProfile() {
                        <textarea rows="4" placeholder="Brief justification required to proceed..." className="w-full bg-[#FDFCF0] border-2 border-slate-200 p-6 rounded-3xl font-black italic outline-none focus:border-[#7C3AED] focus:ring-4 focus:ring-[#7C3AED]/10 text-[#020617] resize-none transition-all" value={form.reason} onChange={(e) => setForm({...form, reason: e.target.value})} />
                     </div>
 
-                    <button onClick={handleSubmission} className="w-full py-8 bg-[#0F172A] text-[#FBBF24] rounded-[2rem] text-[clamp(1.2rem,2vw,1.5rem)] font-black uppercase italic shadow-lg hover:bg-[#020617] hover:shadow-xl transition-all border-b-4 border-[#FBBF24] active:scale-[0.98] flex justify-center items-center gap-3">
-                        <span>Submit Request</span> <span className="text-2xl">★</span>
+                    <button 
+                      onClick={handleSubmission}
+                      disabled={isSyncing}
+                      className={`w-full py-7 rounded-[2rem] text-base font-black uppercase shadow-lg transition-all border-b-4 active:scale-[0.98] flex justify-center items-center gap-3
+                        ${isSyncing 
+                          ? 'bg-amber-400 text-slate-950 border-amber-600 cursor-not-allowed' 
+                          : 'bg-slate-950 text-[#fbbf24] border-[#fbbf24] hover:bg-black'
+                        }`}
+                    >
+                      {isSyncing 
+                        ? <><span className="inline-block w-4 h-4 border-4 border-slate-950/30 border-t-slate-950 rounded-full animate-spin"/>PROCESSING...</>
+                        : <><span>Submit Request</span><span className="text-xl">★</span></>
+                      }
                     </button>
                  </div>
               </div>
