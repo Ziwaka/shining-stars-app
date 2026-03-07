@@ -34,8 +34,9 @@ export default function CommunicationPage() {
     if (!saved) { router.push('/login'); return; }
     const u = JSON.parse(saved);
     setUser(u);
-    // Management always can post; Staff needs Can_Record_Note
+    // Management always can post; Staff needs Can_Post_Announcement (fallback: Can_Record_Note)
     const allowed = u.userRole === 'management' ||
+      u.Can_Post_Announcement === true || u.Can_Post_Announcement === 'TRUE' ||
       u.Can_Record_Note === true || u.Can_Record_Note === 'TRUE' || u.Can_Record_Note === 'true';
     setCanPost(allowed);
     if (!allowed) { router.push('/staff'); return; }

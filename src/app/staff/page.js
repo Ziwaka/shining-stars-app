@@ -42,7 +42,7 @@ export default function StaffAccessHub() {
       items: [
         { name: 'Staff Contacts', path: '/staff/contacts', icon: '📞', locked: false },
         { name: 'Master Registry', path: '/staff/staff-dir', icon: '👔', locked: !hasPermission('Can_View_Staff') },
-        { name: 'My Leave Form', path: '/staff/leave', icon: '📄', locked: !hasPermission('Can_Record_Attendance_&_Leave') },
+        { name: 'My Leave Form', path: '/staff/leave', icon: '📄', locked: !hasPermission('Can_Record_Attendance') },
       ]
     },
     {
@@ -50,7 +50,7 @@ export default function StaffAccessHub() {
       items: [
         { name: 'Financial Registry', path: '/staff/fees', icon: '💰', locked: !hasPermission('Can_Manage_Fees') },
         { name: 'Registry Notes', path: '/staff/notes', icon: '📒', locked: !hasPermission('Can_Record_Note') },
-        { name: 'Inventory', path: '/staff/inventory', icon: '📦', locked: false },
+        { name: 'Inventory', path: '/staff/inventory', icon: '📦', locked: !hasPermission('Can_Manage_Inventory') },
         { name: 'Lost & Found', path: '/staff/lost-found', icon: '🔍', locked: false },
         { name: 'Communication', path: '/management/communication', icon: '📢', locked: !hasPermission('Can_Record_Note') },
         { name: 'Score Records', path: '/staff/scores', icon: '📝', locked: !hasPermission('Can_Record_Note') },

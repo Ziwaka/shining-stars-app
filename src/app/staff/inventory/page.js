@@ -44,7 +44,10 @@ export default function InventoryPage() {
     const saved = localStorage.getItem('user');
     if (!saved) { router.push('/login'); return; }
     const u = JSON.parse(saved);
-    if (u.userRole !== 'staff') { router.push('/login'); return; }
+    if (u.userRole !== 'staff' && u.userRole !== 'management') { router.push('/login'); return; }
+    if (u.userRole === 'staff' && !u.Can_Manage_Inventory && u.Can_Manage_Inventory !== 'TRUE') {
+      router.push('/staff'); return;
+    }
     setUser(u); fetchAll();
   }, []);
 
