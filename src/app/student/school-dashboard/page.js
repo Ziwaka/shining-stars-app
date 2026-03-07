@@ -165,14 +165,14 @@ export default function StudentSchoolDashboard() {
   }, [router]);
 
   if (loading) return (
-    <div className="min-h-screen flex flex-col items-center justify-center font-black animate-pulse" style={{background:'#FDFCF0', color:'#020617'}}>
+    <div className="min-h-screen bg-[#FDFCF0] flex flex-col items-center justify-center font-black text-[#020617] animate-pulse">
       <div className="text-7xl mb-6">🏛️</div>
-      <div className="text-sm uppercase italic" style={{letterSpacing:'0.4em', color:'#020617'}}>Synchronizing Global Data...</div>
+      <div className="text-sm uppercase italic tracking-[0.4em] text-[#020617]">Synchronizing Global Data...</div>
     </div>
   );
 
   return (
-    <div className="min-h-screen font-black pb-32" style={{background:'#FDFCF0', color:'#020617'}}>
+    <div className="min-h-screen bg-[#FDFCF0] font-black text-[#020617] pb-32">
       
       {/* 🚨 STRICT MARQUEE (အဝါအောက်ခံ၊ အနီစာလုံး Inline Styles) */}
       {priorityAnns.length > 0 && (
@@ -193,126 +193,148 @@ export default function StudentSchoolDashboard() {
         </div>
       )}
 
-      <div className="mx-auto p-4 md:p-10 space-y-12 mt-6" style={{maxWidth:'1400px'}}>
+      <div className="max-w-[1400px] mx-auto p-4 md:p-10 space-y-12 mt-6">
         
         {/* HEADER */}
-        <div className="bg-white p-10 md:p-12 shadow-xl flex flex-col md:flex-row justify-between items-center gap-6" style={{borderRadius:'3.5rem', borderBottomWidth:'12px', borderColor:'#FBBF24'}}>
+        <div className="bg-white p-10 md:p-12 rounded-[3.5rem] shadow-xl border-b-[12px] border-[#FBBF24] flex flex-col md:flex-row justify-between items-center gap-6">
            <div>
-              <h1 className="italic uppercase tracking-tighter leading-none" style={{fontSize:'clamp(2rem,5vw,4.5rem)', color:'#020617'}}>Welcome, {user?.Name}</h1>
-              <p className="mt-3 uppercase text-xs font-black italic" style={{color:'#64748B', letterSpacing:'0.4em'}}>Institutional Dashboard Access</p>
+              <h1 className="text-[clamp(2rem,5vw,4.5rem)] italic uppercase tracking-tighter leading-none text-[#020617]">Welcome, {user?.Name}</h1>
+              <p className="text-[#64748B] mt-3 uppercase tracking-[0.4em] text-xs font-black italic">Institutional Dashboard Access</p>
            </div>
-           <div className="px-10 py-5 border-4 text-center shadow-inner" style={{background:'#F8FAFC', borderRadius:'2rem', borderColor:'#E2E8F0'}}>
-              <p className="uppercase tracking-widest mb-1" style={{fontSize:'10px', color:'#94A3B8'}}>My House</p>
-              <p className="text-2xl font-black uppercase italic" style={{color:'#020617'}}>{myHouse}</p>
+           <div className="bg-[#F8FAFC] px-10 py-5 rounded-[2rem] border-4 border-[#E2E8F0] text-center shadow-inner">
+              <p className="text-[10px] text-[#94A3B8] uppercase tracking-widest mb-1">My House</p>
+              <p className="text-2xl font-black uppercase italic text-[#020617]">{myHouse}</p>
            </div>
         </div>
 
         {/* 📰 OFFICIAL NEWS */}
-        <div className="bg-white p-10 md:p-12 shadow-2xl" style={{borderRadius:'4rem', borderTopWidth:'10px', borderColor:'#020617'}}>
-           <h3 className="text-2xl md:text-3xl uppercase italic mb-10 pl-6 tracking-tight" style={{borderLeftWidth:'12px', borderColor:'#020617', color:'#020617'}}>Official Announcements</h3>
+        <div className="bg-white p-10 md:p-12 rounded-[4rem] shadow-2xl border-t-[10px] border-[#020617]">
+           <h3 className="text-2xl md:text-3xl uppercase italic mb-10 border-l-[12px] border-[#020617] pl-6 text-[#020617] tracking-tight">Official Announcements</h3>
            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {regularAnns.length > 0 ? regularAnns.map((ann, i) => {
                 const isPriority = Object.keys(ann).some(k => k.toLowerCase().includes('priority') && isTruthy(ann[k]));
                 return (
-                  <div key={i} className="p-8 border-4 transition-all shadow-sm" style={{borderRadius:'2.5rem', backgroundColor: isPriority ? '#FEF2F2' : '#F8FAFC', borderColor: isPriority ? '#FCA5A5' : '#E2E8F0' }}>
+                  <div key={i} className="p-8 rounded-[2.5rem] border-4 transition-all shadow-sm" style={{ backgroundColor: isPriority ? '#FEF2F2' : '#F8FAFC', borderColor: isPriority ? '#FCA5A5' : '#E2E8F0' }}>
                      <div className="flex justify-between items-start mb-4">
-                        <span className="px-4 py-1.5 rounded-full uppercase font-black" style={{fontSize:'10px', letterSpacing:'0.2em', backgroundColor: isPriority ? '#DC2626' : '#020617', color: '#FFF' }}>
+                        <span className="text-[10px] px-4 py-1.5 rounded-full uppercase tracking-[0.2em] font-black" style={{ backgroundColor: isPriority ? '#DC2626' : '#020617', color: '#FFF' }}>
                            {ann.Date || ann.date || "TODAY"} {isPriority && "🚨"}
                         </span>
-                        <span className="font-black uppercase tracking-widest" style={{fontSize:'10px', color: isPriority ? '#EF4444' : '#64748B' }}>By {ann.Posted_By || ann.posted_by || "Admin"}</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: isPriority ? '#EF4444' : '#64748B' }}>By {ann.Posted_By || ann.posted_by || "Admin"}</span>
                      </div>
-                     <h4 className="font-black uppercase leading-tight mb-4" style={{fontSize:'clamp(1.2rem,2vw,1.8rem)', color: isPriority ? '#B91C1C' : '#020617' }}>{ann.Title}</h4>
+                     <h4 className="text-[clamp(1.2rem,2vw,1.8rem)] font-black uppercase leading-tight mb-4" style={{ color: isPriority ? '#B91C1C' : '#020617' }}>{ann.Title}</h4>
                      <p className="text-sm md:text-base leading-relaxed italic" style={{ color: isPriority ? '#B91C1C' : '#334155' }}>"{ann.Message}"</p>
                   </div>
                 );
-              }) : <div className="col-span-full text-center py-20 opacity-30 text-2xl uppercase italic" style={{color:'#020617'}}>No New Announcements</div>}
+              }) : <div className="col-span-full text-center py-20 opacity-30 text-2xl uppercase italic text-[#020617]">No New Announcements</div>}
            </div>
         </div>
 
-        {/* 🏆 STRICT INLINE STYLED HOUSE POINTS DASHBOARD */}
-        <div className="p-10 md:p-16 shadow-2xl" style={{borderRadius:'4rem', borderBottomWidth:'20px', backgroundColor: '#020617', borderColor: '#FBBF24' }}>
-           <h2 className="text-2xl md:text-4xl uppercase italic pl-6 mb-16 tracking-tight text-white" style={{borderLeftWidth:'12px', borderColor:'#FBBF24'}}>House Standings</h2>
-           
-           <div className="flex flex-wrap justify-center items-end gap-6 md:gap-12 lg:gap-16">
-              {DEFAULT_HOUSES.map((house, idx) => {
-                const pts = houseTotals[house.name] || 0;
-                let fillPercentage = (pts / MAX_POINTS) * 100;
-                if (isNaN(fillPercentage) || fillPercentage < 5) fillPercentage = 5;
-                if (fillPercentage > 100) fillPercentage = 100;
-
-                return (
-                  <div key={idx} className="flex flex-col items-center w-24 md:w-36">
-                     {/* Score Number */}
-                     <span style={{ fontSize: '48px', fontWeight: 900, marginBottom: '16px', color: house.textColor, textShadow: '0 0 15px rgba(255,255,255,0.2)' }}>
-                        {pts}
-                     </span>
-                     
-                     {/* 🌟 STRICT INLINE GLASS TUBE */}
-                     <div style={{ width: '80px', height: '280px', backgroundColor: '#1E293B', borderRadius: '50px 50px 20px 20px', position: 'relative', overflow: 'hidden', border: `4px solid ${house.borderColor}`, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', boxShadow: 'inset 0 0 20px rgba(0,0,0,1)' }}>
-                        <div style={{ width: '100%', height: `${fillPercentage}%`, background: `linear-gradient(to top, ${house.colorStart}, ${house.colorEnd})`, borderRadius: '0 0 20px 20px', transition: 'height 1s ease-out', position: 'relative' }}>
-                           <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: '33%', backgroundColor: 'rgba(255,255,255,0.2)' }}></div>
+        {/* 🏆 HOUSE STANDINGS — Horizontal bars, center-zero, dynamic max */}
+        <div className="p-6 md:p-10 rounded-[2.5rem] shadow-2xl border-b-[8px]" style={{ backgroundColor: '#020617', borderColor: '#FBBF24' }}>
+          <h2 className="text-xl md:text-3xl uppercase italic border-l-[8px] border-[#FBBF24] pl-5 mb-8 tracking-tight text-white">🏆 House Standings</h2>
+          {(() => {
+            const allPts = DEFAULT_HOUSES.map(h => houseTotals[h.name] || 0);
+            const maxAbs = Math.max(200, ...allPts.map(Math.abs));
+            // Sort by points descending
+            const sorted = [...DEFAULT_HOUSES].map(h => ({ ...h, pts: houseTotals[h.name] || 0 }))
+              .sort((a, b) => b.pts - a.pts);
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {sorted.map((house, idx) => {
+                  const pts = house.pts;
+                  const isPos = pts >= 0;
+                  // bar width: 0-50% of container each side from center
+                  const barW = Math.min(50, (Math.abs(pts) / maxAbs) * 50);
+                  const rank = ['🥇','🥈','🥉','4️⃣','5️⃣'][idx];
+                  return (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      {/* House name + rank */}
+                      <div style={{ width: '120px', flexShrink: 0, textAlign: 'right' }}>
+                        <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{rank} {house.name}</span>
+                      </div>
+                      {/* Bar track — center-zero */}
+                      <div style={{ flex: 1, position: 'relative', height: '36px', background: '#1e293b', borderRadius: '99px', overflow: 'hidden' }}>
+                        {/* Center line */}
+                        <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: '2px', background: 'rgba(255,255,255,0.15)', transform: 'translateX(-50%)', zIndex: 2 }} />
+                        {/* Bar */}
+                        <div style={{
+                          position: 'absolute',
+                          top: '4px', bottom: '4px',
+                          borderRadius: '99px',
+                          background: `linear-gradient(to right, ${house.colorStart}, ${house.colorEnd})`,
+                          transition: 'width 0.8s ease, left 0.8s ease',
+                          ...(isPos
+                            ? { left: '50%', width: `${barW}%` }
+                            : { right: '50%', width: `${barW}%` }
+                          ),
+                          boxShadow: `0 0 12px ${house.colorStart}88`
+                        }} />
+                        {/* Score label inside bar */}
+                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3 }}>
+                          <span style={{ fontWeight: 900, fontSize: '13px', color: '#fff', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>
+                            {pts > 0 ? '+' : ''}{pts}
+                          </span>
                         </div>
-                     </div>
-                     
-                     {/* Base & House Name (Fixed alignment using minHeight) [cite: 2026-02-25] */}
-                     <div className="mt-8 flex flex-col items-center">
-                        <div style={{ width: '100px', height: '16px', borderRadius: '50px', background: `linear-gradient(to right, ${house.colorStart}, ${house.colorEnd})`, marginBottom: '12px', boxShadow: '0 0 15px rgba(255,255,255,0.2)' }}></div>
-                        <div style={{ minHeight: '45px', display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
-                           <span style={{ fontSize: '14px', textTransform: 'uppercase', fontWeight: 900, letterSpacing: '1px', color: '#FFF', textAlign: 'center', lineHeight: '1.3' }}>{house.name}</span>
-                        </div>
-                     </div>
-                  </div>
-                );
-              })}
-           </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div style={{ textAlign: 'center', marginTop: '8px' }}>
+                  <span style={{ fontSize: '9px', color: '#475569', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                    Max: ±{maxAbs} pts · Center = 0
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* 📊 SPLIT VIEW WITH REASONS */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
            
            {/* 🌟 HOUSE EARNED */}
-           <div className="bg-white p-8 md:p-10 shadow-xl" style={{borderRadius:'3.5rem', borderTopWidth:'10px', borderColor: '#10B981' }}>
+           <div className="bg-white p-8 md:p-10 rounded-[3.5rem] shadow-xl border-t-[10px]" style={{ borderColor: '#10B981' }}>
               <h3 className="text-xl md:text-2xl uppercase italic mb-8 tracking-widest flex items-center gap-3 font-black" style={{ color: '#059669' }}>
                  <span style={{ backgroundColor: '#10B981', color: '#FFF', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '12px', fontSize: '24px' }}>+</span> House Earned
               </h3>
               <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
                  {earnedPoints.length > 0 ? earnedPoints.map((pt, i) => (
-                   <div key={i} className="p-6 flex justify-between items-center gap-4" style={{borderRadius:'2rem', backgroundColor: '#ECFDF5', border: '2px solid #6EE7B7' }}>
+                   <div key={i} className="p-6 rounded-[2rem] flex justify-between items-center gap-4" style={{ backgroundColor: '#ECFDF5', border: '2px solid #6EE7B7' }}>
                       <div className="flex-1">
                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-white px-3 py-1 rounded-lg uppercase tracking-widest font-black" style={{fontSize:'9px', backgroundColor: '#020617' }}>{pt.Verified_House}</span>
+                            <span className="text-white px-3 py-1 rounded-lg text-[9px] uppercase tracking-widest font-black" style={{ backgroundColor: '#020617' }}>{pt.Verified_House}</span>
                             <p className="text-sm font-black uppercase" style={{ color: '#020617' }}>{pt.Name}</p>
                          </div>
                          <p className="text-lg uppercase italic font-black leading-tight" style={{ color: '#020617' }}>★ {pt.Event_Name}</p>
                          {pt.Remark && <p className="text-xs mt-2 px-3 py-1.5 rounded-lg inline-block font-bold shadow-sm" style={{ backgroundColor: '#FFF', color: '#047857', border: '1px solid #A7F3D0' }}>"{pt.Remark}"</p>}
-                         <p className="font-bold uppercase tracking-widest mt-2" style={{fontSize:'10px', color: '#059669' }}>{pt.Date} • Recorded By {pt.Recorded_By}</p>
+                         <p className="text-[10px] font-bold uppercase tracking-widest mt-2" style={{ color: '#059669' }}>{pt.Date} • Recorded By {pt.Recorded_By}</p>
                       </div>
                       <div className="text-4xl font-black" style={{ color: '#059669' }}>+{pt.Points}</div>
                    </div>
-                 )) : <div className="text-center py-10 opacity-30 text-xl font-black uppercase italic" style={{color:'#020617'}}>No records found</div>}
+                 )) : <div className="text-center py-10 opacity-30 text-xl font-black uppercase italic text-[#020617]">No records found</div>}
               </div>
            </div>
 
            {/* 🌟 HOUSE DEDUCTED */}
-           <div className="bg-white p-8 md:p-10 shadow-xl" style={{borderRadius:'3.5rem', borderTopWidth:'10px', borderColor: '#E11D48' }}>
+           <div className="bg-white p-8 md:p-10 rounded-[3.5rem] shadow-xl border-t-[10px]" style={{ borderColor: '#E11D48' }}>
               <h3 className="text-xl md:text-2xl uppercase italic mb-8 tracking-widest flex items-center gap-3 font-black" style={{ color: '#E11D48' }}>
                  <span style={{ backgroundColor: '#E11D48', color: '#FFF', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '12px', fontSize: '30px' }}>-</span> House Deducted
               </h3>
               <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
                  {deductedPoints.length > 0 ? deductedPoints.map((pt, i) => (
-                   <div key={i} className="p-6 flex justify-between items-center gap-4" style={{borderRadius:'2rem', backgroundColor: '#FFF1F2', border: '2px solid #FDA4AF' }}>
+                   <div key={i} className="p-6 rounded-[2rem] flex justify-between items-center gap-4" style={{ backgroundColor: '#FFF1F2', border: '2px solid #FDA4AF' }}>
                       <div className="flex-1">
                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-white px-3 py-1 rounded-lg uppercase tracking-widest font-black" style={{fontSize:'9px', backgroundColor: '#020617' }}>{pt.Verified_House}</span>
+                            <span className="text-white px-3 py-1 rounded-lg text-[9px] uppercase tracking-widest font-black" style={{ backgroundColor: '#020617' }}>{pt.Verified_House}</span>
                             <p className="text-sm font-black uppercase" style={{ color: '#020617' }}>{pt.Name}</p>
                          </div>
                          <p className="text-lg uppercase italic font-black leading-tight" style={{ color: '#020617' }}>⚠ {pt.Event_Name}</p>
                          {pt.Remark && <p className="text-xs mt-2 px-3 py-1.5 rounded-lg inline-block font-bold shadow-sm" style={{ backgroundColor: '#FFF', color: '#BE123C', border: '1px solid #FECDD3' }}>"{pt.Remark}"</p>}
-                         <p className="font-bold uppercase tracking-widest mt-2" style={{fontSize:'10px', color: '#E11D48' }}>{pt.Date} • Recorded By {pt.Recorded_By}</p>
+                         <p className="text-[10px] font-bold uppercase tracking-widest mt-2" style={{ color: '#E11D48' }}>{pt.Date} • Recorded By {pt.Recorded_By}</p>
                       </div>
                       <div className="text-4xl font-black" style={{ color: '#E11D48' }}>{pt.Points}</div>
                    </div>
-                 )) : <div className="text-center py-10 opacity-30 text-xl font-black uppercase italic" style={{color:'#020617'}}>Clean Record</div>}
+                 )) : <div className="text-center py-10 opacity-30 text-xl font-black uppercase italic text-[#020617]">Clean Record</div>}
               </div>
            </div>
 
@@ -330,7 +352,7 @@ export default function StudentSchoolDashboard() {
     
       {/* 🏠 Home Button */}
       <button onClick={() => router.push('/student')}
-        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-2.5 border-2 rounded-full font-black uppercase tracking-wider shadow-xl hover:bg-gold hover:text-[#020617] transition-all" style={{background:'#020617', borderColor:'#fbbf24', color:'#fbbf24', fontSize:'10px'}}>
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-2.5 bg-[#020617] border-2 border-[#fbbf24] rounded-full text-[#fbbf24] font-black text-[10px] uppercase tracking-wider shadow-xl hover:bg-[#fbbf24] hover:text-[#020617] transition-all">
         🏠 Home
       </button>
 </div>

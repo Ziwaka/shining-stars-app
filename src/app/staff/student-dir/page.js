@@ -21,16 +21,36 @@ export default function StudentDirectoryOnly() {
   useEffect(() => {
     const fetchStudents = async () => {
       try {
-        const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getData', targetGid: GIDS.STUDENT_DIR }) });
+        const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ 
+          action: 'getData', 
+          sheetName: 'Student_Directory',
+          targetGid: 1807615173
+        }) });
         const data = await res.json();
-        if (data.success) setStudents(data.data);
+        console.log('[StudentDir] GAS response:', data.success, 'rows:', data.data?.length, data.message || '');
+        if (data.success) {
+          setStudents(data.data || []);
+          if (data.data?.length > 0) console.log('[StudentDir] First row keys:', Object.keys(data.data[0]));
+        } else {
+          console.error('[StudentDir] GAS error:', data.message);
+        }
+      } catch(e) {
+        console.error('[StudentDir] Fetch error:', e);
       } finally { setLoading(false); }
     };
     fetchStudents();
   }, []);
 
+  // Grade field — Sheet မှာ "Grade" နှင့် "Class" နှစ်ခုလုံးရှိသည်
+  const getGrade = (s) => s['Grade'] || s['Class'] || s['grade'] || s['class'] || '';
+  const getName  = (s) => s['Name (ALL CAPITAL)'] || s['အမည်'] || s['Name'] || '';
+  const getID    = (s) => s['Enrollment No.'] || s['Registration No.'] || s['No.'] || '';
+  const getHouse = (s) => s['House'] || s['Steam'] || '';
+  const getType  = (s) => s['School/Hostel'] || '';
+  const getSex   = (s) => s['Sex'] || '';
+
   const gradeStats = students.reduce((acc, s) => {
-    const g = s.Grade || "Unknown";
+    const g = String(getGrade(s) || "").trim() || "Unknown";
     acc[g] = (acc[g] || 0) + 1;
     return acc;
   }, {});
@@ -40,15 +60,20 @@ export default function StudentDirectoryOnly() {
   });
 
   const filteredStudents = students.filter(s => {
-    const matchSearch = s['Name (ALL CAPITAL)']?.toLowerCase().includes(search.toLowerCase()) || 
-                        s['အမည်']?.includes(search) || 
-                        s['Name (Myanmar)']?.includes(search) || 
-                        s['Enrollment No.']?.toString().includes(search);
-    const matchGrade = gradeFilter === "ALL" || s.Grade === gradeFilter;
+    const q = search.toLowerCase();
+    const matchSearch = !search.trim() ||
+      getName(s).toLowerCase().includes(q) ||
+      (s['အမည်'] || '').includes(search) ||
+      getID(s).toString().includes(search) ||
+      (s['Registration No.'] || '').toString().includes(search) ||
+      (s['Father\'s Name'] || '').toLowerCase().includes(q) ||
+      (s['Mother\'s Name'] || '').toLowerCase().includes(q);
+    const matchGrade = gradeFilter === "ALL" || String(getGrade(s)).trim() === String(gradeFilter).trim();
     return matchSearch && matchGrade;
   });
 
   const showGradesView = gradeFilter === "ALL" && search.trim() === "";
+
 
   if (loading) return <div className="min-h-screen flex items-center justify-center font-black animate-pulse text-2xl md:text-3xl uppercase italic tracking-tighter px-6 text-center" style={{background:'#0F071A', color:'#FFD700'}}>Loading Directory...</div>;
 
@@ -69,7 +94,6 @@ export default function StudentDirectoryOnly() {
           </div>
           <div className="absolute -right-10 -bottom-10 opacity-5" style={{fontSize:'150px'}}>🎓</div>
         </div>
-
         {/* SEARCH BAR */}
         <div className="relative">
           <input 
@@ -100,7 +124,7 @@ export default function StudentDirectoryOnly() {
             {uniqueGrades.map((g, idx) => (
               <button 
                 key={idx} 
-                onClick={() => setGradeFilter(g)}
+                onClick={() => setGradeFilter(String(g).trim())}
                 className="group p-6 md:p-8 md:rounded-[2.5rem] border-t border-t-white/10 md:border-b-[8px] shadow-xl flex flex-col items-center justify-center gap-3 hover:-translate-y-2 hover:border-b-[#FFD700] hover:shadow-[0_20px_40px_-10px_rgba(255,215,0,0.3)] transition-all" style={{background:'linear-gradient(135deg, #1e1b4b, #0f172a)', borderRadius:'2rem', borderBottomWidth:'6px', borderBottomWidth:'#4c1d95'}}
               >
                 {/* 🌟 PREMIUM ICON: Glowing Academic Cap instead of basic Folder 🌟 */}
@@ -133,7 +157,7 @@ export default function StudentDirectoryOnly() {
                 return (
                   <button 
                     key={idx} 
-                    onClick={() => router.push(`/staff/student-dir/${encodeURIComponent(s['Enrollment No.'])}`)} 
+                    onClick={() => router.push(`/staff/student-dir/${encodeURIComponent(getID(s))}`)}
                     className="p-4 md:p-6 md:rounded-[2rem] md:border-b-[8px] shadow-2xl flex items-center gap-4 hover:-translate-y-2 active:scale-95 transition-all text-left group min-w-0" style={{background:'#1e1b4b', borderRadius:'1.5rem', borderBottomWidth:'6px', borderColor:'#4c1d95'}}
                   >
                      {/* Student Photo */}
@@ -151,19 +175,29 @@ export default function StudentDirectoryOnly() {
                      
                      {/* 🌟 FIX: Student Info (Whitespace-normal and Line-clamp used to prevent overflow) 🌟 */}
                      <div className="flex-1 min-w-0 pr-1">
-                        {/* Name will wrap up to 2 lines beautifully instead of shooting out of the box */}
+                        <p style={{fontSize:'9px', color:'#a78bfa', fontWeight:900, letterSpacing:'0.08em', marginBottom:'2px'}}>
+                          {s['အမည်'] || ''}
+                        </p>
                         <h3 className="text-sm md:text-base uppercase font-black italic text-white whitespace-normal break-words line-clamp-2 leading-tight mb-2 group-hover:text-gold transition-colors">
-                          {s['Name (ALL CAPITAL)']}
+                          {getName(s)}
                         </h3>
-                        
-                        {/* Badges Container (Wraps cleanly if screen is small) */}
                         <div className="flex flex-wrap gap-1 mt-1">
                            <span className="md:text-[9px] text-purple-300 font-bold tracking-widest uppercase bg-black/40 px-2 py-1 rounded border border-white/5" style={{fontSize:'8px'}}>
-                             ID: {s['Enrollment No.']}
+                             {getID(s)}
                            </span>
                            <span className="md:text-[9px] font-black tracking-widest uppercase bg-black/40 px-2 py-1 rounded border border-white/5" style={{fontSize:'8px', color:'#FFD700'}}>
-                             GRADE: {s.Grade}
+                             G{getGrade(s)}
                            </span>
+                           {getHouse(s) ? (
+                             <span className="md:text-[9px] font-black tracking-widest uppercase bg-black/40 px-2 py-1 rounded border border-white/5" style={{fontSize:'8px', color:'#34d399'}}>
+                               🏠 {getHouse(s)}
+                             </span>
+                           ) : null}
+                           {getType(s) ? (
+                             <span className="md:text-[9px] font-black tracking-widest uppercase bg-black/40 px-2 py-1 rounded border border-white/5" style={{fontSize:'8px', color:'#94a3b8'}}>
+                               {getType(s) === 'Hostel' ? '🏠 Hostel' : '🏫 Day'}
+                             </span>
+                           ) : null}
                         </div>
                      </div>
                   </button>
