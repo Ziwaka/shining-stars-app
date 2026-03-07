@@ -50,6 +50,11 @@ export default function StaffAccessHub() {
       items: [
         { name: 'Financial Registry', path: '/staff/fees', icon: '💰', locked: !hasPermission('Can_Manage_Fees') },
         { name: 'Registry Notes', path: '/staff/notes', icon: '📒', locked: !hasPermission('Can_Record_Note') },
+        { name: 'Inventory', path: '/staff/inventory', icon: '📦', locked: false },
+        { name: 'Lost & Found', path: '/staff/lost-found', icon: '🔍', locked: false },
+        { name: 'Communication', path: '/management/communication', icon: '📢', locked: !hasPermission('Can_Record_Note') },
+        { name: 'Score Records', path: '/staff/scores', icon: '📝', locked: !hasPermission('Can_Record_Note') },
+        { name: 'Calendar', path: '/staff/calendar', icon: '📅', locked: false },
       ]
     }
   ];
@@ -61,26 +66,26 @@ export default function StaffAccessHub() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F0F9FF] font-black text-slate-950 p-5 md:p-12 pb-32">
-      <div className="max-w-[1400px] mx-auto space-y-12">
+    <div className="min-h-screen font-black text-slate-950 p-5 md:p-12 pb-32" style={{background:'#F0F9FF'}}>
+      <div className="mx-auto space-y-12" style={{maxWidth:'1400px'}}>
 
         {/* HEADER */}
-        <div className="bg-slate-950 rounded-[3rem] p-8 md:p-14 border-b-[12px] border-[#fbbf24] shadow-2xl flex flex-col md:flex-row items-center gap-8 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-72 h-72 bg-[#fbbf24]/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
+        <div className="bg-slate-950 p-8 md:p-14 shadow-2xl flex flex-col md:flex-row items-center gap-8 relative overflow-hidden" style={{borderRadius:'3rem', borderBottomWidth:'12px', borderColor:'#fbbf24'}}>
+          <div className="absolute top-0 right-0 w-72 h-72 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" style={{background:'#fbbf24'}} />
 
-          <div className="relative z-10 w-20 h-20 md:w-32 md:h-32 bg-white rounded-[2rem] flex items-center justify-center text-4xl md:text-6xl shadow-xl border-4 border-[#fbbf24] shrink-0">
+          <div className="relative z-10 w-20 h-20 md:w-32 md:h-32 bg-white flex items-center justify-center text-4xl md:text-6xl shadow-xl border-4 shrink-0" style={{borderRadius:'2rem', borderColor:'#fbbf24'}}>
             👤
           </div>
 
           <div className="text-center md:text-left flex-1 z-10 min-w-0">
-            <div className="inline-block px-4 py-1.5 bg-[#fbbf24] text-slate-950 text-[10px] font-black uppercase rounded-lg mb-3 tracking-[0.2em]">
+            <div className="inline-block px-4 py-1.5 text-slate-950 font-black uppercase rounded-lg mb-3" style={{background:'#fbbf24', fontSize:'10px', letterSpacing:'0.2em'}}>
               Educational Staff
             </div>
             <h1 className="text-3xl md:text-6xl italic uppercase font-black text-white tracking-tighter leading-none mb-3 break-words">
               {user.Name || user.username}
             </h1>
-            <p className="text-slate-400 text-xs uppercase font-black tracking-[0.3em]">
-              ID: <span className="text-[#fbbf24]">{user.Staff_ID || user.ID || "—"}</span>
+            <p className="text-slate-400 text-xs uppercase font-black" style={{letterSpacing:'0.3em'}}>
+              ID: <span className="" style={{color:'#fbbf24'}}>{user.Staff_ID || user.ID || "—"}</span>
               <span className="mx-3 opacity-30">|</span>
               Status: <span className="text-white">Authorized</span>
             </p>
@@ -109,7 +114,7 @@ export default function StaffAccessHub() {
                     className={`relative group p-8 rounded-[2.5rem] border-b-[10px] transition-all duration-300 flex flex-col items-center text-center gap-5 shadow-lg
                       ${tool.locked
                         ? 'bg-slate-100 border-slate-200 opacity-50 cursor-not-allowed'
-                        : 'bg-white border-slate-100 hover:border-[#fbbf24] hover:-translate-y-1.5 active:scale-95'
+                        : 'bg-white border-slate-100 hover:border-gold hover:-translate-y-1.5 active:scale-95'
                       }`}
                   >
                     <span className={`text-5xl md:text-6xl transition-transform duration-300 ${!tool.locked && 'group-hover:scale-110'}`}>

@@ -1,4 +1,6 @@
 "use client";
+import { getPhotoUrl } from "@/lib/cloudinary";
+import Image from "next/image";
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
@@ -16,7 +18,7 @@ export default function UltimateMaThweProfile() {
 
   // 🌟 FIX: Ultimate Google Drive Image Extractor
   const getImageUrl = (url) => {
-    if (!url || String(url).trim() === "-" || String(url).trim() === "") return "/logo.jpg";
+    if (!url || String(url).trim() === "-" || String(url).trim() === "") return "/logo.png";
     try {
       const strUrl = String(url).trim();
       
@@ -32,9 +34,9 @@ export default function UltimateMaThweProfile() {
       }
       
       // အတည်ငြိမ်ဆုံး Google Image Server Link သို့ ပြောင်းခြင်း
-      return fileId ? `https://lh3.googleusercontent.com/d/${fileId}` : "/logo.jpg";
+      return fileId ? `https://lh3.googleusercontent.com/d/${fileId}` : "/logo.png";
     } catch (e) { 
-      return "/logo.jpg"; 
+      return "/logo.png"; 
     }
   };
 
@@ -83,14 +85,14 @@ export default function UltimateMaThweProfile() {
   }, [router]);
 
   const DataGroupBlock = ({ title, icon, items, borderColor = "#020617" }) => (
-    <div className="bg-white rounded-[3rem] p-8 md:p-10 shadow-xl border-t-[12px] transition-all hover:-translate-y-1 hover:shadow-2xl" style={{ borderColor: borderColor }}>
+    <div className="bg-white p-8 md:p-10 shadow-xl transition-all hover:-translate-y-1 hover:shadow-2xl" style={{borderRadius:'3rem', borderTopWidth:'12px', borderColor: borderColor }}>
       <h3 className="text-xl md:text-2xl uppercase italic font-black text-slate-950 mb-8 flex items-center gap-3 border-b-2 border-slate-100 pb-4">
         <span className="bg-slate-100 p-3 rounded-2xl">{icon}</span> {title}
       </h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {items.map((item, idx) => (
-          <div key={idx} className="bg-slate-50 p-5 rounded-[1.5rem] border border-slate-200 flex flex-col justify-center">
-            <span className="text-[10px] md:text-xs font-black uppercase text-slate-400 tracking-widest mb-1">
+          <div key={idx} className="bg-slate-50 p-5 border border-slate-200 flex flex-col justify-center" style={{borderRadius:'1.5rem'}}>
+            <span className="md:text-xs font-black uppercase text-slate-400 tracking-widest mb-1" style={{fontSize:'10px'}}>
                {item.label}
             </span>
             <span className="text-sm md:text-lg font-black text-slate-950 leading-tight">
@@ -104,40 +106,40 @@ export default function UltimateMaThweProfile() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFCF0] font-black text-slate-950">
+      <div className="min-h-screen flex flex-col items-center justify-center font-black text-slate-950" style={{background:'#FDFCF0'}}>
          <div className="text-7xl mb-6 animate-pulse">🗃️</div>
-         <div className="text-sm uppercase italic tracking-[0.4em]">Retrieving Master Ledger...</div>
+         <div className="text-sm uppercase italic" style={{letterSpacing:'0.4em'}}>Retrieving Master Ledger...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#FDFCF0] text-slate-950 font-black selection:bg-[#fbbf24] pb-40">
-      <div className="max-w-[1400px] mx-auto p-4 md:p-10 space-y-10 relative z-10">
+    <div className="min-h-screen text-slate-950 font-black selection:bg-gold pb-40" style={{background:'#FDFCF0'}}>
+      <div className="mx-auto p-4 md:p-10 space-y-10 relative z-10" style={{maxWidth:'1400px'}}>
         
         {selectedStudent ? (
           <div className="space-y-10">
             
             {/* 🌟 PREMIUM IDENTITY HEADER */}
-            <div className="bg-slate-950 rounded-[4rem] p-8 md:p-14 border-b-[15px] border-[#fbbf24] shadow-2xl flex flex-col md:flex-row items-center gap-8 md:gap-14 relative overflow-hidden">
+            <div className="bg-slate-950 p-8 md:p-14 shadow-2xl flex flex-col md:flex-row items-center gap-8 md:gap-14 relative overflow-hidden" style={{borderRadius:'4rem', borderBottomWidth:'15px', borderColor:'#fbbf24'}}>
               <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
 
               <div className="relative shrink-0 z-10">
-                <div className="w-48 h-48 md:w-72 md:h-72 rounded-[3.5rem] overflow-hidden border-8 border-white/10 shadow-2xl bg-white flex items-center justify-center">
+                <div className="w-48 h-48 md:w-72 md:h-72 overflow-hidden border-8 border-white/10 shadow-2xl bg-white flex items-center justify-center" style={{borderRadius:'3.5rem'}}>
                    {/* 🌟 FIX: Multi-key photo check and auto-fallback logo if image is broken */}
                    <img 
                       src={getImageUrl(selectedStudent['Photo URL'] || selectedStudent['Photo_URL'] || selectedStudent['Photo'] || selectedStudent['Photo_Link'])} 
                       className="w-full h-full object-cover" 
                       alt="Student Photo" 
-                      onError={(e) => { e.target.src = '/logo.jpg'; }} 
+                      onError={(e) => { e.target.src = '/logo.png'; }} 
                    />
                 </div>
-                <div className="absolute -bottom-3 -right-3 bg-[#fbbf24] w-14 h-14 md:w-20 md:h-20 rounded-full flex items-center justify-center border-4 border-slate-950 text-slate-950 text-2xl md:text-4xl shadow-lg">⭐</div>
+                <div className="absolute -bottom-3 -right-3 w-14 h-14 md:w-20 md:h-20 rounded-full flex items-center justify-center border-4 border-slate-950 text-slate-950 text-2xl md:text-4xl shadow-lg" style={{background:'#fbbf24'}}>⭐</div>
               </div>
 
               <div className="text-center md:text-left flex-1 font-black z-10">
-                <div className="inline-block px-5 py-2 bg-[#fbbf24] text-slate-950 text-[10px] md:text-xs font-black uppercase rounded-xl mb-4 tracking-[0.2em] shadow-md">Premium Profile</div>
-                <h2 className="text-[#fbbf24] text-[10px] md:text-sm uppercase tracking-[0.5em] mb-2 italic">Shining Stars - Ma Thwe</h2>
+                <div className="inline-block px-5 py-2 text-slate-950 md:text-xs font-black uppercase rounded-xl mb-4 shadow-md" style={{background:'#fbbf24', fontSize:'10px', letterSpacing:'0.2em'}}>Premium Profile</div>
+                <h2 className="md:text-sm uppercase mb-2 italic" style={{color:'#fbbf24', fontSize:'10px', letterSpacing:'0.5em'}}>Shining Stars - Ma Thwe</h2>
                 <h1 className="text-3xl md:text-6xl italic uppercase font-black tracking-tighter leading-tight mb-2 text-white">
                   {selectedStudent['Name (ALL CAPITAL)'] || selectedStudent['Name']}
                 </h1>
@@ -145,12 +147,12 @@ export default function UltimateMaThweProfile() {
                 
                 <div className="flex flex-wrap gap-3 justify-center md:justify-start">
                   <div className="px-6 py-3 bg-white/10 text-white rounded-2xl border border-white/20 text-xs md:text-sm uppercase tracking-widest">
-                     ID: <span className="text-[#fbbf24]">{selectedStudent['Enrollment No.'] || selectedStudent['Student_ID']}</span>
+                     ID: <span className="" style={{color:'#fbbf24'}}>{selectedStudent['Enrollment No.'] || selectedStudent['Student_ID']}</span>
                   </div>
                   <div className="px-6 py-3 bg-white/10 text-white rounded-2xl border border-white/20 text-xs md:text-sm uppercase tracking-widest">
                      Grade: <span className="text-emerald-400">{selectedStudent['Grade']}</span>
                   </div>
-                  <div className="px-6 py-3 bg-[#fbbf24] text-slate-950 rounded-2xl text-xs md:text-sm uppercase tracking-widest shadow-lg">
+                  <div className="px-6 py-3 text-slate-950 rounded-2xl text-xs md:text-sm uppercase tracking-widest shadow-lg" style={{background:'#fbbf24'}}>
                      House: {selectedStudent['House'] || "UNASSIGNED"}
                   </div>
                 </div>
@@ -211,11 +213,11 @@ export default function UltimateMaThweProfile() {
             <div className="text-center py-20 opacity-30 italic font-black text-slate-500">
                <div className="text-5xl mb-4">🌟</div>
                <p className="text-3xl md:text-5xl uppercase tracking-widest font-black leading-none">SHINING STARS</p>
-               <p className="text-[10px] uppercase mt-4 tracking-[1em] font-black">VERSION 68.0 • MASTER LEDGER SYNCED</p>
+               <p className="uppercase mt-4 font-black" style={{fontSize:'10px', letterSpacing:'1em'}}>VERSION 68.0 • MASTER LEDGER SYNCED</p>
             </div>
           </div>
         ) : (
-          <div className="min-h-[60vh] flex flex-col items-center justify-center font-black text-slate-400 uppercase italic">
+          <div className="flex flex-col items-center justify-center font-black text-slate-400 uppercase italic" style={{minHeight:'60vh'}}>
              <div className="text-6xl mb-4">📭</div>
              <div className="text-2xl">No Archive Entry Found.</div>
              <p className="text-xs mt-2 tracking-widest">Please contact administration.</p>
@@ -228,6 +230,12 @@ export default function UltimateMaThweProfile() {
         .custom-scrollbar::-webkit-scrollbar { width: 8px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
       `}</style>
-    </div>
+    
+      {/* 🏠 Home Button */}
+      <button onClick={() => router.push('/student')}
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-2.5 border-2 rounded-full font-black uppercase tracking-wider shadow-xl hover:bg-gold hover:text-[#020617] transition-all" style={{background:'#020617', borderColor:'#fbbf24', color:'#fbbf24', fontSize:'10px'}}>
+        🏠 Home
+      </button>
+</div>
   );
 }

@@ -1,27 +1,24 @@
 "use client";
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import Link from 'next/link';
 
 export default function MgtUniversalLayout({ children }) {
-  const router = useRouter();
+  const router   = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || "null");
-    if (!auth || auth.userRole !== 'management') {
-      router.push('/login');
-    } else {
-      setUser(auth);
-    }
+    const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
+    if (!auth || auth.userRole !== 'management') { router.push('/login'); }
+    else setUser(auth);
   }, [router]);
 
   const navItems = [
-    { name: 'Dashboard', path: '/management/mgt-dashboard', icon: '📊' },
-    { name: 'Leave Hub',  path: '/management/leave',         icon: '📄' },
-    { name: 'Performance',path: '/management/performance',   icon: '🏆' },
-    { name: 'Analytics',  path: '/management/analytic',      icon: '📈' },
+    { name:'Dashboard',   path:'/management/mgt-dashboard', icon:'📊' },
+    { name:'Leave',       path:'/management/leave',          icon:'📄' },
+    { name:'Performance', path:'/management/performance',    icon:'🏆' },
+    { name:'Analytics',   path:'/management/analytic',       icon:'📈' },
+    { name:'Calendar',    path:'/management/calendar',       icon:'📅' },
   ];
 
   const handleLogout = () => {
@@ -33,69 +30,46 @@ export default function MgtUniversalLayout({ children }) {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-[#F0F9FF] flex flex-col font-black selection:bg-[#fbbf24] text-slate-950 overflow-x-hidden">
+    <div style={{ minHeight:'100vh', background:'#f0f9ff', display:'flex', flexDirection:'column', fontFamily:'system-ui,sans-serif', color:'#020617' }}>
 
-      {/* ── SINGLE TOP HEADER ── */}
-      <header className="sticky top-0 z-[100] bg-[#020617] border-b-[6px] border-[#fbbf24] px-4 md:px-10 py-3 md:py-4 shadow-2xl flex items-center justify-between gap-4">
-
-        {/* LEFT — Logo + Home */}
-        <Link href="/management/mgt-dashboard" className="flex items-center gap-3 group shrink-0">
-          <div className="w-9 h-9 md:w-11 md:h-11 bg-[#fbbf24] rounded-xl flex items-center justify-center text-xl font-black shadow-md group-hover:scale-105 transition-transform">
-            🌟
+      {/* HEADER */}
+      <header style={{ position:'sticky', top:0, zIndex:100, background:'#020617', borderBottom:'6px solid #fbbf24', padding:'10px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px', boxShadow:'0 4px 20px rgba(0,0,0,0.4)' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'10px', cursor:'pointer', flexShrink:0 }} onClick={() => router.push('/management/mgt-dashboard')}>
+          <div style={{ width:'36px', height:'36px', background:'#fbbf24', borderRadius:'10px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'18px', flexShrink:0 }}>🌟</div>
+          <div>
+            <p style={{ fontWeight:900, fontSize:'13px', color:'#fff', margin:0, textTransform:'uppercase', letterSpacing:'0.05em' }}>Shining Stars</p>
+            <p style={{ fontSize:'8px', color:'#fbbf24', margin:0, textTransform:'uppercase', letterSpacing:'0.25em' }}>Management Hub</p>
           </div>
-          <div className="leading-none">
-            <p className="text-white text-sm md:text-base font-black uppercase italic tracking-tight">Shining Stars</p>
-            <p className="text-[#fbbf24] text-[8px] uppercase tracking-[0.3em] font-black">Management Hub</p>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+          <div style={{ textAlign:'right' }}>
+            <p style={{ fontSize:'8px', color:'rgba(255,255,255,0.4)', margin:0, textTransform:'uppercase', letterSpacing:'0.1em' }}>Logged in as</p>
+            <p style={{ fontSize:'11px', color:'#fbbf24', fontWeight:900, margin:'1px 0 0', fontStyle:'italic' }}>{user?.Name || user?.name || 'Admin'}</p>
           </div>
-        </Link>
-
-        {/* RIGHT — User + Logout only */}
-        <div className="flex items-center gap-3 md:gap-5">
-          <div className="hidden sm:flex flex-col items-end leading-none">
-            <span className="text-[8px] text-white/50 uppercase tracking-widest">Logged in as</span>
-            <span className="text-[11px] text-[#fbbf24] font-black italic mt-0.5">{user?.Name || user?.name || user?.username || user?.['Name (ALL CAPITAL)'] || "Admin"}</span>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 bg-rose-600 text-white text-[9px] md:text-[10px] font-black uppercase rounded-xl border-b-[3px] border-rose-900 active:scale-95 transition-all shadow-lg"
-          >
+          <button onClick={handleLogout}
+            style={{ background:'#dc2626', color:'#fff', border:'none', borderRadius:'10px', padding:'7px 12px', fontSize:'10px', fontWeight:900, cursor:'pointer', textTransform:'uppercase', letterSpacing:'0.05em', borderBottom:'3px solid #991b1b' }}>
             Logout ⏻
           </button>
         </div>
       </header>
 
-      {/* ── MAIN CONTENT ── */}
-      <main className="flex-1 w-full pb-28 animate-in fade-in duration-300">
-        {children}
-      </main>
+      {/* MAIN */}
+      <main style={{ flex:1, width:'100%', paddingBottom:'80px' }}>{children}</main>
 
-      {/* ── BOTTOM NAV ── */}
-      <nav className="fixed bottom-0 left-0 w-full bg-[#020617] border-t-[6px] border-[#fbbf24] px-4 py-3 flex justify-around items-center z-[110] shadow-[0_-10px_40px_rgba(0,0,0,0.4)]">
-        {navItems.map((item) => {
-          const isActive = pathname === item.path;
+      {/* BOTTOM NAV */}
+      <nav style={{ position:'fixed', bottom:0, left:0, width:'100%', background:'#020617', borderTop:'6px solid #fbbf24', display:'flex', justifyContent:'space-around', alignItems:'center', padding:'8px 0 10px', zIndex:110, boxSizing:'border-box' }}>
+        {navItems.map(item => {
+          const active = pathname.startsWith(item.path);
           return (
-            <Link
-              key={item.path}
-              href={item.path}
-              className={`flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all duration-200 ${isActive ? 'scale-110' : 'opacity-40 hover:opacity-80'}`}
-            >
-              <span className={`text-2xl ${isActive ? 'drop-shadow-[0_0_10px_#fbbf24]' : 'grayscale'}`}>
-                {item.icon}
-              </span>
-              <span className={`text-[8px] uppercase font-black tracking-widest ${isActive ? 'text-[#fbbf24]' : 'text-white'}`}>
-                {item.name}
-              </span>
-              {isActive && <div className="w-4 h-0.5 bg-[#fbbf24] rounded-full" />}
-            </Link>
+            <button key={item.path} onClick={() => router.push(item.path)}
+              style={{ background:'none', border:'none', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:'3px', padding:'4px 6px', opacity:active?1:0.4, transition:'opacity 0.15s', minWidth:'52px' }}>
+              <span style={{ fontSize:'20px', filter:active?'drop-shadow(0 0 8px #fbbf24)':'grayscale(1)' }}>{item.icon}</span>
+              <span style={{ fontSize:'7px', fontWeight:900, textTransform:'uppercase', letterSpacing:'0.06em', color:active?'#fbbf24':'#fff', whiteSpace:'nowrap' }}>{item.name}</span>
+              {active && <div style={{ width:'14px', height:'2px', background:'#fbbf24', borderRadius:'99px' }}/>}
+            </button>
           );
         })}
       </nav>
-
-      <style jsx global>{`
-        body { background-color: #F0F9FF; font-weight: 900 !important; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-thumb { background: #020617; border-radius: 10px; }
-      `}</style>
     </div>
   );
 }

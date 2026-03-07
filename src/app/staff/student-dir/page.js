@@ -1,4 +1,6 @@
 "use client";
+import { getPhotoUrl } from "@/lib/cloudinary";
+import Image from "next/image";
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL, GIDS } from '@/lib/api';
@@ -15,15 +17,6 @@ export default function StudentDirectoryOnly() {
     router.push(auth?.userRole === "management" ? "/management/mgt-dashboard" : "/staff");
   };
 
-  const getDrivePreview = (url) => {
-    if (!url || typeof url !== 'string') return null;
-    try {
-      let fileId = "";
-      if (url.includes('id=')) fileId = url.split('id=')[1].split('&')[0];
-      else if (url.includes('/d/')) fileId = url.split('/d/')[1].split('/')[0];
-      return fileId ? `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000` : url;
-    } catch (e) { return null; }
-  };
 
   useEffect(() => {
     const fetchStudents = async () => {
@@ -57,24 +50,24 @@ export default function StudentDirectoryOnly() {
 
   const showGradesView = gradeFilter === "ALL" && search.trim() === "";
 
-  if (loading) return <div className="min-h-screen bg-[#0F071A] flex items-center justify-center font-black text-[#FFD700] animate-pulse text-2xl md:text-3xl uppercase italic tracking-tighter px-6 text-center">Loading Directory...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center font-black animate-pulse text-2xl md:text-3xl uppercase italic tracking-tighter px-6 text-center" style={{background:'#0F071A', color:'#FFD700'}}>Loading Directory...</div>;
 
   return (
-    <div className="min-h-screen bg-[#0F071A] p-3 md:p-10 font-black selection:bg-[#FFD700] text-slate-950 font-serif-numbers overflow-x-hidden">
-      <div className="max-w-[1600px] mx-auto space-y-6 md:space-y-10">
+    <div className="min-h-screen p-3 md:p-10 font-black selection:bg-gold text-slate-950 font-serif-numbers overflow-x-hidden" style={{background:'#0F071A'}}>
+      <div className="mx-auto space-y-6 md:space-y-10" style={{maxWidth:'1600px'}}>
         
         {/* HEADER */}
-        <div className="bg-gradient-to-br from-[#4c1d95] via-[#2e1065] to-[#0F071A] p-6 md:p-12 rounded-[2rem] md:rounded-[3.5rem] border-b-[6px] md:border-b-[12px] border-[#FFD700] shadow-3xl flex items-center gap-4 md:gap-8 relative overflow-hidden">
-          <button onClick={handleBack} className="bg-[#FFD700] p-3 md:p-5 rounded-[1.5rem] md:rounded-[2rem] hover:bg-white transition-all shadow-2xl active:scale-90 border-b-4 md:border-b-6 border-amber-600 flex-shrink-0 z-10">
+        <div className="p-6 md:p-12 md:rounded-[3.5rem] md:border-b-[12px] shadow-3xl flex items-center gap-4 md:gap-8 relative overflow-hidden" style={{background:'linear-gradient(135deg, #4c1d95, #2e1065, #0F071A)', borderRadius:'2rem', borderBottomWidth:'6px', borderColor:'#FFD700'}}>
+          <button onClick={handleBack} className="p-3 md:p-5 md:rounded-[2rem] hover:bg-white transition-all shadow-2xl active:scale-90 border-b-4 md:border-b-6 border-amber-600 flex-shrink-0 z-10" style={{background:'#FFD700', borderRadius:'1.5rem'}}>
             <span className="text-xl md:text-3xl">🔙</span>
           </button>
           <div className="z-10 min-w-0">
             <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl italic uppercase font-black text-white tracking-tighter leading-none truncate">Student Hub</h1>
-            <p className="text-[#FFD700] mt-2 tracking-[0.2em] md:tracking-[0.4em] uppercase text-[8px] md:text-[10px] bg-black/30 inline-block px-3 md:px-4 py-1.5 rounded-full border border-white/10 truncate max-w-full">
+            <p className="mt-2 md:tracking-[0.4em] uppercase md:text-[10px] bg-black/30 inline-block px-3 md:px-4 py-1.5 rounded-full border border-white/10 truncate max-w-full" style={{color:'#FFD700', letterSpacing:'0.2em', fontSize:'8px'}}>
               {gradeFilter === "ALL" ? "Master Directory" : `CLASS: GRADE ${gradeFilter}`}
             </p>
           </div>
-          <div className="absolute -right-10 -bottom-10 text-[150px] opacity-5">🎓</div>
+          <div className="absolute -right-10 -bottom-10 opacity-5" style={{fontSize:'150px'}}>🎓</div>
         </div>
 
         {/* SEARCH BAR */}
@@ -82,7 +75,7 @@ export default function StudentDirectoryOnly() {
           <input 
             type="text" 
             placeholder="Search by Name, Myanmar Name or ID..." 
-            className="w-full bg-[#1A0B2E] border-2 md:border-4 border-[#4c1d95] p-5 md:p-8 rounded-[1.5rem] md:rounded-[2.5rem] text-white font-bold italic text-base md:text-xl outline-none focus:border-[#FFD700] shadow-2xl transition-all" 
+            className="w-full border-2 md:border-4 p-5 md:p-8 md:rounded-[2.5rem] text-white font-bold italic text-base md:text-xl outline-none focus:border-[#FFD700] shadow-2xl transition-all" style={{background:'#1A0B2E', borderColor:'#4c1d95', borderRadius:'1.5rem'}} 
             onChange={(e) => setSearch(e.target.value)} 
             value={search}
           />
@@ -94,8 +87,8 @@ export default function StudentDirectoryOnly() {
         {/* BACK TO GRADES BUTTON */}
         {!showGradesView && gradeFilter !== "ALL" && (
           <div className="flex items-center justify-between bg-white/5 border border-white/10 p-3 md:p-4 rounded-2xl">
-            <span className="text-white font-bold italic text-sm md:text-base px-2">Showing Grade: <span className="text-[#FFD700]">{gradeFilter}</span></span>
-            <button onClick={() => setGradeFilter("ALL")} className="bg-rose-500 hover:bg-rose-600 text-white text-[10px] md:text-xs font-black tracking-widest uppercase px-5 py-2.5 rounded-full shadow-lg transition-all">
+            <span className="text-white font-bold italic text-sm md:text-base px-2">Showing Grade: <span className="" style={{color:'#FFD700'}}>{gradeFilter}</span></span>
+            <button onClick={() => setGradeFilter("ALL")} className="bg-rose-500 hover:bg-rose-600 text-white md:text-xs font-black tracking-widest uppercase px-5 py-2.5 rounded-full shadow-lg transition-all" style={{fontSize:'10px'}}>
                Clear Filter
             </button>
           </div>
@@ -108,18 +101,18 @@ export default function StudentDirectoryOnly() {
               <button 
                 key={idx} 
                 onClick={() => setGradeFilter(g)}
-                className="group bg-gradient-to-br from-[#1e1b4b] to-[#0f172a] p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] border-t border-t-white/10 border-b-[6px] md:border-b-[8px] border-b-[#4c1d95] shadow-xl flex flex-col items-center justify-center gap-3 hover:-translate-y-2 hover:border-b-[#FFD700] hover:shadow-[0_20px_40px_-10px_rgba(255,215,0,0.3)] transition-all"
+                className="group p-6 md:p-8 md:rounded-[2.5rem] border-t border-t-white/10 md:border-b-[8px] shadow-xl flex flex-col items-center justify-center gap-3 hover:-translate-y-2 hover:border-b-[#FFD700] hover:shadow-[0_20px_40px_-10px_rgba(255,215,0,0.3)] transition-all" style={{background:'linear-gradient(135deg, #1e1b4b, #0f172a)', borderRadius:'2rem', borderBottomWidth:'6px', borderBottomWidth:'#4c1d95'}}
               >
                 {/* 🌟 PREMIUM ICON: Glowing Academic Cap instead of basic Folder 🌟 */}
-                <div className="w-16 h-16 md:w-20 md:h-20 bg-[#FFD700]/10 rounded-[1.2rem] flex items-center justify-center shadow-[0_0_20px_rgba(255,215,0,0.1)] group-hover:bg-[#FFD700]/20 group-hover:shadow-[0_0_30px_rgba(255,215,0,0.4)] transition-all duration-500">
-                  <svg className="w-8 h-8 md:w-10 md:h-10 text-[#FFD700] group-hover:scale-110 transition-transform duration-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <div className="w-16 h-16 md:w-20 md:h-20 flex items-center justify-center shadow-[0_0_20px_rgba(255,215,0,0.1)] group-hover:bg-gold/20 group-hover:shadow-[0_0_30px_rgba(255,215,0,0.4)] transition-all duration-500" style={{background:'#FFD700', borderRadius:'1.2rem'}}>
+                  <svg className="w-8 h-8 md:w-10 md:h-10 group-hover:scale-110 transition-transform duration-500" style={{color:'#FFD700'}} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.697 50.697 0 0112 13.489a50.702 50.702 0 017.74-3.342M6.75 15a.75.75 0 100-1.5.75.75 0 000 1.5zm0 0v-3.675A55.378 55.378 0 0112 8.443m-7.007 11.55A5.981 5.981 0 006.75 15.75v-1.5" />
                   </svg>
                 </div>
                 
                 <h2 className="text-lg md:text-2xl font-black text-white italic mt-1 text-center break-words w-full">GRADE {g}</h2>
                 <div className="bg-black/50 px-3 py-1 rounded-full">
-                   <p className="text-[#FFD700] text-[8px] md:text-[9px] tracking-widest uppercase font-bold">{gradeStats[g]} Students</p>
+                   <p className="md:text-[9px] tracking-widest uppercase font-bold" style={{color:'#FFD700', fontSize:'8px'}}>{gradeStats[g]} Students</p>
                 </div>
               </button>
             ))}
@@ -136,12 +129,12 @@ export default function StudentDirectoryOnly() {
               </div>
             ) : (
               filteredStudents.map((s, idx) => {
-                const previewImg = getDrivePreview(s.Photo_URL);
+                const previewImg = getPhotoUrl(s.Photo_URL);
                 return (
                   <button 
                     key={idx} 
                     onClick={() => router.push(`/staff/student-dir/${encodeURIComponent(s['Enrollment No.'])}`)} 
-                    className="bg-[#1e1b4b] p-4 md:p-6 rounded-[1.5rem] md:rounded-[2rem] border-b-[6px] md:border-b-[8px] border-[#4c1d95] shadow-2xl flex items-center gap-4 hover:-translate-y-2 active:scale-95 transition-all text-left group min-w-0"
+                    className="p-4 md:p-6 md:rounded-[2rem] md:border-b-[8px] shadow-2xl flex items-center gap-4 hover:-translate-y-2 active:scale-95 transition-all text-left group min-w-0" style={{background:'#1e1b4b', borderRadius:'1.5rem', borderBottomWidth:'6px', borderColor:'#4c1d95'}}
                   >
                      {/* Student Photo */}
                      <div className="w-16 h-16 md:w-20 md:h-20 bg-white/10 rounded-xl md:rounded-[1rem] overflow-hidden flex items-center justify-center shadow-inner border-2 md:border-[3px] border-white/20 flex-shrink-0 relative">
@@ -159,16 +152,16 @@ export default function StudentDirectoryOnly() {
                      {/* 🌟 FIX: Student Info (Whitespace-normal and Line-clamp used to prevent overflow) 🌟 */}
                      <div className="flex-1 min-w-0 pr-1">
                         {/* Name will wrap up to 2 lines beautifully instead of shooting out of the box */}
-                        <h3 className="text-sm md:text-base uppercase font-black italic text-white whitespace-normal break-words line-clamp-2 leading-tight mb-2 group-hover:text-[#FFD700] transition-colors">
+                        <h3 className="text-sm md:text-base uppercase font-black italic text-white whitespace-normal break-words line-clamp-2 leading-tight mb-2 group-hover:text-gold transition-colors">
                           {s['Name (ALL CAPITAL)']}
                         </h3>
                         
                         {/* Badges Container (Wraps cleanly if screen is small) */}
                         <div className="flex flex-wrap gap-1 mt-1">
-                           <span className="text-[8px] md:text-[9px] text-purple-300 font-bold tracking-widest uppercase bg-black/40 px-2 py-1 rounded border border-white/5">
+                           <span className="md:text-[9px] text-purple-300 font-bold tracking-widest uppercase bg-black/40 px-2 py-1 rounded border border-white/5" style={{fontSize:'8px'}}>
                              ID: {s['Enrollment No.']}
                            </span>
-                           <span className="text-[8px] md:text-[9px] text-[#FFD700] font-black tracking-widest uppercase bg-black/40 px-2 py-1 rounded border border-white/5">
+                           <span className="md:text-[9px] font-black tracking-widest uppercase bg-black/40 px-2 py-1 rounded border border-white/5" style={{fontSize:'8px', color:'#FFD700'}}>
                              GRADE: {s.Grade}
                            </span>
                         </div>

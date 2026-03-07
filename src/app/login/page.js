@@ -10,15 +10,16 @@ export default function LoginPage() {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [ready, setReady] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
+    setTimeout(() => setReady(true), 100);
     const saved = localStorage.getItem('user') || sessionStorage.getItem('user');
     if (saved) {
       try {
         const u = JSON.parse(saved);
-        const target = u.userRole === 'management' ? '/management/mgt-dashboard' : u.userRole === 'staff' ? '/staff' : '/student';
-        router.push(target);
+        router.push(u.userRole === 'management' ? '/management/mgt-dashboard' : u.userRole === 'staff' ? '/staff' : '/student');
       } catch { localStorage.removeItem('user'); sessionStorage.removeItem('user'); }
     }
   }, [router]);
@@ -30,119 +31,209 @@ export default function LoginPage() {
       const res = await fetch(WEB_APP_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action:'login', role:role.toLowerCase(), username:username.trim(), password:password.trim() }),
+        body: JSON.stringify({ action: 'login', role: role.toLowerCase(), username: username.trim(), password: password.trim() }),
       });
       const result = await res.json();
       if (result.success) {
         localStorage.setItem('user', JSON.stringify({ ...result.user, userRole: role.toLowerCase() }));
-        const path = role === 'MANAGEMENT' ? '/management/mgt-dashboard' : role === 'STAFF' ? '/staff' : '/student';
-        router.push(path);
+        router.push(role === 'MANAGEMENT' ? '/management/mgt-dashboard' : role === 'STAFF' ? '/staff' : '/student');
       } else {
         const msg = result.message || '';
-        if (msg.includes('မရှိ') || msg.toLowerCase().includes('user')) setError('Username မှားနေတယ်');
-        else if (msg.includes('မှားယွင်း') || msg.toLowerCase().includes('password')) setError('Password မှားနေတယ်');
-        else setError(msg || 'Login မအောင်မြင်ဘူး');
+        if (msg.includes('မရှိ') || msg.toLowerCase().includes('user')) setError('Username မှားနေသည်');
+        else if (msg.includes('မှားယွင်း') || msg.toLowerCase().includes('password')) setError('Password မှားနေသည်');
+        else setError('ဝင်ရောက်မှု မအောင်မြင်ပါ');
       }
-    } catch { setError('Network error — ပြန်ကြိုးစားပါ'); }
+    } catch { setError('ကွန်ရက် ချိတ်ဆက်မှု ကျရှုံးသည်'); }
     finally { setLoading(false); }
   };
 
   const ROLES = [
-    { id:'STUDENT', label:'Student', icon:'🎓' },
-    { id:'STAFF',   label:'Staff',   icon:'👔' },
-    { id:'MANAGEMENT', label:'Mgt', icon:'🏛️' },
+    { id: 'STUDENT',    label: 'Student',    sub: 'ကျောင်းသား' },
+    { id: 'STAFF',      label: 'Staff',      sub: 'ဆရာ / ဆရာမ' },
+    { id: 'MANAGEMENT', label: 'Mgt',        sub: 'စီမံခန့်ခွဲ' },
   ];
 
   return (
-    <div className="min-h-screen w-full bg-[#0f0a1e] flex flex-col font-black overflow-x-hidden">
-      <div className="fixed inset-0 -z-10 bg-gradient-to-b from-[#1a0a3e] via-[#0f0a1e] to-[#000]" />
+    <div className="min-h-screen w-full flex flex-col" style={{background:'#0e0b1a'}}>
 
-      {/* HEADER */}
-      <div className="flex items-center justify-between px-5 pt-5 pb-2">
-        <button onClick={() => router.push('/')}
-          className="flex items-center gap-2 text-white/60 hover:text-white transition-colors">
-          <span className="text-base">←</span>
-          <span className="text-[9px] uppercase tracking-widest">Home</span>
-        </button>
-        <div className="text-center">
-          <p className="text-white font-black text-xs uppercase tracking-widest">Shining Stars</p>
-          <p className="text-[#fbbf24] text-[8px] uppercase tracking-widest opacity-70">Ma Thwe</p>
-        </div>
-        <div className="w-14" />
+      {/* BG — clean, no scan lines */}
+      <div className="fixed inset-0 -z-10">
+        <div className="absolute inset-0" style={{background:'#0e0b1a'}} />
+        <div className="absolute top-0 right-0 w-96 h-96 opacity-10 pointer-events-none"
+          style={{background:'radial-gradient(circle at 80% 10%, #d4af37, transparent 60%)'}} />
+        <div className="absolute bottom-0 left-0 w-80 h-80 opacity-[0.06] pointer-events-none"
+          style={{background:'radial-gradient(circle at 20% 90%, #7c3aed, transparent 60%)'}} />
       </div>
 
-      {/* MAIN CARD */}
-      <div className="flex-1 flex items-center justify-center px-5 py-6">
-        <div className="w-full max-w-sm">
+      {/* HEADER */}
+      <div className={`flex items-center justify-between px-6 pt-6 transition-all duration-500 ${ready ? 'opacity-100' : 'opacity-0'}`}>
+        <button onClick={() => router.push('/')} className="group flex items-center gap-2">
+          <span style={{color:'rgba(212,175,55,0.4)', fontSize:'1.1rem', lineHeight:1}}>‹</span>
+          <span style={{fontFamily:'Georgia,serif', fontSize:'0.6rem', letterSpacing:'0.3em', textTransform:'uppercase', color:'rgba(255,255,255,0.2)'}}>Home</span>
+        </button>
+        <p style={{fontFamily:'Georgia,serif', fontStyle:'italic', fontSize:'0.65rem', color:'rgba(212,175,55,0.4)', letterSpacing:'0.15em'}}>
+          Shining Stars - Ma Thwe
+        </p>
+        <div style={{width:'3rem'}} />
+      </div>
 
-          {/* Title */}
-          <div className="text-center mb-7">
-            <h1 className="text-white text-3xl sm:text-4xl font-black uppercase tracking-tight">Sign In</h1>
-            <p className="text-white/30 text-[9px] uppercase tracking-[0.3em] mt-2">Authorized Access Only</p>
+      {/* MAIN */}
+      <div className={`flex-1 flex items-center justify-center px-6 py-8 transition-all duration-500 delay-100 ${ready ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
+        style={{transform: ready ? 'translateY(0)' : 'translateY(16px)'}}>
+        <div className="w-full" style={{maxWidth:'340px'}}>
+
+          {/* LOGO */}
+          <div className="flex justify-center mb-6">
+            <div className="w-16 h-16 rounded-2xl overflow-hidden flex items-center justify-center"
+              style={{background:'rgba(212,175,55,0.08)', border:'1px solid rgba(212,175,55,0.2)'}}>
+              <img src="/logo.png" alt="Logo" className="w-full h-full object-contain p-1.5"
+                onError={e => { e.target.style.display='none'; e.target.parentNode.innerHTML='<span style="color:#d4af37;font-size:2rem">⭐</span>'; }} />
+            </div>
           </div>
 
-          {/* Role Selector */}
-          <div className="flex bg-white/5 rounded-2xl p-1 mb-6 gap-1">
+          {/* TITLE */}
+          <div className="text-center mb-7">
+            <h1 style={{
+              fontFamily:'"Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif',
+              fontSize:'2.4rem', fontWeight:700, color:'#fff',
+              letterSpacing:'-0.02em', lineHeight:1, marginBottom:'0.5rem'
+            }}>Sign In</h1>
+            <p style={{fontFamily:'Georgia,serif', fontSize:'0.55rem', color:'rgba(255,255,255,0.2)', letterSpacing:'0.45em', textTransform:'uppercase'}}>
+              Authorized Access Only
+            </p>
+          </div>
+
+          {/* ROLE SELECTOR */}
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'0.5rem', marginBottom:'1.5rem'}}>
             {ROLES.map(r => (
               <button key={r.id} type="button"
                 onClick={() => { setRole(r.id); setError(''); }}
-                className={`flex-1 py-3 rounded-xl text-[9px] uppercase tracking-widest font-black transition-all flex flex-col items-center gap-1
-                  ${role === r.id ? 'bg-[#4c1d95] text-white shadow-lg' : 'text-white/40 hover:text-white/60'}`}>
-                <span className="text-base">{r.icon}</span>
-                {r.label}
+                className="relative flex flex-col items-center justify-center py-3 px-1 rounded-xl transition-all duration-200 active:scale-95"
+                style={{
+                  background: role === r.id ? 'rgba(212,175,55,0.12)' : 'rgba(255,255,255,0.03)',
+                  border: role === r.id ? '1px solid rgba(212,175,55,0.45)' : '1px solid rgba(255,255,255,0.07)',
+                }}>
+                {role === r.id && (
+                  <div className="absolute top-0 inset-x-4 h-px"
+                    style={{background:'linear-gradient(to right, transparent, rgba(212,175,55,0.9), transparent)'}} />
+                )}
+                <span style={{
+                  fontFamily:'Georgia,serif', fontSize:'0.65rem', fontWeight:700,
+                  textTransform:'uppercase', letterSpacing:'0.08em',
+                  color: role === r.id ? '#d4af37' : 'rgba(255,255,255,0.3)',
+                  marginBottom:'0.2rem'
+                }}>{r.label}</span>
+                <span style={{
+                  fontFamily:'sans-serif', fontSize:'0.55rem',
+                  color: role === r.id ? 'rgba(212,175,55,0.5)' : 'rgba(255,255,255,0.15)',
+                }}>{r.sub}</span>
               </button>
             ))}
           </div>
 
-          {/* Form */}
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-[9px] text-white/50 uppercase tracking-widest mb-2 ml-1">Username</label>
-              <input
-                type="text" required value={username}
-                onChange={e => setUsername(e.target.value)}
+          {/* INPUTS — underline style */}
+          <div style={{marginBottom:'1.25rem'}}>
+            <div style={{marginBottom:'1.25rem'}}>
+              <label style={{display:'block', fontFamily:'Georgia,serif', fontSize:'0.55rem', letterSpacing:'0.4em', textTransform:'uppercase', color:'rgba(212,175,55,0.5)', marginBottom:'0.5rem'}}>
+                Username
+              </label>
+              <input type="text" required value={username} onChange={e => setUsername(e.target.value)}
                 placeholder="Enter username"
-                className="w-full bg-white/8 border border-white/10 rounded-2xl px-5 py-4 text-white font-black text-sm outline-none focus:border-[#fbbf24] focus:bg-white/12 transition-all placeholder:text-white/20"
+                className="w-full outline-none transition-all"
+                style={{
+                  background:'transparent', color:'rgba(255,255,255,0.85)',
+                  fontFamily:'Georgia,serif', fontSize:'0.9rem',
+                  padding:'0.4rem 0', border:'none',
+                  borderBottom:'1px solid rgba(255,255,255,0.12)',
+                  width:'100%'
+                }}
+                onFocus={e => e.target.style.borderBottomColor='rgba(212,175,55,0.6)'}
+                onBlur={e => e.target.style.borderBottomColor='rgba(255,255,255,0.12)'}
               />
             </div>
             <div>
-              <label className="block text-[9px] text-white/50 uppercase tracking-widest mb-2 ml-1">Password</label>
-              <div className="relative">
-                <input
-                  type={showPw ? 'text' : 'password'} required value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-white/8 border border-white/10 rounded-2xl px-5 py-4 pr-16 text-white font-black text-sm outline-none focus:border-[#fbbf24] focus:bg-white/12 transition-all placeholder:text-white/20"
+              <label style={{display:'block', fontFamily:'Georgia,serif', fontSize:'0.55rem', letterSpacing:'0.4em', textTransform:'uppercase', color:'rgba(212,175,55,0.5)', marginBottom:'0.5rem'}}>
+                Password
+              </label>
+              <div style={{position:'relative'}}>
+                <input type={showPw ? 'text' : 'password'} required value={password} onChange={e => setPassword(e.target.value)}
+                  placeholder="Enter password"
+                  className="w-full outline-none transition-all"
+                  style={{
+                    background:'transparent', color:'rgba(255,255,255,0.85)',
+                    fontFamily:'Georgia,serif', fontSize:'0.9rem',
+                    padding:'0.4rem 0', paddingRight:'3rem',
+                    border:'none', borderBottom:'1px solid rgba(255,255,255,0.12)',
+                    width:'100%'
+                  }}
+                  onFocus={e => e.target.style.borderBottomColor='rgba(212,175,55,0.6)'}
+                  onBlur={e => e.target.style.borderBottomColor='rgba(255,255,255,0.12)'}
                 />
                 <button type="button" onClick={() => setShowPw(!showPw)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white text-[9px] uppercase tracking-widest transition-colors">
+                  style={{position:'absolute', right:0, top:'50%', transform:'translateY(-50%)',
+                    fontFamily:'Georgia,serif', fontSize:'0.55rem', letterSpacing:'0.2em',
+                    textTransform:'uppercase', color:'rgba(212,175,55,0.4)',
+                    background:'none', border:'none', cursor:'pointer', padding:'0.25rem'}}>
                   {showPw ? 'Hide' : 'Show'}
                 </button>
               </div>
             </div>
+          </div>
 
-            {error && (
-              <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl px-5 py-3 text-rose-400 text-xs font-black uppercase tracking-wide text-center">
-                {error}
-              </div>
+          {/* ERROR */}
+          {error && (
+            <div style={{
+              marginBottom:'1rem', padding:'0.65rem 1rem', borderRadius:'0.6rem',
+              background:'rgba(220,38,38,0.07)', border:'1px solid rgba(220,38,38,0.2)',
+              fontFamily:'Georgia,serif', fontStyle:'italic', fontSize:'0.7rem',
+              color:'rgba(252,165,165,0.8)', textAlign:'center'
+            }}>{error}</div>
+          )}
+
+          {/* SUBMIT */}
+          <button onClick={handleLogin} disabled={loading}
+            className="w-full flex items-center justify-center gap-3 rounded-xl transition-all duration-300 active:scale-[0.98]"
+            style={{
+              padding:'0.95rem',
+              background: loading ? 'rgba(212,175,55,0.2)' : 'linear-gradient(135deg, #d4af37, #a07828)',
+              boxShadow: loading ? 'none' : '0 4px 20px rgba(212,175,55,0.28)',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              border: 'none'
+            }}>
+            {loading ? (
+              <>
+                <span className="w-4 h-4 rounded-full animate-spin inline-block"
+                  style={{border:'2px solid rgba(0,0,0,0.2)', borderTopColor:'rgba(0,0,0,0.5)'}} />
+                <span style={{fontFamily:'Georgia,serif', fontSize:'0.7rem', letterSpacing:'0.25em', textTransform:'uppercase', color:'rgba(0,0,0,0.4)'}}>
+                  Verifying...
+                </span>
+              </>
+            ) : (
+              <span style={{fontFamily:'Georgia,serif', fontWeight:700, fontSize:'0.75rem', letterSpacing:'0.25em', textTransform:'uppercase', color:'#0e0b1a'}}>
+                Authorize Entry
+              </span>
             )}
+          </button>
 
-            <button type="submit" disabled={loading}
-              className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest text-sm transition-all border-b-4 active:scale-95 active:border-b-0
-                ${loading
-                  ? 'bg-[#fbbf24]/50 text-slate-950/50 border-amber-600/30 cursor-not-allowed'
-                  : 'bg-[#fbbf24] text-slate-950 border-amber-600 hover:bg-amber-400 shadow-xl'}`}>
-              {loading
-                ? <span className="flex items-center justify-center gap-2"><span className="inline-block w-4 h-4 border-2 border-slate-950/30 border-t-slate-950 rounded-full animate-spin"/>Verifying...</span>
-                : 'Sign In →'}
-            </button>
-          </form>
+          {/* BOTTOM ORNAMENT */}
+          <div className="flex items-center gap-3 mt-8">
+            <div className="flex-1 h-px" style={{background:'linear-gradient(to right, transparent, rgba(212,175,55,0.15))'}} />
+            <span style={{fontSize:'0.35rem', color:'rgba(212,175,55,0.25)'}}>◆ ◆ ◆</span>
+            <div className="flex-1 h-px" style={{background:'linear-gradient(to left, transparent, rgba(212,175,55,0.15))'}} />
+          </div>
         </div>
       </div>
 
-      <p className="text-white/15 text-[7px] uppercase tracking-[0.3em] pb-5 text-center font-black">
-        Institutional Interface · Shining Stars
+      <p className="pb-5 text-center" style={{fontFamily:'Georgia,serif', fontSize:'0.5rem', color:'rgba(255,255,255,0.08)', letterSpacing:'0.4em', textTransform:'uppercase'}}>
+        Shining Stars - Ma Thwe · Est. 2019
       </p>
+
+      <style jsx global>{`
+        * { -webkit-tap-highlight-color: transparent; }
+        body { background: #0e0b1a !important; }
+        input::placeholder { color: rgba(255,255,255,0.15) !important; font-style:italic; }
+        input:-webkit-autofill { -webkit-box-shadow: 0 0 0 100px #0e0b1a inset !important; -webkit-text-fill-color: rgba(255,255,255,0.85) !important; }
+      `}</style>
     </div>
   );
 }

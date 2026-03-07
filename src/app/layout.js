@@ -31,8 +31,8 @@ export default function RootLayout({ children }) {
         <meta name="apple-mobile-web-app-title" content="Shining Stars" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <link rel="apple-touch-icon" href="/logo.jpg" />
-        <link rel="icon" href="/logo.jpg" />
+        <link rel="apple-touch-icon" href="/logo.png" />
+        <link rel="icon" href="/logo.png" />
       </head>
 
       <body className="antialiased bg-slate-50 text-slate-950 font-black">

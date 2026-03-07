@@ -1,4 +1,5 @@
 "use client";
+import { getPhotoUrl } from "@/lib/cloudinary";
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
@@ -9,13 +10,6 @@ export default function StaffContacts() {
   const [search, setSearch] = useState("");
   const router = useRouter();
 
-  const getDrivePreview = (url) => {
-    if (!url || typeof url !== 'string') return null;
-    try {
-      const fileId = url.includes('id=') ? url.split('id=')[1].split('&')[0] : url.split('/d/')[1]?.split('/')[0];
-      return fileId ? `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000` : url;
-    } catch (e) { return null; }
-  };
 
   const getFallbackIcon = (sex) => {
     const s = (sex || "").toLowerCase().trim();
@@ -55,21 +49,21 @@ export default function StaffContacts() {
     fetchStaffData();
   }, [router]);
 
-  if (loading) return <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center font-black text-[#4c1d95] animate-pulse text-2xl">LOADING DIRECTORY...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center font-black animate-pulse text-2xl" style={{background:'#F8FAFC', color:'#4c1d95'}}>LOADING DIRECTORY...</div>;
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] font-sans text-slate-900 pb-32">
+    <div className="min-h-screen font-sans text-slate-900 pb-32" style={{background:'#F8FAFC'}}>
       
       {/* 🌟 SOLID HEADER 🌟 */}
-      <div className="bg-[#4c1d95] px-6 py-10 md:py-14 border-b-[8px] border-[#FFD700] shadow-md">
+      <div className="px-6 py-10 md:py-14 shadow-md" style={{background:'#4c1d95', borderBottomWidth:'8px', borderColor:'#FFD700'}}>
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-4 w-full md:w-auto min-w-0">
-            <button onClick={() => router.push('/staff')} className="w-12 h-12 shrink-0 bg-[#FFD700] text-slate-900 rounded-full flex items-center justify-center transition-all font-black text-xl hover:scale-105 shadow-sm">
+            <button onClick={() => router.push('/staff')} className="w-12 h-12 shrink-0 text-slate-900 rounded-full flex items-center justify-center transition-all font-black text-xl hover:scale-105 shadow-sm" style={{background:'#FFD700'}}>
               ←
             </button>
             <div className="min-w-0">
               <h1 className="text-3xl md:text-5xl font-black text-white uppercase tracking-tight break-words whitespace-normal">Contact Network</h1>
-              <p className="text-[#FFD700] text-[10px] md:text-xs font-bold tracking-[0.2em] uppercase mt-1">Shining Stars Official Directory</p>
+              <p className="md:text-xs font-bold uppercase mt-1" style={{color:'#FFD700', fontSize:'10px', letterSpacing:'0.2em'}}>Shining Stars Official Directory</p>
             </div>
           </div>
           <div className="relative w-full md:w-96 shrink-0">
@@ -96,8 +90,8 @@ export default function StaffContacts() {
               {/* Group Header */}
               <div className="flex items-center gap-4 mb-6">
                 <h2 className="text-xl md:text-3xl font-black text-slate-900 uppercase tracking-wider break-words whitespace-normal">{position}</h2>
-                <span className="bg-[#4c1d95] shrink-0 text-white px-4 py-1.5 rounded-full text-[10px] md:text-xs font-black">{filteredMembers.length} ACTIVE</span>
-                <div className="flex-1 h-[2px] bg-slate-200 min-w-[20px]"></div>
+                <span className="shrink-0 text-white px-4 py-1.5 rounded-full md:text-xs font-black" style={{background:'#4c1d95', fontSize:'10px'}}>{filteredMembers.length} ACTIVE</span>
+                <div className="flex-1 bg-slate-200 min-w-[20px]" style={{height:'2px'}}></div>
               </div>
 
               {/* Group Grid */}
@@ -107,12 +101,12 @@ export default function StaffContacts() {
                   const cleanViber = s.Viber_Phone ? String(s.Viber_Phone).replace(/[^0-9+]/g, '') : "";
 
                   return (
-                    <div key={i} className="bg-white rounded-[2rem] p-6 shadow-sm border-2 border-slate-100 hover:border-[#4c1d95] hover:shadow-lg transition-all duration-300 flex flex-col text-center">
+                    <div key={i} className="bg-white p-6 shadow-sm border-2 border-slate-100 hover:border-purple hover:shadow-lg transition-all duration-300 flex flex-col text-center" style={{borderRadius:'2rem'}}>
                       
                       {/* Avatar */}
                       <div className="w-24 h-24 mx-auto rounded-2xl bg-slate-50 border-4 border-slate-100 shadow-inner overflow-hidden mb-4 flex items-center justify-center text-5xl shrink-0">
                         {s.Photo_URL ? (
-                          <img src={getDrivePreview(s.Photo_URL)} className="w-full h-full object-cover" referrerPolicy="no-referrer" onError={(e) => { e.target.style.display = 'none'; }} />
+                          <img src={getPhotoUrl(s.Photo_URL)} className="w-full h-full object-cover" referrerPolicy="no-referrer" onError={(e) => { e.target.style.display = 'none'; }} />
                         ) : getFallbackIcon(s.Sex)}
                       </div>
                       

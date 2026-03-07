@@ -5,88 +5,136 @@ import { WEB_APP_URL } from '@/lib/api';
 
 export default function LandingPage() {
   const router = useRouter();
-  const [isOnline, setIsOnline] = useState(true);
   const [ready, setReady] = useState(false);
+  const [zonesReady, setZonesReady] = useState(false);
 
   useEffect(() => {
-    const upd = () => setIsOnline(navigator.onLine);
-    window.addEventListener('online', upd);
-    window.addEventListener('offline', upd);
-    upd();
-    // Cache announcements quietly
+    setTimeout(() => setReady(true), 80);
+    setTimeout(() => setZonesReady(true), 1200);
     fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getData', sheetName:'Announcements' }) })
       .then(r=>r.json()).then(d=>{ if(d.data) localStorage.setItem('cached_announcements', JSON.stringify(d.data)); })
       .catch(()=>{});
-    setTimeout(() => setReady(true), 100);
-    return () => { window.removeEventListener('online', upd); window.removeEventListener('offline', upd); };
   }, []);
 
   return (
-    <div className="min-h-screen w-full bg-[#0f0a1e] flex flex-col items-center justify-between overflow-x-hidden font-black">
+    <div className="min-h-screen w-full flex flex-col items-center text-white overflow-x-hidden" style={{background:'#1a0f2e'}}>
 
-      {/* BG gradient */}
-      <div className="fixed inset-0 -z-10 bg-gradient-to-b from-[#1a0a3e] via-[#0f0a1e] to-[#000]" />
-      <div className="fixed inset-0 -z-10 opacity-30"
-        style={{backgroundImage:'radial-gradient(ellipse 80% 50% at 50% 0%, #4c1d95 0%, transparent 70%)'}} />
+      {/* BG */}
+      <div className="fixed inset-0 -z-10">
+        <div className="absolute inset-0" style={{background:'linear-gradient(160deg, #1f1040 0%, #1a0f2e 45%, #110920 100%)'}} />
 
-      {/* TOP STATUS DOT */}
-      <div className="w-full flex justify-end px-5 pt-4">
-        <div className={`flex items-center gap-1.5 text-[8px] uppercase tracking-widest font-black ${isOnline ? 'text-emerald-400' : 'text-rose-400'}`}>
-          <div className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400' : 'bg-rose-400'} animate-pulse`} />
-          {isOnline ? 'Online' : 'Offline'}
-        </div>
       </div>
 
-      {/* CENTER CONTENT */}
-      <div className={`flex-1 flex flex-col items-center justify-center w-full px-5 py-8 gap-8 transition-all duration-700 ${ready ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+      {/* MAIN */}
+      <div className={`flex flex-col items-center w-full max-w-[380px] px-8 transition-all duration-1000 ${ready ? 'opacity-100' : 'opacity-0'}`}
+        style={{paddingTop:'clamp(3rem, 10vh, 5rem)', paddingBottom:'2rem'}}>
 
-        {/* LOGO */}
-        <div className="relative">
-          <div className="absolute inset-0 rounded-[2rem] bg-[#fbbf24] blur-2xl opacity-20 scale-110" />
-          <div className="relative bg-white rounded-[2rem] p-3.5 border-4 border-[#fbbf24] shadow-2xl">
-            <img
-              src="/logo.jpg"
-              alt="Shining Stars Logo"
-              className="w-20 h-20 sm:w-24 sm:h-24 object-contain rounded-xl"
-              onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}
-            />
-            <div className="w-20 h-20 sm:w-24 sm:h-24 hidden items-center justify-center text-4xl">🌟</div>
+        {/* CREST */}
+        <div className="mb-8 transition-all duration-1000 delay-100"
+          style={{opacity: ready ? 1 : 0, transform: ready ? 'translateY(0)' : 'translateY(16px)'}}>
+          <div className="relative w-24 h-24 flex items-center justify-center">
+            <div className="absolute inset-0 rounded-full opacity-20"
+              style={{background:'radial-gradient(circle, #c9a84c 0%, transparent 70%)'}} />
+            <div className="w-20 h-20 rounded-2xl overflow-hidden border shadow-lg" style={{borderColor:'#c9a84c', background:'rgba(201,168,76,0.08)'}}>
+              <img src="/logo.png" alt="Shining Stars - Ma Thwe"
+                className="w-full h-full object-contain p-1"
+                onError={e => { e.target.style.display='none'; e.target.parentNode.innerHTML='<span style="font-size:2.5rem;display:flex;align-items:center;justify-content:center;height:100%">⭐</span>'; }} />
+            </div>
           </div>
         </div>
 
-        {/* SCHOOL NAME */}
-        <div className="text-center space-y-2 w-full max-w-xs">
-          <p className="text-[#fbbf24] text-[9px] uppercase tracking-[0.5em] font-black">Private High School</p>
-          <h1 className="text-white font-black uppercase leading-tight tracking-tight"
-            style={{fontSize:'clamp(1.4rem, 7vw, 2.2rem)'}}>
-            Shining Stars<br/>Ma Thwe
+        {/* SCHOOL NAME — always "Shining Stars - Ma Thwe" */}
+        <div className="text-center mb-1 transition-all duration-1000 delay-200 w-full"
+          style={{opacity: ready ? 1 : 0, transform: ready ? 'translateY(0)' : 'translateY(16px)'}}>
+          <p className="uppercase mb-5" style={{color:'#c9a84c', fontSize:'8px', letterSpacing:'0.5em', fontFamily:'Georgia, serif', letterSpacing:'0.5em'}}>
+            Official Portal
+          </p>
+          <h1 className="text-white leading-tight mb-3"
+            style={{
+              fontFamily:'"Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif',
+              fontSize:'clamp(1.5rem, 7vw, 2rem)',
+              fontWeight: 700,
+              letterSpacing: '-0.01em',
+              textShadow: '0 2px 20px rgba(201,168,76,0.2)'
+            }}>
+            Shining Stars - Ma Thwe
           </h1>
-          <p className="text-white/30 text-[9px] uppercase tracking-[0.3em] font-black">Est. 2019 · Taunggyi</p>
+          <div className="flex items-center justify-center gap-3 my-4">
+            <div className="h-px flex-1" style={{background:'linear-gradient(to right, transparent, rgba(201,168,76,0.4))'}} />
+            <span className="uppercase" style={{color:'#c9a84c', fontSize:'7px', letterSpacing:'0.6em', fontFamily:'Georgia, serif'}}>
+              Private High School
+            </span>
+            <div className="h-px flex-1" style={{background:'linear-gradient(to left, transparent, rgba(201,168,76,0.4))'}} />
+          </div>
         </div>
 
         {/* BUTTONS */}
-        <div className="w-full max-w-xs space-y-3">
-          <button
-            onClick={() => router.push('/login')}
-            className="w-full bg-white text-slate-950 rounded-[2rem] py-5 px-6 font-black uppercase tracking-widest text-sm shadow-2xl border-b-[6px] border-[#fbbf24] active:scale-95 active:border-b-2 transition-all hover:bg-[#fbbf24] flex items-center justify-between"
-          >
-            <span>Sign In</span>
-            <span className="text-base">→</span>
+        <div className="w-full space-y-3 mt-6 transition-all duration-1000 delay-300"
+          style={{opacity: ready ? 1 : 0, transform: ready ? 'translateY(0)' : 'translateY(16px)'}}>
+
+          {/* Primary */}
+          <button onClick={() => router.push('/login')}
+            className="group w-full rounded-2xl overflow-hidden transition-all duration-300 active:scale-[0.98]"
+            style={{
+              background:'linear-gradient(135deg, #c9a84c 0%, #a07830 100%)',
+              boxShadow:'0 4px 24px rgba(201,168,76,0.25), 0 1px 0 rgba(255,255,255,0.15) inset'
+            }}>
+            <div className="px-6 py-4 flex items-center justify-between">
+              <div>
+                <p className="uppercase mb-0.5" style={{color:'#1a0f2e', fontSize:'8px', letterSpacing:'0.4em', fontFamily:'Georgia, serif'}}>Secure Entry</p>
+                <p className="font-bold text-base tracking-wide uppercase" style={{color:'#1a0f2e', fontFamily:'Georgia, serif'}}>Sign In to Portal</p>
+              </div>
+              <span className="text-lg group-hover:translate-x-1 transition-transform" style={{color:'#1a0f2e'}}>→</span>
+            </div>
           </button>
-          <button
-            onClick={() => router.push('/public-zone')}
-            className="w-full bg-white/5 border border-white/10 text-white rounded-[2rem] py-4 px-6 font-black uppercase tracking-widest text-xs active:scale-95 transition-all hover:bg-white/10 flex items-center justify-between"
-          >
-            <span>Public Hub</span>
-            <span className="opacity-40">→</span>
+
+          {/* Secondary */}
+          <button onClick={() => router.push('/public-zone')}
+            className="group w-full rounded-2xl py-4 px-6 flex items-center justify-between transition-all duration-300 active:scale-[0.98]"
+            style={{
+              background:'rgba(255,255,255,0.04)',
+              border:'1px solid rgba(201,168,76,0.2)'
+            }}>
+            <p className="text-white/50 text-sm tracking-widest uppercase group-hover:text-white/70 transition-colors"
+              style={{fontFamily:'Georgia, serif'}}>
+              Public Hub
+            </p>
+            <span className="text-white/20 group-hover:text-white/40 group-hover:translate-x-1 transition-all">→</span>
           </button>
         </div>
-      </div>
 
-      {/* FOOTER */}
-      <p className="text-white/20 text-[8px] uppercase tracking-[0.3em] pb-6 font-black">
-        Shining Stars · Developed by Shine Thit
-      </p>
+        {/* STATUS PANEL */}
+        <div className="w-full mt-7 transition-all duration-700"
+          style={{opacity: zonesReady ? 1 : 0}}>
+          <div className="rounded-2xl px-5 py-4"
+            style={{background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.06)'}}>
+            <div className="flex justify-between items-center mb-3 pb-3"
+              style={{borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+              <span className="uppercase text-white/25" style={{fontSize:'7px', letterSpacing:'0.4em', fontFamily:'Georgia, serif'}}>System Status</span>
+              <span className="text-emerald-400/70 flex items-center gap-1.5 uppercase tracking-wider" style={{fontSize:'7px'}}>
+                <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse inline-block" />
+                Online
+              </span>
+            </div>
+            {['Student Zone','Staff Zone','Management','Cloud Database'].map((z,i) => (
+              <div key={i} className="flex justify-between items-center py-1">
+                <span className="text-white/25 tracking-wider uppercase" style={{fontSize:'8px', fontFamily:'Georgia, serif'}}>{z}</span>
+                <span className="text-emerald-400/60 uppercase tracking-wider" style={{fontSize:'7px'}}>Ready</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* FOOTER */}
+        <div className="mt-8 text-center space-y-1.5">
+          <p className="text-white/20 uppercase" style={{fontSize:'7px', letterSpacing:'0.5em', fontFamily:'Georgia, serif'}}>
+            Est. 2019 · Taunggyi, Southern Shan State
+          </p>
+          <p className="uppercase" style={{color:'#c9a84c', fontSize:'7px', letterSpacing:'0.4em', fontFamily:'Georgia, serif'}}>
+            Developed by Shine Thit
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

@@ -24,3 +24,31 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ── Shining Stars Utility Classes ──────────────────────────────────── */
+/* Used as safe replacements for Tailwind arbitrary values in           */
+/* conditional template literals where inline styles cannot be applied  */
+
+.bg-gold          { background-color: #fbbf24 !important; }
+.text-gold        { color:            #fbbf24 !important; }
+.border-gold      { border-color:     #fbbf24 !important; }
+.bg-purple        { background-color: #4c1d95 !important; }
+.text-purple      { color:            #4c1d95 !important; }
+.border-purple    { border-color:     #4c1d95 !important; }
+.bg-amber-light   { background-color: #f3e8ff !important; }
+.text-amber-gold  { color:            #FFD700 !important; }
+.bg-amber-gold    { background-color: #FFD700 !important; }
+.bg-dark          { background-color: #020617 !important; }
+.bg-app           { background-color: #0f0a1e !important; }
+
+/* hover variants */
+.hover\:bg-gold:hover        { background-color: #fbbf24; }
+.hover\:text-gold:hover      { color:            #fbbf24; }
+.hover\:border-gold:hover    { border-color:     #fbbf24; }
+.hover\:bg-purple:hover      { background-color: #4c1d95; }
+.focus\:border-gold:focus    { border-color:     #fbbf24; }
+.focus\:border-purple:focus  { border-color:     #4c1d95; }
+
+/* Scrollbar */
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: #fbbf24; border-radius: 10px; }

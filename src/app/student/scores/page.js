@@ -12,7 +12,7 @@ const NAV_CARDS = [
   { label:'School Dashboard', sublabel:'ကျောင်းသတင်းများ', icon:'🏫', path:'/student/school-dashboard', color:'#60a5fa' },
   { label:'My Profile',       sublabel:'ကိုယ်ရေးအချက်အလက်', icon:'👤', path:'/student/profile',          color:'#c084fc' },
   { label:'My Performance',   sublabel:'ရမှတ်များ / Scores',  icon:'⭐', path:'/student/my-performance',   color:'#fbbf24' },
-
+  { label:'Leave Form',       sublabel:'ခွင့်လျှောက်ရန်',      icon:'📄', path:'/student/student-leave',    color:'#34d399' },
   { label:'Lost & Found',     sublabel:'ပစ္စည်းပျောက်/တွေ့',   icon:'🔍', path:'/student/lost-found',       color:'#fb923c' },
 ];
 

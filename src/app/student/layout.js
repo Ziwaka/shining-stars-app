@@ -2,41 +2,58 @@
 import { useRouter, usePathname } from 'next/navigation';
 
 export default function StudentMasterLayout({ children }) {
-  const router = useRouter();
+  const router   = useRouter();
   const pathname = usePathname();
 
-  const getBtnClass = (path) => {
-    const isActive = pathname === path;
-    return isActive 
-      ? "px-6 py-2 bg-[#fbbf24] text-[#020617] rounded-full text-[10px] font-black uppercase border-b-4 border-amber-600 shadow-lg italic transition-all scale-105"
-      : "px-6 py-2 bg-white/10 text-white rounded-full text-[10px] font-black uppercase border-2 border-white/20 hover:bg-white/10 italic transition-all";
+  const nav = [
+    { icon:'🏫', label:'School',     path:'/student/school-dashboard' },
+    { icon:'👤', label:'Profile',    path:'/student/profile' },
+    { icon:'⭐', label:'Record',     path:'/student/my-performance' },
+
+    { icon:'🔍', label:'Lost+Found', path:'/student/lost-found' },
+  ];
+
+  const logout = () => {
+    localStorage.removeItem('user');
+    sessionStorage.removeItem('user');
+    router.push('/login');
   };
 
   return (
-    <div className="min-h-screen bg-[#0F071A] font-black text-white selection:bg-[#fbbf24]">
-      
-      {/* --- STUDENT NAVIGATION BAR --- */}
-      <nav className="bg-gradient-to-r from-[#4c1d95] via-[#6d28d9] to-[#1E293B] p-6 md:px-12 flex flex-col md:flex-row justify-between items-center sticky top-0 z-[100] shadow-2xl border-b-[8px] border-[#fbbf24] gap-6 font-black text-white">
-        <div className="flex items-center gap-6 cursor-pointer" onClick={() => router.push('/student/school-dashboard')}>
-          <img src="/logo.jpg" alt="Logo" className="w-12 h-12 rounded-2xl border-2 border-white shadow-xl" />
-          <h1 className="text-xl md:text-3xl uppercase tracking-tighter italic font-black">Shining Stars - Ma Thwe</h1>
+    <div style={{ minHeight:'100vh', background:'#0f0a1e', color:'#fff', fontFamily:'system-ui,sans-serif' }}>
+
+      {/* TOP HEADER */}
+      <header style={{ position:'sticky', top:0, zIndex:100, background:'#0f0a1e', borderBottom:'4px solid #fbbf24', padding:'10px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'10px', cursor:'pointer' }} onClick={() => router.push('/student')}>
+          <div style={{ width:'36px', height:'36px', background:'#fbbf24', borderRadius:'10px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'18px', fontWeight:900, flexShrink:0 }}>🌟</div>
+          <div>
+            <p style={{ fontWeight:900, fontSize:'13px', color:'#fff', margin:0, textTransform:'uppercase', letterSpacing:'0.05em' }}>Shining Stars</p>
+            <p style={{ fontSize:'8px', color:'#fbbf24', margin:0, textTransform:'uppercase', letterSpacing:'0.2em' }}>Student Portal</p>
+          </div>
         </div>
-        
-        <div className="flex flex-wrap justify-center gap-3 font-black">
-          <button onClick={() => router.push('/student/school-dashboard')} className={getBtnClass('/student/school-dashboard')}>SCHOOL 🏠</button>
-          <button onClick={() => router.push('/student/profile')} className={getBtnClass('/student/profile')}>PROFILE 👤</button>
-          <button onClick={() => router.push('/student/my-performance')} className={getBtnClass('/student/my-performance')}>MY-RECORD ★</button>
-          {/* ဖြုတ်ထားသောနေရာ: Redundant Logout Button ကို ဖြုတ်လိုက်ပါပြီ */}
-        </div>
+        <button onClick={logout}
+          style={{ background:'rgba(239,68,68,0.15)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:'10px', padding:'6px 12px', color:'#f87171', fontSize:'10px', fontWeight:900, cursor:'pointer', textTransform:'uppercase', letterSpacing:'0.06em' }}>
+          Logout ⏻
+        </button>
+      </header>
+
+      {/* MAIN */}
+      <main style={{ paddingBottom:'72px' }}>{children}</main>
+
+      {/* BOTTOM NAV */}
+      <nav style={{ position:'fixed', bottom:0, left:0, width:'100%', background:'#0f0a1e', borderTop:'4px solid #fbbf24', display:'flex', justifyContent:'space-around', alignItems:'center', padding:'8px 0', zIndex:110, boxSizing:'border-box' }}>
+        {nav.map(item => {
+          const active = pathname === item.path || (item.path==='/student'&&pathname==='/student');
+          return (
+            <button key={item.path} onClick={() => router.push(item.path)}
+              style={{ background:'none', border:'none', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:'3px', padding:'4px 8px', opacity:active?1:0.4, transition:'opacity 0.15s' }}>
+              <span style={{ fontSize:'20px', filter:active?'drop-shadow(0 0 6px #fbbf24)':'grayscale(1)' }}>{item.icon}</span>
+              <span style={{ fontSize:'8px', fontWeight:900, textTransform:'uppercase', letterSpacing:'0.08em', color:active?'#fbbf24':'#fff' }}>{item.label}</span>
+              {active && <div style={{ width:'16px', height:'2px', background:'#fbbf24', borderRadius:'99px' }}/>}
+            </button>
+          );
+        })}
       </nav>
-
-      <main className="relative z-10">{children}</main>
-
-      <style jsx global>{`
-        body { background-color: #0F071A; font-weight: 900 !important; }
-        ::-webkit-scrollbar { width: 10px; }
-        ::-webkit-scrollbar-thumb { background: #fbbf24; border-radius: 10px; }
-      `}</style>
     </div>
   );
 }
