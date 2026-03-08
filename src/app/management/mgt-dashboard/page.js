@@ -76,6 +76,7 @@ export default function ManagementDashboard() {
         { name: 'Communication',     path: '/management/communication',icon: '📢' },
         { name: 'Calendar',          path: '/management/calendar',     icon: '📅' },
         { name: 'Photo Upload',      path: '/management/photo-upload', icon: '📸' },
+        { name: 'Staff Permissions', path: '/management/staff-permissions',  icon: '🔐' },
       ]
     }
   ];

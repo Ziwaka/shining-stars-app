@@ -88,6 +88,13 @@ export default function StudentSchoolDashboard() {
         const ptsRes = await fetchSheet("House_Points");
         const annRes = await fetchSheet("Announcements");
 
+        // Fetch house config from System_Config via GAS
+        const cfgRes = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getHouseConfig' }) });
+        const cfgData = await cfgRes.json();
+        const configHouseNames = cfgData.success && cfgData.houses?.length > 0
+          ? cfgData.houses
+          : ["အနော်ရထာ", "ကျန်စစ်သား", "ဘုရင့်နောင်", "အလောင်းဘုရား", "ဗန္ဓုလ"];
+
         if (!isMounted) return;
 
         // 1. Build Student Directory Lookup Map
@@ -109,7 +116,8 @@ export default function StudentSchoolDashboard() {
 
         // 2. Process House Points
         if (ptsRes.success && Array.isArray(ptsRes.data)) {
-          let initialTotals = { "အနော်ရထာ": 0, "ကျန်စစ်သား": 0, "ဘုရင့်နောင်": 0, "အလောင်းဘုရား": 0, "ဗန္ဓုလ": 0 };
+          let initialTotals = {};
+          configHouseNames.forEach(h => { initialTotals[h] = 0; });
           let earned = [];
           let deducted = [];
 

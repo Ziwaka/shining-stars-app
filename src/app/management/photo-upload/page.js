@@ -3,10 +3,8 @@ import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
 const CLOUD_NAME = 'dg9m3ktno';
-const PRESETS = {
-  students: 'shining-stars-students',
-  staff:    'shining-stars-staff'
-};
+const PRESET     = 'shining-stars';
+const FOLDERS    = { students: 'shining-stars/students', staff: 'shining-stars/staff' };
 
 export default function PhotoUploadPage() {
   const router = useRouter();
@@ -48,13 +46,14 @@ export default function PhotoUploadPage() {
     setProgress({ done: 0, total: pending.length, errors: 0 });
 
     let done = 0, errors = 0;
-    addLog('info', `📤 ${pending.length} files → shining-stars/${tab}`);
+    addLog('info', `📤 ${pending.length} files → ${FOLDERS[tab]}`);
 
     for (const item of pending) {
       updateStatus(item.id, 'uploading');
       const fd = new FormData();
       fd.append('file', item.file);
-      fd.append('upload_preset', PRESETS[tab]);
+      fd.append('upload_preset', PRESET);
+      fd.append('folder', FOLDERS[tab]);
       fd.append('public_id', item.publicId);
 
       try {

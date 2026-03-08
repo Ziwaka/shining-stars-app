@@ -10,8 +10,8 @@ const PERMISSIONS = [
   { key:'Can_Manage_Hostel',          label:'Manage Hostel',       icon:'🏠', desc:'Hostel directory & inventory' },
   { key:'Can_Manage_Inventory',       label:'School Inventory',    icon:'📦', desc:'ကျောင်း inventory စီမံခန့်ခွဲခွင့်' },
   { key:'Can_Record_Note',            label:'Notes & Scores',      icon:'📝', desc:'Student notes / score မှတ်တမ်းတင်ခွင့်' },
-  { key:'Can_Adjust_Points',          label:'House Points',        icon:'⭐', desc:'House points ထည့်ခွင့်' },
-  { key:'Can_Record_Attendance',      label:'Attendance & Leave',  icon:'✅', desc:'Attendance / leave မှတ်ခွင့်' },
+  { key:'Can_Record_Points',          label:'House Points',        icon:'⭐', desc:'House points ထည့်ခွင့်' },
+  { key:'Can_Record_Attendance_&_Leave',      label:'Attendance & Leave',  icon:'✅', desc:'Attendance / leave မှတ်ခွင့်' },
   { key:'Can_Post_Announcement',      label:'Announcements',       icon:'📢', desc:'Announcement တင်ခွင့်' },
   { key:'Can_Manage_Events',          label:'Events / Calendar',   icon:'📅', desc:'Events calendar ထည့်/ပြင်ခွင့်' },
 ];
@@ -72,7 +72,8 @@ export default function StaffPermissionsPage() {
     try {
       const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({
         action:      'updateStaffPermissions',
-        Staff_ID:    selected.Staff_ID || selected.Username,
+        Staff_ID:    selected.Staff_ID,
+        Name:        selected.Name,
         permissions: perms,
         Status:      status,
       }) });
@@ -81,7 +82,7 @@ export default function StaffPermissionsPage() {
         showMsg('Permission update ပြီးပါပြီ ✓');
         // Update local state
         setStaff(prev => prev.map(s =>
-          (s.Staff_ID || s.Username) === (selected.Staff_ID || selected.Username)
+          (s.Staff_ID || s.Username) === (selected.Staff_ID)
             ? { ...s, ...perms, Status: status }
             : s
         ));
@@ -100,7 +101,7 @@ export default function StaffPermissionsPage() {
   const filtered = staff.filter(s => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return (s.Name||'').toLowerCase().includes(q) || (s.Staff_ID||'').toString().includes(q) || (s.Username||'').toLowerCase().includes(q);
+    return (s.Name||'').toLowerCase().includes(q) || (s.Staff_ID||'').toString().toLowerCase().includes(q);
   });
 
   const permCount = s => PERMISSIONS.filter(({ key }) => toBool(s[key])).length;
@@ -148,7 +149,7 @@ export default function StaffPermissionsPage() {
                     <div>
                       <p style={{ fontWeight:900, fontSize:'13px', color: active?'#fff':'rgba(255,255,255,0.4)', margin:'0 0 4px' }}>{s.Name}</p>
                       <p style={{ fontSize:'9px', color:'rgba(255,255,255,0.3)', margin:0 }}>
-                        ID: {s.Staff_ID || s.Username}
+                        ID: {s.Staff_ID}
                         {!active && <span style={{ marginLeft:'8px', color:'#f87171', fontWeight:900 }}>INACTIVE</span>}
                       </p>
                     </div>
@@ -175,7 +176,7 @@ export default function StaffPermissionsPage() {
                   style={{ background:'rgba(255,255,255,0.08)', border:'none', color:'rgba(255,255,255,0.6)', borderRadius:'10px', padding:'8px 14px', cursor:'pointer', fontSize:'12px', fontWeight:900 }}>← Back</button>
                 <div>
                   <p style={{ fontWeight:900, fontSize:'15px', color:'#fff', margin:0 }}>{selected.Name}</p>
-                  <p style={{ fontSize:'9px', color:'rgba(255,255,255,0.3)', margin:0 }}>ID: {selected.Staff_ID || selected.Username}</p>
+                  <p style={{ fontSize:'9px', color:'rgba(255,255,255,0.3)', margin:0 }}>ID: {selected.Staff_ID}</p>
                 </div>
               </div>
 

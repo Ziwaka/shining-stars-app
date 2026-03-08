@@ -1,478 +1,494 @@
 "use client";
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { WEB_APP_URL, GIDS } from '@/lib/api';
+import { WEB_APP_URL } from '@/lib/api';
 
-/**
- * Ma Thwe - Fees Management Hub (v4.1 - Bug Fix)
- * FIXED:
- * - Button disabled bug: amount always initialized from loaded categories
- * - Due state managed separately so optimistic update clears it instantly
- * - No duplicate records: feeLogs append only once after server confirm
- * - Button: idle → amber/processing → green/success → form reset (no reload)
- */
+const GRADES = ['KG','1','2','3','4','5','6','7','8','9','10','11','12'];
+const SECTIONS = ['','A','B','C','D','E'];
+
 export default function FeesManagementHub() {
-  const [students, setStudents] = useState([]);
-  const [feeLogs, setFeeLogs] = useState([]);
+  const router   = useRouter();
+  const [tab, setTab]             = useState('single');
+  const [staff, setStaff]         = useState(null);
+  const [loading, setLoading]     = useState(true);
+  const [saving, setSaving]       = useState(false);
+  const [msg, setMsg]             = useState(null);
+
   const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [staff, setStaff] = useState(null);
-  const router = useRouter();
+  const [students, setStudents]     = useState([]);
+  const [feeLogs, setFeeLogs]       = useState([]);
 
-  const [search, setSearch] = useState("");
+  const [search, setSearch]             = useState('');
   const [selectedStudent, setSelectedStudent] = useState(null);
-  const [btnState, setBtnState] = useState("idle"); // "idle" | "processing" | "success"
-
-  // activeDue managed as its own state so we can clear it instantly on settle
-  // null = no due | { amount, dueDate } = outstanding
-  const [activeDue, setActiveDue] = useState(null);
-
-  const categoriesRef = useRef([]);
-  const initializedRef = useRef(false); // ✅ guard: run init only once
-
-  const buildDefaultForm = (cats) => ({
-    category: cats?.[0]?.Setting_Name || "",
-    amount: String(cats?.[0]?.Value_1 || "0"),
-    date: new Date().toISOString().split('T')[0],
-    nextAmount: "0",
-    dueDate: "",
-    remark: ""
+  const [btnState, setBtnState]         = useState('idle');
+  const [activeDue, setActiveDue]       = useState(null);
+  const [form, setForm] = useState({
+    category:'', amount:'', date: new Date().toISOString().split('T')[0],
+    nextAmount:'0', dueDate:'', remark:''
   });
 
-  const [form, setForm] = useState(buildDefaultForm([]));
+  const [bulkGrade, setBulkGrade]     = useState('');
+  const [bulkSection, setBulkSection] = useState('');
+  const [bulkCat, setBulkCat]         = useState('');
+  const [bulkDate, setBulkDate]       = useState(new Date().toISOString().split('T')[0]);
+  const [bulkData, setBulkData]       = useState({});
+
+  const initRef = useRef(false);
 
   useEffect(() => {
-    // ✅ FIXED: empty dependency [] so this runs ONCE only, never on re-render
-    // Guard ref prevents StrictMode double-invoke from double-fetching
-    if (initializedRef.current) return;
-    initializedRef.current = true;
-
-    const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || "null");
+    if (initRef.current) return;
+    initRef.current = true;
+    const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
     if (!auth) { router.push('/login'); return; }
-
-    const isManagement = auth.userRole === 'management' || auth.Position === 'GM';
-    const hasFeesPermission = auth['Can_Manage_Fees'] === true || String(auth['Can_Manage_Fees']).trim().toUpperCase() === "TRUE";
-
-    if (!isManagement && !hasFeesPermission) { router.push('/staff'); return; }
+    const hasPerm = auth.userRole==='management' || auth.Position==='GM'
+      || auth['Can_Manage_Fees']===true || String(auth['Can_Manage_Fees']).toUpperCase()==='TRUE';
+    if (!hasPerm) { router.push('/staff'); return; }
     setStaff(auth);
+    fetchAll();
+  }, []);
 
-    const initFinanceHub = async () => {
-      try {
-        const [sRes, fRes, cRes] = await Promise.all([
-          fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getData', targetGid: GIDS.STUDENT_DIR, sheetName: 'Student_Directory' }) }),
-          fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getData', sheetName: 'Fees_Management' }) }),
-          fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getConfig', category: 'Fee_Categories' }) })
-        ]);
-        const sData = await sRes.json();
-        const fData = await fRes.json();
-        const cData = await cRes.json();
-
-        if (sData.success) {
-          setStudents(sData.data.filter(s => {
-            const stat = String(s.Status || "").trim().toUpperCase();
-            return s.Status === true || stat === "TRUE" || stat === "ACTIVE" || stat === "";
-          }));
-        }
-        if (fData.success) setFeeLogs(fData.data);
-        if (cData.success && cData.data.length > 0) {
-          const cats = cData.data;
-          categoriesRef.current = cats;
-          setCategories(cats);
-          setForm(buildDefaultForm(cats));
-        }
-      } finally {
-        setLoading(false); // ✅ only called once, never again
-      }
-    };
-    initFinanceHub();
-  }, []); // ✅ FIXED: was [router] which caused re-runs → now empty array
-
-  // ─── Derived State ────────────────────────────────────────────────────────
-  const currentStudentId = selectedStudent?.['Enrollment No.'] || selectedStudent?.Student_ID || selectedStudent?.ID;
-
-  const studentLedger = feeLogs.filter(
-    log => String(log.Student_ID) === String(currentStudentId)
-  );
-
-  // Paid records (Amount_Paid > 0), newest first
-  const paidRecords = studentLedger
-    .filter(log => Number(log.Amount_Paid || 0) > 0)
-    .slice()
-    .reverse();
-
-  const totalPaidSum = paidRecords.reduce((sum, r) => sum + Number(r.Amount_Paid || 0), 0);
-
-  // ✅ FIX: Recalculate activeDue from ledger when student changes
-  // activeDue state is source of truth for display,
-  // but we sync it from ledger when selectedStudent changes
-  useEffect(() => {
-    if (!currentStudentId) { setActiveDue(null); return; }
-    const ledger = feeLogs.filter(log => String(log.Student_ID) === String(currentStudentId));
-    const last = ledger.length > 0 ? ledger[ledger.length - 1] : null;
-    const dueAmt = Number(last?.Next_Due_Amount || 0);
-    setActiveDue(dueAmt > 0 ? { amount: dueAmt, dueDate: last?.Next_Due_Date || "" } : null);
-  }, [currentStudentId, feeLogs]);
-
-  // ─── Handlers ─────────────────────────────────────────────────────────────
-  const handleSettleDue = () => {
-    if (!activeDue) return;
-    setForm(prev => ({
-      ...prev,
-      category: "DUE SETTLEMENT",
-      amount: activeDue.amount.toString(),
-      remark: `Settlement for due dated ${activeDue.dueDate}`,
-      nextAmount: "0",
-      dueDate: ""
-    }));
-    window.scrollTo({ top: 350, behavior: 'smooth' });
-  };
-
-  const handleCategoryChange = (catName) => {
-    const cat = categories.find(c => c.Setting_Name === catName);
-    setForm(prev => ({
-      ...prev,
-      category: catName,
-      // only overwrite amount if category has a preset value
-      amount: cat?.Value_1 ? String(cat.Value_1) : prev.amount
-    }));
-  };
-
-  const handleSubmit = async () => {
-    if (!selectedStudent || !form.amount || btnState !== "idle") return;
-
-    setBtnState("processing");
-
-    const sId = selectedStudent['Enrollment No.'] || selectedStudent.Student_ID || selectedStudent.ID;
-    const nextDueAmt = form.nextAmount || "0";
-    const payload = [{
-      Date: form.date,
-      Student_ID: sId,
-      Fee_Category: form.category,
-      Amount_Paid: form.amount,
-      Next_Due_Date: form.dueDate || "",
-      Next_Due_Amount: nextDueAmt,
-      Status: "PAID",
-      Recorded_By: staff?.Name || "",
-      Remark: form.remark
-    }];
-
+  const fetchAll = async () => {
+    setLoading(true);
     try {
-      const res = await fetch(WEB_APP_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'recordNote', sheetName: 'Fees_Management', data: payload })
-      });
-      const result = await res.json();
-
-      if (result.success) {
-        // ✅ FIX: Append to feeLogs (triggers activeDue useEffect to recalculate)
-        const newLog = {
-          Student_ID: String(sId),
-          Date: form.date,
-          Fee_Category: form.category,
-          Amount_Paid: form.amount,
-          Next_Due_Date: form.dueDate || "",
-          Next_Due_Amount: nextDueAmt,
-          Status: "PAID",
-          Recorded_By: staff?.Name || "",
-          Remark: form.remark
-        };
-        setFeeLogs(prev => [...prev, newLog]);
-
-        // ✅ FIX: If this was a settlement (nextAmount=0), clear due immediately
-        if (Number(nextDueAmt) === 0) {
-          setActiveDue(null);
-        } else {
-          setActiveDue({ amount: Number(nextDueAmt), dueDate: form.dueDate || "" });
-        }
-
-        setBtnState("success");
-
-        // After 1.5s → reset to idle + clear form
-        setTimeout(() => {
-          setBtnState("idle");
-          setForm(buildDefaultForm(categoriesRef.current));
-        }, 1500);
-
+      const [catRes, stuRes, feeRes] = await Promise.all([
+        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getFeeConfig' }) }),
+        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getData', sheetName:'Student_Directory' }) }),
+        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getData', sheetName:'Fees_Management' }) }),
+      ]);
+      const catData = await catRes.json();
+      const stuData = await stuRes.json();
+      const feeData = await feeRes.json();
+      if (catData.success && (catData.categories||[]).length > 0) {
+        setCategories(catData.categories || []);
+        const first = catData.categories?.[0];
+        setForm(f => ({ ...f, category: first?.name||'', amount: String(first?.amount||'') }));
+        setBulkCat(first?.name||'');
       } else {
-        setBtnState("idle");
-        alert("Server Error: " + (result.message || "Unknown error"));
+        // Fallback: try old getConfig endpoint
+        try {
+          const fallbackRes = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getConfig', category:'Fee_Categories' }) });
+          const fallbackData = await fallbackRes.json();
+          if (fallbackData.success && fallbackData.data?.length > 0) {
+            const cats = fallbackData.data.map(r => ({ name: r.Setting_Name||r.Category||r.Name||'', amount: Number(r.Value_1||r.Amount||0) })).filter(c=>c.name);
+            if (!cats.find(c=>c.name==='DUE SETTLEMENT')) cats.push({ name:'DUE SETTLEMENT', amount:0 });
+            setCategories(cats);
+            const first = cats[0];
+            setForm(f => ({ ...f, category: first?.name||'', amount: String(first?.amount||'') }));
+            setBulkCat(first?.name||'');
+          }
+        } catch {}
       }
-    } catch (e) {
-      setBtnState("idle");
-      alert("Network Error. Please check connection.");
-    }
+      if (stuData.success) setStudents(stuData.data || []);
+      if (feeData.success) setFeeLogs(feeData.data || []);
+    } catch {}
+    setLoading(false);
   };
 
-  // ─── Filtered Students ────────────────────────────────────────────────────
-  const filteredStudents = search.trim() === ""
-    ? students.slice(0, 8)
-    : students.filter(s => {
-        const nameMatch = (s['Name (ALL CAPITAL)'] || s.Name || "").toLowerCase().includes(search.toLowerCase());
-        const idMatch = (s['Enrollment No.'] || s.Student_ID || "").toString().includes(search);
-        return nameMatch || idMatch;
-      }).slice(0, 10);
+  const showMsg = (text, type='success') => { setMsg({text,type}); setTimeout(()=>setMsg(null),4000); };
 
-  // ─── Loading Screen ───────────────────────────────────────────────────────
+  const currentId = selectedStudent?.['Enrollment No.'] || selectedStudent?.Student_ID || '';
+  const ledger    = feeLogs.filter(l => String(l.Student_ID)===String(currentId));
+  const paidRecs  = ledger.filter(l => Number(l.Amount_Paid||0)>0).slice().reverse();
+  const totalPaid = paidRecs.reduce((s,r) => s+Number(r.Amount_Paid||0), 0);
+
+  useEffect(() => {
+    if (!currentId) { setActiveDue(null); return; }
+    const last = ledger.length ? ledger[ledger.length-1] : null;
+    const due  = Number(last?.Next_Due_Amount||0);
+    setActiveDue(due>0 ? { amount:due, dueDate:last?.Next_Due_Date||'' } : null);
+  }, [currentId, feeLogs]);
+
+  const handleCatChange = (name) => {
+    const cat = categories.find(c => c.name===name);
+    setForm(f => ({ ...f, category:name, amount: cat?.amount ? String(cat.amount) : f.amount }));
+  };
+
+  const handleSingle = async () => {
+    if (!selectedStudent || !form.amount || btnState!=='idle') return;
+    setBtnState('processing');
+    const payload = [{
+      Date: form.date, Student_ID: currentId,
+      Name: selectedStudent['Name (ALL CAPITAL)']||selectedStudent.Name||'',
+      Grade: selectedStudent.Grade||'',
+      Fee_Category: form.category, Amount_Paid: form.amount,
+      Next_Due_Date: form.dueDate||'', Next_Due_Amount: form.nextAmount||'0',
+      Status:'PAID', Recorded_By: staff?.Name||'', Remark: form.remark
+    }];
+    try {
+      const res  = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'recordNote', sheetName:'Fees_Management', data:payload[0] }) });
+      const r    = await res.json();
+      if (r.success) {
+        setFeeLogs(prev => [...prev, payload[0]]);
+        Number(form.nextAmount)===0 ? setActiveDue(null) : setActiveDue({ amount:Number(form.nextAmount), dueDate:form.dueDate||'' });
+        setBtnState('success');
+        setTimeout(() => {
+          setBtnState('idle');
+          const first = categories[0];
+          setForm({ category:first?.name||'', amount:String(first?.amount||''), date:new Date().toISOString().split('T')[0], nextAmount:'0', dueDate:'', remark:'' });
+        }, 1500);
+      } else { setBtnState('idle'); showMsg(r.message||'Error','error'); }
+    } catch { setBtnState('idle'); showMsg('Network error','error'); }
+  };
+
+  const getStudentGrade   = (s) => String(s['Grade']||s['Class']||s['grade']||s['class']||'').replace(/grade\s*/i,'').trim();
+  const getStudentSection = (s) => String(s['Section']||s['section']||s['Class_Section']||'').trim();
+  const bulkStudents = students.filter(s => {
+    if (!bulkGrade) return false;
+    const g   = getStudentGrade(s);
+    const sec = getStudentSection(s);
+    if (g !== String(bulkGrade)) return false;
+    if (bulkSection && sec && sec !== bulkSection) return false;
+    return true;
+  });
+
+  useEffect(() => {
+    const init = {};
+    const cat  = categories.find(c => c.name===bulkCat);
+    bulkStudents.forEach(s => {
+      const sid = s['Enrollment No.']||s.Student_ID||'';
+      if (sid) init[sid] = { amount: cat?.amount ? String(cat.amount):'', nextAmount:'0', nextDate:'', remark:'' };
+    });
+    setBulkData(init);
+  }, [bulkGrade, bulkSection, bulkCat]);
+
+  const handleBulkCatChange = (name) => {
+    setBulkCat(name);
+    const cat = categories.find(c => c.name===name);
+    setBulkData(prev => {
+      const next = {...prev};
+      Object.keys(next).forEach(k => { next[k] = {...next[k], amount: cat?.amount ? String(cat.amount) : next[k].amount}; });
+      return next;
+    });
+  };
+
+  const handleBulkSubmit = async () => {
+    const entries = bulkStudents.map(s => {
+      const sid  = s['Enrollment No.']||s.Student_ID||'';
+      const row  = bulkData[sid]||{};
+      return { Student_ID:sid, Name:s['Name (ALL CAPITAL)']||s.Name||'', Grade:bulkGrade,
+        Fee_Category:bulkCat, Amount_Paid:row.amount||'',
+        Next_Due_Amount:row.nextAmount||'0', Next_Due_Date:row.nextDate||'', Remark:row.remark||'' };
+    }).filter(e => e.Amount_Paid && Number(e.Amount_Paid)>0);
+    if (!entries.length) return showMsg('Amount မထည့်ရသေးပါ','error');
+    setSaving(true);
+    try {
+      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({
+        action:'recordFeesBulk', entries, Date:bulkDate, Recorded_By:staff?.Name||''
+      })});
+      const r = await res.json();
+      if (r.success) {
+        showMsg(r.message||'✓ သိမ်းပြီး');
+        setFeeLogs(prev => [...prev, ...entries.map(e=>({...e, Date:bulkDate, Status:'PAID', Recorded_By:staff?.Name||''}))]);
+      } else showMsg(r.message||'Error','error');
+    } catch { showMsg('Network error','error'); }
+    setSaving(false);
+  };
+
+  const filteredStudents = search.trim()===''
+    ? students.slice(0,8)
+    : students.filter(s => {
+        const name = (s['Name (ALL CAPITAL)']||s.Name||'').toLowerCase();
+        const id   = String(s['Enrollment No.']||s.Student_ID||'');
+        return name.includes(search.toLowerCase()) || id.includes(search);
+      }).slice(0,10);
+
   if (loading) return (
-    <div className="min-h-screen flex flex-col items-center justify-center font-black animate-pulse uppercase italic" style={{background:'#F0F9FF', color:'#4c1d95'}}>
-      Synchronizing Secure Hub...
+    <div style={{minHeight:'100vh',background:'#F0F9FF',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,color:'#4c1d95',textTransform:'uppercase',fontStyle:'italic',fontFamily:'system-ui,sans-serif'}}>
+      Loading...
     </div>
   );
 
-  // ─── Main UI ──────────────────────────────────────────────────────────────
+  const inp = (extra={}) => ({
+    width:'100%', background:'#f8fafc', border:'2px solid #f1f5f9', borderRadius:'16px',
+    padding:'12px 16px', fontWeight:900, fontStyle:'italic', fontSize:'13px', outline:'none',
+    boxSizing:'border-box', fontFamily:'system-ui,sans-serif', color:'#0f172a', ...extra
+  });
+
+  const tabBtn = (id, label) => (
+    <button onClick={()=>setTab(id)} style={{
+      background: tab===id ? '#4c1d95' : 'white',
+      color: tab===id ? '#fbbf24' : '#94a3b8',
+      border: tab===id ? 'none' : '2px solid #f1f5f9',
+      borderRadius:'16px', padding:'8px 18px', fontSize:'10px',
+      fontWeight:900, textTransform:'uppercase', cursor:'pointer', whiteSpace:'nowrap',
+      fontFamily:'system-ui,sans-serif', fontStyle:'italic', letterSpacing:'0.05em'
+    }}>{label}</button>
+  );
+
   return (
-    <div className="min-h-screen font-black text-slate-950" style={{background:'#F0F9FF'}}>
-      <div className="mx-auto p-4 pb-20 space-y-6" style={{maxWidth:'1200px'}}>
+    <div style={{minHeight:'100vh',background:'#F0F9FF',fontFamily:'system-ui,sans-serif',paddingBottom:'80px'}}>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box}input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}input[type=number]{-moz-appearance:textfield}::-webkit-scrollbar{height:4px}::-webkit-scrollbar-thumb{background:#fbbf24;border-radius:4px}`}</style>
 
-        {/* ── HEADER ── */}
-        <div className="p-6 shadow-xl space-y-6" style={{background:'#4c1d95', borderRadius:'2.5rem', borderBottomWidth:'8px', borderColor:'#fbbf24'}}>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.push('/staff')}
-              className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shadow-lg active:scale-90 transition-transform" style={{background:'#fbbf24'}}
-            >←</button>
-            <h1 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Fees Hub</h1>
+      <div style={{background:'#4c1d95',padding:'20px 16px',borderBottom:'8px solid #fbbf24'}}>
+        <div style={{display:'flex',alignItems:'center',gap:'12px',maxWidth:'700px',margin:'0 auto'}}>
+          <button onClick={()=>router.back()} style={{width:'44px',height:'44px',background:'#fbbf24',borderRadius:'14px',border:'none',fontSize:'20px',cursor:'pointer',flexShrink:0}}>←</button>
+          <div>
+            <p style={{color:'white',fontWeight:900,fontSize:'22px',fontStyle:'italic',textTransform:'uppercase',letterSpacing:'-0.02em',margin:0}}>Fees Hub</p>
+            <p style={{color:'rgba(255,255,255,0.4)',fontSize:'9px',textTransform:'uppercase',fontWeight:900,margin:0}}>Shining Stars</p>
           </div>
-
-          {selectedStudent && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white/10 p-4 rounded-2xl border border-white/10">
-                <p className="uppercase font-black tracking-widest" style={{color:'#fbbf24', fontSize:'8px'}}>Total Paid</p>
-                <p className="text-xl text-white italic truncate">{totalPaidSum.toLocaleString()} MMK</p>
-              </div>
-              <div className="bg-rose-500/20 p-4 rounded-2xl border border-rose-500/30">
-                <p className="text-rose-300 uppercase font-black tracking-widest" style={{fontSize:'8px'}}>Outstanding Due</p>
-                <p className="text-xl text-rose-400 italic truncate">
-                  {activeDue ? activeDue.amount.toLocaleString() : "0"} MMK
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* ── 1. SELECT STUDENT ── */}
-        <div className="bg-white p-6 shadow-lg space-y-4 border-b-4 border-slate-100" style={{borderRadius:'2.5rem'}}>
-          <h2 className="font-black uppercase text-slate-400 italic" style={{fontSize:'10px'}}>1. Identify Student</h2>
-          <input
-            type="text"
-            placeholder="SEARCH NAME OR ID..."
-            className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl text-slate-950 font-black italic text-sm outline-none focus:border-gold"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <div className="flex overflow-x-auto gap-3 pb-2 custom-scrollbar">
-            {filteredStudents.map((s, idx) => {
-              const sId = s['Enrollment No.'] || s.Student_ID;
-              const isActive = String(currentStudentId) === String(sId);
-              return (
-                <button
-                  key={idx}
-                  onClick={() => setSelectedStudent(s)}
-                  className={`shrink-0 p-4 px-6 rounded-2xl border-2 flex flex-col transition-all ${
-                    isActive
-                      ? 'bg-gold border-gold scale-105 shadow-md'
-                      : 'bg-slate-50 border-slate-100 text-slate-400'
-                  }`}
-                >
-                  <span className="font-black mb-1 opacity-60" style={{fontSize:'8px'}}>ID: {sId}</span>
-                  <p className="text-xs uppercase italic font-black whitespace-nowrap">
-                    {s['Name (ALL CAPITAL)'] || s.Name}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* ── 2. PAYMENT ENTRY FORM ── */}
-        <div className="bg-white p-8 border-indigo-950 shadow-2xl space-y-6" style={{borderRadius:'3rem', borderBottomWidth:'12px'}}>
-          <h2 className="font-black uppercase text-indigo-900 italic" style={{fontSize:'10px'}}>2. Financial Entry</h2>
-          <div className="space-y-4">
-
-            {/* Date */}
-            <div className="space-y-1">
-              <label className="uppercase text-slate-400 font-black ml-4 italic" style={{fontSize:'9px'}}>Payment Date</label>
-              <input
-                type="date"
-                className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-black italic text-sm outline-none focus:border-indigo-950"
-                value={form.date}
-                onChange={(e) => setForm({ ...form, date: e.target.value })}
-              />
-            </div>
-
-            {/* Category */}
-            <div className="space-y-1">
-              <label className="uppercase text-slate-400 font-black ml-4 italic" style={{fontSize:'9px'}}>Category</label>
-              <select
-                className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-black italic text-base outline-none focus:border-indigo-950 appearance-none"
-                value={form.category}
-                onChange={(e) => handleCategoryChange(e.target.value)}
-              >
-                {categories.map((c, i) => (
-                  <option key={i} value={c.Setting_Name}>{c.Setting_Name}</option>
-                ))}
-                <option value="DUE SETTLEMENT">DUE SETTLEMENT</option>
-              </select>
-            </div>
-
-            {/* Amount */}
-            <div className="space-y-1">
-              <label className="uppercase text-slate-400 font-black ml-4 italic" style={{fontSize:'9px'}}>Amount (MMK)</label>
-              <input
-                type="number"
-                className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-black italic text-2xl text-emerald-600 outline-none focus:border-emerald-400"
-                value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: e.target.value })}
-              />
-            </div>
-
-            {/* Next Due */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="uppercase text-rose-500 font-black ml-4 italic" style={{fontSize:'9px'}}>Next Due MMK</label>
-                <input
-                  type="number"
-                  className="w-full bg-rose-50 border-2 border-rose-100 p-4 rounded-2xl font-black italic text-sm text-rose-600 outline-none focus:border-rose-400"
-                  value={form.nextAmount}
-                  onChange={(e) => setForm({ ...form, nextAmount: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="uppercase text-rose-500 font-black ml-4 italic" style={{fontSize:'9px'}}>Due Date</label>
-                <input
-                  type="date"
-                  className="w-full bg-rose-50 border-2 border-rose-100 p-4 rounded-2xl font-black italic text-sm text-rose-600 outline-none focus:border-rose-400"
-                  value={form.dueDate}
-                  onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-                />
-              </div>
-            </div>
-
-            {/* Remark */}
-            <div className="space-y-1">
-              <label className="uppercase text-slate-400 font-black ml-4 italic" style={{fontSize:'9px'}}>Remark / Memo</label>
-              <input
-                type="text"
-                className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl font-black italic text-sm outline-none focus:border-indigo-200"
-                value={form.remark}
-                onChange={(e) => setForm({ ...form, remark: e.target.value })}
-              />
-            </div>
-
-            {/* Submit Button - 3 States */}
-            <button
-              onClick={handleSubmit}
-              disabled={!selectedStudent || !form.amount || btnState !== "idle"}
-              className={`w-full py-6 rounded-[2rem] text-lg font-black uppercase shadow-xl transition-all duration-200 border-b-8 active:translate-y-2
-                ${btnState === "idle"
-                  ? "bg-slate-950 text-white border-indigo-700 hover:bg-indigo-950"
-                  : ""}
-                ${btnState === "processing"
-                  ? "bg-amber-400 text-slate-950 border-amber-600 scale-[0.98] cursor-not-allowed"
-                  : ""}
-                ${btnState === "success"
-                  ? "bg-emerald-500 text-white border-emerald-700 scale-100 cursor-not-allowed"
-                  : ""}
-                ${(!selectedStudent || !form.amount) && btnState === "idle"
-                  ? "opacity-40 cursor-not-allowed"
-                  : ""}
-              `}
-            >
-              {btnState === "idle" && "Record Registry ★"}
-              {btnState === "processing" && (
-                <span className="flex items-center justify-center gap-3">
-                  <span className="inline-block w-4 h-4 border-4 border-slate-950/30 border-t-slate-950 rounded-full animate-spin"></span>
-                  PROCESSING...
-                </span>
-              )}
-              {btnState === "success" && "✓ PAID — RECORDED"}
-            </button>
-          </div>
-        </div>
-
-        {/* ── 3. SMART LEDGER ── */}
-        <div className="bg-slate-950 p-8 shadow-2xl space-y-6" style={{borderRadius:'3rem'}}>
-          <h2 className="font-black uppercase italic flex items-center gap-2" style={{fontSize:'10px', color:'#fbbf24'}}>
-            <span className="w-1.5 h-4 rounded-full" style={{background:'#fbbf24'}}></span>
-            3. Ledger History
-          </h2>
-
-          {!selectedStudent ? (
-            <p className="text-white/20 text-center italic py-10 uppercase" style={{fontSize:'10px'}}>Select a student profile.</p>
-          ) : (
-            <div className="space-y-4">
-
-              {/* ── Outstanding Due Banner (only shown when due exists) ── */}
-              {activeDue && (
-                <div className="bg-rose-500 p-6 border-b-8 border-rose-900 shadow-2xl" style={{borderRadius:'2.5rem'}}>
-                  <div className="flex justify-between items-start mb-3">
-                    <span className="font-black uppercase px-3 py-1 rounded-full bg-white text-rose-600 shadow-md" style={{fontSize:'8px'}}>
-                      OUTSTANDING DUE
-                    </span>
-                    <span className="text-white/60 font-black uppercase" style={{fontSize:'8px'}}>
-                      DUE: {activeDue.dueDate || "N/A"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-end">
-                    <div>
-                      <p className="text-white/70 font-black uppercase italic mb-1" style={{fontSize:'8px'}}>Balance Due</p>
-                      <p className="text-3xl font-black text-white italic leading-none">
-                        {activeDue.amount.toLocaleString()} <span className="text-sm">MMK</span>
-                      </p>
-                    </div>
-                    <button
-                      onClick={handleSettleDue}
-                      className="bg-white text-rose-600 px-6 py-3 rounded-full font-black uppercase italic shadow-xl active:scale-95 transition-all" style={{fontSize:'10px'}}
-                    >
-                      Settle Now ⚡
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* ── Paid History ── */}
-              {paidRecords.length > 0 ? (
-                paidRecords.map((log, i) => (
-                  <div key={i} className="bg-white p-5 border-indigo-200 relative overflow-hidden" style={{borderRadius:'2rem', borderBottomWidth:'6px'}}>
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="font-black uppercase px-3 py-1 rounded-full shadow-sm bg-emerald-100 text-emerald-700" style={{fontSize:'7px'}}>
-                        PAID
-                      </span>
-                      <span className="text-slate-400 font-black italic" style={{fontSize:'8px'}}>{log.Date}</span>
-                    </div>
-                    <p className="uppercase text-indigo-900 font-black truncate mb-1" style={{fontSize:'8px'}}>{log.Fee_Category}</p>
-                    <p className="text-2xl font-black text-slate-950 italic leading-none">
-                      {Number(log.Amount_Paid || 0).toLocaleString()} <span className="" style={{fontSize:'10px'}}>MMK</span>
-                    </p>
-                    {log.Remark ? (
-                      <p className="text-slate-400 font-black italic mt-2 truncate" style={{fontSize:'8px'}}>※ {log.Remark}</p>
-                    ) : null}
-
-                  </div>
-                ))
-              ) : (
-                <p className="text-white/20 text-center italic py-6 uppercase" style={{fontSize:'10px'}}>No payment history.</p>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
-      <style jsx global>{`
-        body {
-          background-color: #F0F9FF;
-          font-weight: 900 !important;
-          -webkit-tap-highlight-color: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar { height: 4px; width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #fbbf24; border-radius: 10px; }
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-        .animate-spin {
-          animation: spin 0.7s linear infinite;
-        }
-      `}</style>
+      {msg && (
+        <div style={{position:'fixed',top:'12px',left:'50%',transform:'translateX(-50%)',zIndex:50,padding:'8px 20px',borderRadius:'999px',fontSize:'12px',fontWeight:900,color:'white',background:msg.type==='error'?'#ef4444':'#10b981',boxShadow:'0 4px 20px rgba(0,0,0,0.2)',whiteSpace:'nowrap',fontStyle:'italic'}}>
+          {msg.text}
+        </div>
+      )}
+
+      <div style={{maxWidth:'700px',margin:'0 auto',padding:'16px'}}>
+        <div style={{display:'flex',gap:'8px',marginBottom:'16px',overflowX:'auto',paddingBottom:'4px'}}>
+          {tabBtn('single','👤 Single')}
+          {tabBtn('bulk','📋 Bulk Entry')}
+          {tabBtn('ledger','📒 Ledger')}
+        </div>
+
+        {/* ══ SINGLE ══ */}
+        {tab==='single' && (
+          <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+            <div style={{background:'white',borderRadius:'28px',padding:'20px',boxShadow:'0 2px 12px rgba(0,0,0,0.05)',borderBottom:'4px solid #f1f5f9'}}>
+              <p style={{fontSize:'9px',fontWeight:900,textTransform:'uppercase',color:'#94a3b8',fontStyle:'italic',marginBottom:'10px'}}>1. Select Student</p>
+              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="SEARCH NAME OR ID..." style={inp({marginBottom:'10px'})}/>
+              {selectedStudent && (
+                <div style={{background:'#fbbf24',borderRadius:'16px',padding:'10px 14px',marginBottom:'10px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <div>
+                    <p style={{fontWeight:900,fontSize:'13px',fontStyle:'italic',margin:0}}>{selectedStudent['Name (ALL CAPITAL)']||selectedStudent.Name}</p>
+                    <p style={{fontSize:'9px',opacity:0.7,fontWeight:900,margin:0}}>ID: {currentId} · Grade {selectedStudent.Grade}</p>
+                  </div>
+                  <div style={{textAlign:'right'}}>
+                    <p style={{fontSize:'9px',fontWeight:900,margin:0}}>Total Paid</p>
+                    <p style={{fontWeight:900,fontSize:'14px',fontStyle:'italic',margin:0}}>{totalPaid.toLocaleString()} MMK</p>
+                  </div>
+                </div>
+              )}
+              {activeDue && (
+                <div style={{background:'#fef2f2',border:'2px solid #fecaca',borderRadius:'16px',padding:'10px 14px',display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'10px'}}>
+                  <div>
+                    <p style={{fontSize:'9px',fontWeight:900,color:'#ef4444',textTransform:'uppercase',margin:0}}>Outstanding Due</p>
+                    <p style={{fontWeight:900,fontSize:'16px',color:'#ef4444',fontStyle:'italic',margin:0}}>{activeDue.amount.toLocaleString()} MMK</p>
+                  </div>
+                  <button onClick={()=>setForm(f=>({...f,category:'DUE SETTLEMENT',amount:String(activeDue.amount),remark:`Settlement — due ${activeDue.dueDate}`,nextAmount:'0',tab:'single'}))}
+                    style={{background:'#ef4444',color:'white',border:'none',borderRadius:'12px',padding:'8px 14px',fontWeight:900,fontSize:'10px',cursor:'pointer',fontStyle:'italic',textTransform:'uppercase'}}>
+                    Settle ⚡
+                  </button>
+                </div>
+              )}
+              <div style={{display:'flex',gap:'8px',overflowX:'auto',paddingBottom:'4px'}}>
+                {filteredStudents.map((s,i)=>{
+                  const sid=s['Enrollment No.']||s.Student_ID||'';
+                  const active=String(currentId)===String(sid);
+                  return (
+                    <button key={i} onClick={()=>setSelectedStudent(s)} style={{flexShrink:0,padding:'8px 14px',borderRadius:'14px',border:active?'none':'2px solid #f1f5f9',background:active?'#4c1d95':'#f8fafc',color:active?'white':'#64748b',cursor:'pointer',fontWeight:900,fontStyle:'italic',fontSize:'11px',textAlign:'left'}}>
+                      <p style={{fontSize:'8px',opacity:0.6,margin:0}}>ID:{sid}</p>
+                      <p style={{margin:0,whiteSpace:'nowrap'}}>{s['Name (ALL CAPITAL)']||s.Name}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{background:'white',borderRadius:'28px',padding:'20px',boxShadow:'0 2px 12px rgba(0,0,0,0.05)',borderBottom:'8px solid #0f172a',display:'flex',flexDirection:'column',gap:'12px'}}>
+              <p style={{fontSize:'9px',fontWeight:900,textTransform:'uppercase',color:'#6366f1',fontStyle:'italic',margin:0}}>2. Payment Entry</p>
+              <div>
+                <label style={{fontSize:'9px',fontWeight:900,color:'#94a3b8',textTransform:'uppercase',fontStyle:'italic',display:'block',marginBottom:'4px'}}>Date</label>
+                <input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} style={inp()}/>
+              </div>
+              <div>
+                <label style={{fontSize:'9px',fontWeight:900,color:'#94a3b8',textTransform:'uppercase',fontStyle:'italic',display:'block',marginBottom:'4px'}}>Category</label>
+                <select value={form.category} onChange={e=>handleCatChange(e.target.value)} style={inp()}>
+                  {categories.map((c,i)=><option key={i} value={c.name}>{c.name}{c.amount>0?` — ${c.amount.toLocaleString()} MMK`:''}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{fontSize:'9px',fontWeight:900,color:'#94a3b8',textTransform:'uppercase',fontStyle:'italic',display:'block',marginBottom:'4px'}}>Amount (MMK)</label>
+                <input type="number" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} style={inp({fontSize:'22px',color:'#16a34a'})}/>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px'}}>
+                <div>
+                  <label style={{fontSize:'9px',fontWeight:900,color:'#ef4444',textTransform:'uppercase',fontStyle:'italic',display:'block',marginBottom:'4px'}}>Next Due MMK</label>
+                  <input type="number" value={form.nextAmount} onChange={e=>setForm(f=>({...f,nextAmount:e.target.value}))} style={inp({color:'#ef4444',background:'#fef2f2',border:'2px solid #fecaca'})}/>
+                </div>
+                <div>
+                  <label style={{fontSize:'9px',fontWeight:900,color:'#ef4444',textTransform:'uppercase',fontStyle:'italic',display:'block',marginBottom:'4px'}}>Due Date</label>
+                  <input type="date" value={form.dueDate} onChange={e=>setForm(f=>({...f,dueDate:e.target.value}))} style={inp({color:'#ef4444',background:'#fef2f2',border:'2px solid #fecaca'})}/>
+                </div>
+              </div>
+              <div>
+                <label style={{fontSize:'9px',fontWeight:900,color:'#94a3b8',textTransform:'uppercase',fontStyle:'italic',display:'block',marginBottom:'4px'}}>Remark</label>
+                <input value={form.remark} onChange={e=>setForm(f=>({...f,remark:e.target.value}))} style={inp()}/>
+              </div>
+              <button onClick={handleSingle} disabled={!selectedStudent||!form.amount||btnState!=='idle'}
+                style={{width:'100%',padding:'18px',borderRadius:'20px',border:'none',borderBottom:'8px solid',cursor:(!selectedStudent||!form.amount)?'not-allowed':'pointer',fontWeight:900,fontSize:'14px',fontStyle:'italic',textTransform:'uppercase',letterSpacing:'0.04em',fontFamily:'system-ui,sans-serif',
+                  ...(btnState==='idle'       ? {background:'#0f172a',color:'white',borderColor:'#4338ca',opacity:(!selectedStudent||!form.amount)?0.4:1} :
+                     btnState==='processing'  ? {background:'#fbbf24',color:'#0f172a',borderColor:'#d97706'} :
+                                               {background:'#10b981',color:'white',borderColor:'#047857'})
+                }}>
+                {btnState==='idle' && '★ Record Payment'}
+                {btnState==='processing' && <span style={{display:'flex',alignItems:'center',justifyContent:'center',gap:'8px'}}><span style={{width:'16px',height:'16px',border:'3px solid rgba(0,0,0,0.2)',borderTop:'3px solid #0f172a',borderRadius:'50%',display:'inline-block',animation:'spin 0.7s linear infinite'}}/>Processing...</span>}
+                {btnState==='success' && '✓ Recorded'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ══ BULK ══ */}
+        {tab==='bulk' && (
+          <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+            <div style={{background:'white',borderRadius:'28px',padding:'20px',boxShadow:'0 2px 12px rgba(0,0,0,0.05)',borderBottom:'4px solid #f1f5f9'}}>
+              <p style={{fontSize:'9px',fontWeight:900,textTransform:'uppercase',color:'#94a3b8',fontStyle:'italic',marginBottom:'12px'}}>Filter</p>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'10px'}}>
+                <div>
+                  <label style={{fontSize:'9px',fontWeight:900,color:'#94a3b8',display:'block',marginBottom:'4px',textTransform:'uppercase',fontStyle:'italic'}}>Grade</label>
+                  <select value={bulkGrade} onChange={e=>setBulkGrade(e.target.value)} style={inp()}>
+                    <option value="">— Grade —</option>
+                    {GRADES.map(g=><option key={g} value={g}>{g}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{fontSize:'9px',fontWeight:900,color:'#94a3b8',display:'block',marginBottom:'4px',textTransform:'uppercase',fontStyle:'italic'}}>Section</label>
+                  <select value={bulkSection} onChange={e=>setBulkSection(e.target.value)} style={inp()}>
+                    {SECTIONS.map(s=><option key={s} value={s}>{s===''?'All':s}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px'}}>
+                <div>
+                  <label style={{fontSize:'9px',fontWeight:900,color:'#94a3b8',display:'block',marginBottom:'4px',textTransform:'uppercase',fontStyle:'italic'}}>Category</label>
+                  <select value={bulkCat} onChange={e=>handleBulkCatChange(e.target.value)} style={inp()}>
+                    {categories.filter(c=>c.name!=='DUE SETTLEMENT').map((c,i)=><option key={i} value={c.name}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{fontSize:'9px',fontWeight:900,color:'#94a3b8',display:'block',marginBottom:'4px',textTransform:'uppercase',fontStyle:'italic'}}>Date</label>
+                  <input type="date" value={bulkDate} onChange={e=>setBulkDate(e.target.value)} style={inp()}/>
+                </div>
+              </div>
+            </div>
+
+            {bulkGrade && bulkStudents.length===0 && (
+              <div style={{background:'white',borderRadius:'20px',padding:'30px',textAlign:'center',color:'#94a3b8',fontWeight:900,fontStyle:'italic',fontSize:'13px'}}>
+                Grade {bulkGrade}{bulkSection?` (${bulkSection})`:''} — Student မတွေ့ပါ
+              </div>
+            )}
+
+            {bulkGrade && bulkStudents.length>0 && (<>
+              <div style={{background:'white',borderRadius:'24px',overflow:'hidden',boxShadow:'0 2px 12px rgba(0,0,0,0.05)'}}>
+                <div style={{overflowX:'auto'}}>
+                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px',fontFamily:'system-ui,sans-serif'}}>
+                    <thead>
+                      <tr style={{background:'#0f172a',color:'white'}}>
+                        <th style={{padding:'10px 14px',textAlign:'left',fontWeight:900,fontSize:'9px',textTransform:'uppercase',fontStyle:'italic',position:'sticky',left:0,background:'#0f172a',zIndex:5,whiteSpace:'nowrap'}}>Name</th>
+                        <th style={{padding:'10px 8px',fontWeight:900,fontSize:'9px',textTransform:'uppercase',fontStyle:'italic',textAlign:'center',minWidth:'110px'}}>Amount (MMK)</th>
+                        <th style={{padding:'10px 8px',fontWeight:900,fontSize:'9px',textTransform:'uppercase',fontStyle:'italic',textAlign:'center',minWidth:'100px'}}>Next Due</th>
+                        <th style={{padding:'10px 8px',fontWeight:900,fontSize:'9px',textTransform:'uppercase',fontStyle:'italic',textAlign:'center',minWidth:'120px'}}>Due Date</th>
+                        <th style={{padding:'10px 8px',fontWeight:900,fontSize:'9px',textTransform:'uppercase',fontStyle:'italic',textAlign:'center',minWidth:'110px'}}>Remark</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bulkStudents.map((s,i)=>{
+                        const sid  = s['Enrollment No.']||s.Student_ID||'';
+                        const name = s['Name (ALL CAPITAL)']||s.Name||'';
+                        const row  = bulkData[sid]||{};
+                        const hasAmt = row.amount && Number(row.amount)>0;
+                        return (
+                          <tr key={sid} style={{borderBottom:'1px solid #f1f5f9',background:i%2===0?'white':'#f8fafc'}}>
+                            <td style={{padding:'8px 14px',position:'sticky',left:0,background:i%2===0?'white':'#f8fafc',zIndex:4}}>
+                              <p style={{fontWeight:900,fontSize:'11px',fontStyle:'italic',margin:0,whiteSpace:'nowrap'}}>{name}</p>
+                              <p style={{fontSize:'8px',color:'#94a3b8',fontWeight:900,margin:0}}>{sid}</p>
+                            </td>
+                            <td style={{padding:'4px'}}>
+                              <input type="number" value={row.amount||''} placeholder="0"
+                                onChange={e=>setBulkData(p=>({...p,[sid]:{...(p[sid]||{}),amount:e.target.value}}))}
+                                style={{width:'102px',background:hasAmt?'#f0fdf4':'#f8fafc',border:`2px solid ${hasAmt?'#bbf7d0':'#f1f5f9'}`,borderRadius:'12px',padding:'8px',fontWeight:900,fontStyle:'italic',fontSize:'13px',color:hasAmt?'#16a34a':'#0f172a',outline:'none',textAlign:'center',boxSizing:'border-box',fontFamily:'system-ui'}}/>
+                            </td>
+                            <td style={{padding:'4px'}}>
+                              <input type="number" value={row.nextAmount||''} placeholder="0"
+                                onChange={e=>setBulkData(p=>({...p,[sid]:{...(p[sid]||{}),nextAmount:e.target.value}}))}
+                                style={{width:'92px',background:'#fef2f2',border:'2px solid #fecaca',borderRadius:'12px',padding:'8px',fontWeight:900,fontStyle:'italic',fontSize:'12px',color:'#ef4444',outline:'none',textAlign:'center',boxSizing:'border-box',fontFamily:'system-ui'}}/>
+                            </td>
+                            <td style={{padding:'4px'}}>
+                              <input type="date" value={row.nextDate||''}
+                                onChange={e=>setBulkData(p=>({...p,[sid]:{...(p[sid]||{}),nextDate:e.target.value}}))}
+                                style={{width:'116px',background:'#fef2f2',border:'2px solid #fecaca',borderRadius:'12px',padding:'8px',fontWeight:900,fontStyle:'italic',fontSize:'11px',color:'#ef4444',outline:'none',boxSizing:'border-box',fontFamily:'system-ui'}}/>
+                            </td>
+                            <td style={{padding:'4px'}}>
+                              <input value={row.remark||''} placeholder="..."
+                                onChange={e=>setBulkData(p=>({...p,[sid]:{...(p[sid]||{}),remark:e.target.value}}))}
+                                style={{width:'102px',background:'#f8fafc',border:'2px solid #f1f5f9',borderRadius:'12px',padding:'8px',fontWeight:900,fontStyle:'italic',fontSize:'11px',color:'#0f172a',outline:'none',boxSizing:'border-box',fontFamily:'system-ui'}}/>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <button onClick={handleBulkSubmit} disabled={saving}
+                style={{width:'100%',padding:'18px',borderRadius:'20px',border:'none',borderBottom:'8px solid #4338ca',background:'#0f172a',color:'white',fontWeight:900,fontSize:'14px',fontStyle:'italic',textTransform:'uppercase',cursor:saving?'default':'pointer',opacity:saving?0.6:1,letterSpacing:'0.04em',fontFamily:'system-ui'}}>
+                {saving?'⏳ Saving...':`💾 Save All (${bulkStudents.length} ဦး)`}
+              </button>
+            </>)}
+          </div>
+        )}
+
+        {/* ══ LEDGER ══ */}
+        {tab==='ledger' && (
+          <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+            <div style={{background:'white',borderRadius:'20px',padding:'16px',boxShadow:'0 2px 8px rgba(0,0,0,0.05)'}}>
+              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="SEARCH NAME OR ID..." style={inp({marginBottom:'10px'})}/>
+              <div style={{display:'flex',gap:'8px',overflowX:'auto',paddingBottom:'4px'}}>
+                {filteredStudents.map((s,i)=>{
+                  const sid=s['Enrollment No.']||s.Student_ID||'';
+                  const active=String(currentId)===String(sid);
+                  return (
+                    <button key={i} onClick={()=>setSelectedStudent(s)} style={{flexShrink:0,padding:'8px 14px',borderRadius:'14px',border:active?'none':'2px solid #f1f5f9',background:active?'#4c1d95':'#f8fafc',color:active?'white':'#64748b',cursor:'pointer',fontWeight:900,fontStyle:'italic',fontSize:'11px',textAlign:'left'}}>
+                      <p style={{fontSize:'8px',opacity:0.6,margin:0}}>{sid}</p>
+                      <p style={{margin:0,whiteSpace:'nowrap'}}>{s['Name (ALL CAPITAL)']||s.Name}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {selectedStudent && (
+              <div style={{background:'#0f172a',borderRadius:'28px',padding:'20px'}}>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:'14px'}}>
+                  <div>
+                    <p style={{color:'#fbbf24',fontSize:'13px',fontWeight:900,fontStyle:'italic',margin:0}}>{selectedStudent['Name (ALL CAPITAL)']||selectedStudent.Name}</p>
+                    <p style={{color:'rgba(255,255,255,0.3)',fontSize:'9px',fontWeight:900,margin:0}}>ID: {currentId} · Grade {selectedStudent.Grade}</p>
+                  </div>
+                  <div style={{textAlign:'right'}}>
+                    <p style={{color:'rgba(255,255,255,0.4)',fontSize:'8px',textTransform:'uppercase',fontWeight:900,margin:0}}>Total Paid</p>
+                    <p style={{color:'white',fontSize:'16px',fontWeight:900,fontStyle:'italic',margin:0}}>{totalPaid.toLocaleString()} MMK</p>
+                  </div>
+                </div>
+                {activeDue && (
+                  <div style={{background:'rgba(239,68,68,0.15)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:'16px',padding:'12px',marginBottom:'12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    <div>
+                      <p style={{color:'#f87171',fontSize:'8px',fontWeight:900,textTransform:'uppercase',margin:0}}>Outstanding Due</p>
+                      <p style={{color:'#f87171',fontSize:'16px',fontWeight:900,fontStyle:'italic',margin:0}}>{activeDue.amount.toLocaleString()} MMK</p>
+                    </div>
+                    <p style={{color:'rgba(255,255,255,0.3)',fontSize:'9px',fontWeight:900,margin:0}}>Due: {activeDue.dueDate||'—'}</p>
+                  </div>
+                )}
+                {paidRecs.length===0 ? (
+                  <p style={{color:'rgba(255,255,255,0.2)',textAlign:'center',padding:'20px 0',fontWeight:900,fontStyle:'italic',fontSize:'12px'}}>No payment history</p>
+                ) : paidRecs.map((log,i)=>(
+                  <div key={i} style={{background:'white',borderRadius:'16px',padding:'14px',marginBottom:'8px',borderBottom:'4px solid #e0e7ff'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'4px'}}>
+                      <span style={{background:'#dcfce7',color:'#15803d',fontSize:'7px',fontWeight:900,textTransform:'uppercase',padding:'2px 8px',borderRadius:'99px'}}>PAID</span>
+                      <span style={{color:'#94a3b8',fontSize:'9px',fontWeight:900,fontStyle:'italic'}}>{log.Date}</span>
+                    </div>
+                    <p style={{color:'#4c1d95',fontSize:'9px',fontWeight:900,textTransform:'uppercase',fontStyle:'italic',margin:'4px 0'}}>{log.Fee_Category}</p>
+                    <p style={{color:'#0f172a',fontSize:'20px',fontWeight:900,fontStyle:'italic',margin:0}}>{Number(log.Amount_Paid||0).toLocaleString()} <span style={{fontSize:'10px'}}>MMK</span></p>
+                    {log.Remark&&<p style={{color:'#94a3b8',fontSize:'9px',fontWeight:900,fontStyle:'italic',margin:'4px 0 0'}}>※ {log.Remark}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,381 +1,550 @@
 "use client";
-import { useEffect, useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 
-export default function LeaveHub() {
-  const [allLeaves, setAllLeaves] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [proc, setProc] = useState(false);
-  const [tab, setTab] = useState("QUEUE");
-  // Analysis filters
-  const [rangeFilter, setRangeFilter] = useState("ALL");
-  const [typeFilter, setTypeFilter] = useState("ALL");
+const S = {
+  page:    { minHeight:'100vh', background:'#0f0a1e', color:'#fff', fontFamily:'system-ui,sans-serif', paddingBottom:'80px' },
+  header:  { position:'sticky', top:0, zIndex:40, background:'rgba(15,10,30,0.97)', backdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.07)', padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' },
+  card:    { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'16px', padding:'16px' },
+  input:   { width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:'12px', padding:'10px 14px', color:'#fff', fontSize:'13px', outline:'none', boxSizing:'border-box' },
+  select:  { width:'100%', background:'rgba(15,10,30,0.9)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:'12px', padding:'10px 14px', color:'#fff', fontSize:'13px', outline:'none', boxSizing:'border-box' },
+  label:   { display:'block', fontSize:'9px', color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:'6px' },
+  btn:     { background:'#fbbf24', color:'#0f172a', border:'none', borderRadius:'14px', padding:'12px', fontSize:'13px', fontWeight:900, width:'100%', cursor:'pointer', textTransform:'uppercase', letterSpacing:'0.06em' },
+  btnSm:   { background:'rgba(255,255,255,0.08)', color:'rgba(255,255,255,0.6)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'8px', padding:'6px 12px', fontSize:'10px', fontWeight:900, cursor:'pointer', whiteSpace:'nowrap' },
+  tabOn:   { background:'#fbbf24', color:'#0f172a', border:'none', borderRadius:'10px', padding:'7px 14px', fontSize:'10px', fontWeight:900, textTransform:'uppercase', cursor:'pointer', whiteSpace:'nowrap' },
+  tabOff:  { background:'rgba(255,255,255,0.06)', color:'rgba(255,255,255,0.4)', border:'none', borderRadius:'10px', padding:'7px 14px', fontSize:'10px', fontWeight:900, textTransform:'uppercase', cursor:'pointer', whiteSpace:'nowrap' },
+};
+
+const EVENT_TYPES  = ['Holiday','Exam','Sports','Activity','Meeting','Other'];
+const EVENT_COLORS = ['#fbbf24','#60a5fa','#34d399','#f87171','#c084fc','#fb923c','#e879f9'];
+const DAYS_SHORT   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MONTHS       = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+export default function CalendarTimetablePage() {
   const router = useRouter();
+  const [user, setUser]         = useState(null);
+  const [isMgt, setIsMgt]       = useState(false);
+  const [tab, setTab]           = useState('calendar');
+  const [cfg, setCfg]           = useState(null);
+  const [events, setEvents]     = useState([]);
+  const [timetable, setTimetable] = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [saving, setSaving]     = useState(false);
+  const [msg, setMsg]           = useState(null);
+
+  // Calendar state
+  const today    = new Date();
+  const [viewDate, setViewDate] = useState({ year: today.getFullYear(), month: today.getMonth() });
+  const [eventForm, setEventForm] = useState({ Date:'', End_Date:'', Title:'', Type:'Holiday', Description:'', Target:'All', Color:'#fbbf24' });
+  const [showEventForm, setShowEventForm] = useState(false);
+  const [selectedDay, setSelectedDay] = useState(null);
+
+  // Timetable state
+  const [selGrade, setSelGrade] = useState('');
+  const [selDay, setSelDay]     = useState('');
+  const [editMode, setEditMode] = useState(false);
+  const [ttCells, setTtCells]   = useState({}); // {day_period: {subject,teacher,room}}
+  const [teacherView, setTeacherView] = useState('');
+
+  // Config state
+  const [cfgTab, setCfgTab]     = useState('periods');
+  const [editCfg, setEditCfg]   = useState(null);
 
   useEffect(() => {
-    const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || "null");
-    if (!auth || auth.userRole !== 'management') { router.push('/login'); return; }
+    const saved = localStorage.getItem('user');
+    if (!saved) { router.push('/login'); return; }
+    const u = JSON.parse(saved);
+    setUser(u);
+    setIsMgt(u.userRole === 'management');
+    fetchAll(u);
+  }, []);
 
-    const fetchLeaves = async () => {
-      try {
-        const res = await fetch(WEB_APP_URL, {
-          method: 'POST',
-          body: JSON.stringify({ action: 'getInitialData' })
-        });
-        const result = await res.json();
-        if (result.success) setAllLeaves(result.leaves || []);
-      } catch (e) {
-        console.error(e);
-      } finally { setLoading(false); }
-    };
-    fetchLeaves();
-  }, [router]);
-
-  const handleAction = async (leave, status) => {
-    const gm = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || "{}");
-    if (!gm.Name) return alert("Session Expired. Please Login Again.");
-    setProc(true);
+  const fetchAll = async (u) => {
+    setLoading(true);
     try {
-      const d = new Date(leave.Start_Date);
-      const cleanDate = d.toLocaleDateString('en-CA');
-      const res = await fetch(WEB_APP_URL, {
-        method: 'POST',
-        body: JSON.stringify({
-          action: 'updateLeave',
-          userId: leave.User_ID,
-          name: leave.Name,
-          startDate: cleanDate,
-          status,
-          approvedBy: gm.Name
-        })
-      });
-      const result = await res.json();
-      if (result.success) {
-        setAllLeaves(prev => prev.map(l =>
-          l.User_ID === leave.User_ID && l.Start_Date === leave.Start_Date
-            ? { ...l, Status: status, Approved_By: gm.Name }
-            : l
-        ));
-      } else {
-        alert("FAIL: " + result.message);
-      }
-    } catch (e) {
-      alert("Network Error");
-    } finally { setProc(false); }
+      const [cfgRes, evtRes] = await Promise.all([
+        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetableConfig' }) }),
+        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getEvents' }) }),
+      ]);
+      const cfgData = await cfgRes.json();
+      const evtData = await evtRes.json();
+      if (cfgData.success) { setCfg(cfgData.config); setEditCfg(JSON.parse(JSON.stringify(cfgData.config))); if (cfgData.config.grades?.[0]) setSelGrade(cfgData.config.grades[0]); if (cfgData.config.days?.[0]) setSelDay(cfgData.config.days[0]); }
+      if (evtData.success) setEvents(evtData.data || []);
+    } catch {}
+    setLoading(false);
   };
 
-  // ── Derived data ──────────────────────────────────────────────
-  const pending = allLeaves.filter(x => x.Status === "Pending");
-  const history = allLeaves.filter(x => x.Status !== "Pending");
+  const fetchTimetable = useCallback(async (grade) => {
+    if (!grade) return;
+    try {
+      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetable', grade }) });
+      const r = await res.json();
+      if (r.success) {
+        const cells = {};
+        r.data.forEach(row => { cells[`${row.Day}_${row.Period_No}`] = { subject: row.Subject, teacher: row.Teacher, room: row.Room }; });
+        setTtCells(cells);
+        setTimetable(r.data);
+      }
+    } catch {}
+  }, []);
 
-  // Analysis: filter by time range
-  const now = new Date();
-  const analysisLeaves = allLeaves.filter(l => {
-    if (rangeFilter === "7D") {
-      return (now - new Date(l.Start_Date)) / 86400000 <= 7;
-    } else if (rangeFilter === "30D") {
-      return (now - new Date(l.Start_Date)) / 86400000 <= 30;
-    } else if (rangeFilter === "90D") {
-      return (now - new Date(l.Start_Date)) / 86400000 <= 90;
-    }
-    return true; // ALL
-  }).filter(l => typeFilter === "ALL" || l.User_Type === typeFilter);
+  useEffect(() => { if (selGrade && tab === 'timetable') fetchTimetable(selGrade); }, [selGrade, tab]);
 
-  // Top leave takers
-  const leaveCounts = analysisLeaves.reduce((acc, l) => {
-    const key = l.Name || "Unknown";
-    if (!acc[key]) acc[key] = { name: key, type: l.User_Type, count: 0, days: 0 };
-    acc[key].count += 1;
-    acc[key].days += Number(l.Total_Days || 1);
-    return acc;
-  }, {});
-  const topLeaves = Object.values(leaveCounts).sort((a, b) => b.days - a.days).slice(0, 10);
+  const showMsg = (text, type='success') => { setMsg({text,type}); setTimeout(()=>setMsg(null),3500); };
 
-  // Leave type breakdown
-  const leaveTypeCount = analysisLeaves.reduce((acc, l) => {
-    const t = l.Leave_Type || "Other";
-    acc[t] = (acc[t] || 0) + 1;
-    return acc;
-  }, {});
-  const leaveTypes = Object.entries(leaveTypeCount).sort((a, b) => b[1] - a[1]);
-  const maxTypeCount = leaveTypes[0]?.[1] || 1;
-
-  // Monthly trend (last 6 months)
-  const monthlyData = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
-    const label = d.toLocaleDateString('en-US', { month: 'short' });
-    const count = allLeaves.filter(l => {
-      const ld = new Date(l.Start_Date);
-      return ld.getFullYear() === d.getFullYear() && ld.getMonth() === d.getMonth();
-    }).length;
-    return { label, count };
+  // ── CALENDAR HELPERS ──
+  const monthKey = `${viewDate.year}-${String(viewDate.month+1).padStart(2,'0')}`;
+  const monthEvents = events.filter(e => (e.Date||'').startsWith(monthKey));
+  const daysInMonth = new Date(viewDate.year, viewDate.month+1, 0).getDate();
+  const firstDow    = (new Date(viewDate.year, viewDate.month, 1).getDay()+6)%7; // Mon=0
+  const eventsByDay = {};
+  monthEvents.forEach(e => {
+    const d = parseInt((e.Date||'').split('-')[2]);
+    if (!eventsByDay[d]) eventsByDay[d] = [];
+    eventsByDay[d].push(e);
   });
-  const maxMonthCount = Math.max(...monthlyData.map(m => m.count), 1);
 
-  const TABS = [
-    { id: "QUEUE",    label: "Queue",    badge: pending.length },
-    { id: "ANALYSIS", label: "Analysis", badge: null },
-    { id: "HISTORY",  label: "History",  badge: history.length },
+  const handleSaveEvent = async () => {
+    if (!eventForm.Date || !eventForm.Title) return showMsg('Date နှင့် Title ထည့်ပါ', 'error');
+    setSaving(true);
+    try {
+      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'saveEvent', ...eventForm, Created_By: user?.Name||user?.name||user?.username }) });
+      const r = await res.json();
+      if (r.success) {
+        showMsg(r.message);
+        setShowEventForm(false);
+        setEventForm({ Date:'', End_Date:'', Title:'', Type:'Holiday', Description:'', Target:'All', Color:'#fbbf24' });
+        fetchAll(user);
+      } else showMsg(r.message||'Error','error');
+    } catch { showMsg('Network error','error'); }
+    setSaving(false);
+  };
+
+  const handleDeleteEvent = async (e) => {
+    if (!confirm(`"${e.Title}" ဖျက်မှာ သေချာပါသလား?`)) return;
+    try {
+      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'deleteEvent', Date:e.Date, Title:e.Title }) });
+      const r = await res.json();
+      if (r.success) { showMsg(r.message); fetchAll(user); }
+    } catch {}
+  };
+
+  // ── TIMETABLE HELPERS ──
+  const handleCellChange = (day, periodNo, field, value) => {
+    const key = `${day}_${periodNo}`;
+    setTtCells(prev => ({ ...prev, [key]: { ...(prev[key]||{}), [field]:value } }));
+  };
+
+  const handleSaveTimetable = async () => {
+    if (!selGrade) return showMsg('Grade ရွေးပါ', 'error');
+    setSaving(true);
+    const cells = [];
+    Object.entries(ttCells).forEach(([key, val]) => {
+      if (val.subject) {
+        const [day, period] = key.split('_');
+        cells.push({ Grade:selGrade, Day:day, Period_No:period, Subject:val.subject, Teacher:val.teacher||'', Room:val.room||'' });
+      }
+    });
+    try {
+      // Save all days for this grade
+      const days = cfg?.days || [];
+      for (const day of days) {
+        const dayCells = cells.filter(c => c.Day === day);
+        const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'saveTimetable', grade:selGrade, day, cells:dayCells, Updated_By:user?.Name||user?.name||user?.username }) });
+        await res.json();
+      }
+      showMsg('Timetable သိမ်းပြီးပါပြီ');
+      setEditMode(false);
+    } catch { showMsg('Network error','error'); }
+    setSaving(false);
+  };
+
+  const handleSaveConfig = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'saveTimetableConfig', ...editCfg }) });
+      const r = await res.json();
+      if (r.success) { showMsg(r.message); setCfg(JSON.parse(JSON.stringify(editCfg))); }
+      else showMsg(r.message||'Error','error');
+    } catch { showMsg('Network error','error'); }
+    setSaving(false);
+  };
+
+  // Teacher view — filter timetable by teacher
+  const teacherSchedule = timetable.filter(r => !teacherView || r.Teacher === teacherView);
+  const allTeachers = [...new Set(timetable.map(r=>r.Teacher).filter(Boolean))];
+
+  const MAIN_TABS = [
+    { id:'calendar',   label:'📅 Calendar' },
+    { id:'timetable',  label:'📋 Timetable' },
+    ...(isMgt ? [{ id:'config', label:'⚙️ Config' }] : []),
   ];
 
-  if (loading || proc) return (
-    <div className="flex items-center justify-center font-black animate-pulse uppercase italic tracking-widest text-lg" style={{minHeight:'50vh', color:'#4c1d95'}}>
-      {proc ? "Processing..." : "Loading Leave Hub..."}
-    </div>
-  );
-
   return (
-    <div className="min-h-screen font-black text-slate-950 p-4 md:p-10 pb-36" style={{background:'#F0F9FF'}}>
-      <div className="mx-auto space-y-8" style={{maxWidth:'1000px'}}>
+    <div style={S.page}>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box}`}</style>
 
-        {/* ── HEADER ── */}
-        <div className="bg-slate-950 p-7 md:p-10 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden" style={{borderRadius:'2.5rem', borderBottomWidth:'10px', borderColor:'#fbbf24'}}>
-          <div className="absolute right-0 top-0 w-56 h-56 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none" style={{background:'#fbbf24'}} />
-          <div className="z-10">
-            <p className="uppercase font-black mb-2" style={{color:'#fbbf24', fontSize:'9px', letterSpacing:'0.4em'}}>Management Zone</p>
-            <h1 className="text-3xl md:text-5xl italic uppercase font-black text-white tracking-tighter leading-none">Leave Hub</h1>
-          </div>
-          <div className="flex gap-4 z-10 flex-wrap justify-center">
-            <div className="bg-white/10 rounded-2xl px-5 py-3 text-center border border-white/10">
-              <p className="text-2xl font-black text-white">{pending.length}</p>
-              <p className="uppercase tracking-widest text-amber-400 font-black" style={{fontSize:'8px'}}>Pending</p>
-            </div>
-            <div className="bg-white/10 rounded-2xl px-5 py-3 text-center border border-white/10">
-              <p className="text-2xl font-black text-white">{allLeaves.length}</p>
-              <p className="uppercase tracking-widest text-slate-400 font-black" style={{fontSize:'8px'}}>Total Records</p>
-            </div>
-          </div>
+      <div style={S.header}>
+        <button onClick={()=>router.back()} style={{background:'none',border:'none',color:'rgba(255,255,255,0.4)',cursor:'pointer',fontSize:'14px'}}>← Back</button>
+        <div style={{textAlign:'center'}}>
+          <p style={{fontWeight:900,fontSize:'13px',textTransform:'uppercase',letterSpacing:'0.1em',margin:0}}>Calendar & Timetable</p>
+          <p style={{fontSize:'9px',color:'rgba(255,255,255,0.25)',margin:0,textTransform:'uppercase',letterSpacing:'0.1em'}}>Shining Stars</p>
         </div>
+        <button onClick={()=>fetchAll(user)} style={{background:'none',border:'none',color:'rgba(255,255,255,0.4)',cursor:'pointer',fontSize:'18px'}}>↻</button>
+      </div>
 
-        {/* ── TABS ── */}
-        <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 gap-1">
-          {TABS.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`flex-1 py-3.5 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all flex items-center justify-center gap-2
-                ${tab === t.id ? 'bg-slate-950 text-white shadow-md' : 'text-slate-400 hover:text-slate-700'}`}
-            >
-              {t.label}
-              {t.badge !== null && t.badge > 0 && (
-                <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-black ${tab === t.id ? 'bg-gold text-slate-950' : 'bg-slate-100 text-slate-500'}`}>
-                  {t.badge}
-                </span>
-              )}
-            </button>
-          ))}
+      {msg && (
+        <div style={{position:'fixed',top:'64px',left:'50%',transform:'translateX(-50%)',zIndex:50,padding:'8px 20px',borderRadius:'999px',fontSize:'12px',fontWeight:900,color:'#fff',background:msg.type==='error'?'#ef4444':'#10b981',boxShadow:'0 4px 20px rgba(0,0,0,0.4)',whiteSpace:'nowrap'}}>
+          {msg.text}
         </div>
+      )}
 
-        {/* ══════════════════════════════════════════════ */}
-        {/* TAB 1 — QUEUE                                 */}
-        {/* ══════════════════════════════════════════════ */}
-        {tab === "QUEUE" && (
-          <div className="space-y-5">
-            {pending.length === 0 ? (
-              <div className="py-24 text-center">
-                <p className="text-6xl mb-4">✅</p>
-                <p className="font-black uppercase italic text-slate-300 text-xl tracking-widest">Queue Empty</p>
-              </div>
-            ) : pending.map((l, i) => (
-              <div key={i} className="bg-white p-6 border-slate-200 shadow-xl space-y-4 hover:border-gold transition-all" style={{borderRadius:'2.5rem', borderBottomWidth:'10px'}}>
-                <div className="flex justify-between items-center">
-                  <span className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full font-black uppercase" style={{fontSize:'8px'}}>{l.User_Type}</span>
-                  <span className="font-black text-slate-400 uppercase" style={{fontSize:'9px'}}>{l.Date_Applied}</span>
-                </div>
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-2xl shrink-0">
-                    {l.User_Type === "STUDENT" ? "🎓" : "👔"}
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="text-xl font-black italic uppercase text-slate-950 leading-none truncate">{l.Name}</h3>
-                    <p className="text-slate-400 font-black uppercase mt-1" style={{fontSize:'9px'}}>ID: {l.User_ID} · {l.Leave_Type}</p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="text-2xl font-black text-slate-950">{l.Total_Days}</p>
-                    <p className="uppercase text-slate-400 font-black" style={{fontSize:'8px'}}>days</p>
-                  </div>
-                </div>
-                <div className="bg-slate-50 px-5 py-3 rounded-2xl border border-slate-100 text-sm italic text-slate-600">
-                  "{l.Reason}"
-                </div>
-                <p className="font-black text-slate-400 uppercase" style={{fontSize:'9px'}}>
-                  📅 {l.Start_Date} → {l.End_Date}
-                  {l.Reporter_Name && l.Reporter_Name !== "-" && (
-                    <span className="ml-3">· By: {l.Reporter_Name} ({l.Relationship}) {l.Phone}</span>
-                  )}
-                </p>
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <button
-                    onClick={() => handleAction(l, "Approved")}
-                    className="py-4 bg-emerald-500 text-white font-black uppercase shadow-lg border-b-4 border-emerald-800 active:scale-95 transition-all hover:bg-emerald-600" style={{borderRadius:'1.5rem'}}
-                  >
-                    ✓ Approve
-                  </button>
-                  <button
-                    onClick={() => handleAction(l, "Rejected")}
-                    className="py-4 bg-rose-500 text-white font-black uppercase shadow-lg border-b-4 border-rose-800 active:scale-95 transition-all hover:bg-rose-600" style={{borderRadius:'1.5rem'}}
-                  >
-                    ✕ Reject
-                  </button>
-                </div>
-              </div>
-            ))}
+      <div style={{display:'flex',gap:'6px',padding:'12px 16px 8px',overflowX:'auto'}}>
+        {MAIN_TABS.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={tab===t.id?S.tabOn:S.tabOff}>{t.label}</button>)}
+      </div>
+
+      <div style={{padding:'0 16px'}}>
+        {loading ? (
+          <div style={{display:'flex',justifyContent:'center',padding:'70px 0'}}>
+            <div style={{width:'32px',height:'32px',border:'3px solid rgba(255,255,255,0.1)',borderTop:'3px solid #fbbf24',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/>
           </div>
-        )}
+        ) : (
+          <>
+            {/* ══════════════ CALENDAR ══════════════ */}
+            {tab==='calendar' && (
+              <div style={{display:'flex',flexDirection:'column',gap:'12px',marginTop:'8px'}}>
 
-        {/* ══════════════════════════════════════════════ */}
-        {/* TAB 2 — ANALYSIS                              */}
-        {/* ══════════════════════════════════════════════ */}
-        {tab === "ANALYSIS" && (
-          <div className="space-y-8">
-
-            {/* Filters */}
-            <div className="flex flex-wrap gap-3">
-              <div className="flex bg-white p-1 rounded-xl border border-slate-100 gap-1">
-                {["ALL","7D","30D","90D"].map(r => (
-                  <button key={r} onClick={() => setRangeFilter(r)}
-                    className={`px-4 py-2 rounded-lg font-black text-[9px] uppercase tracking-widest transition-all
-                      ${rangeFilter === r ? 'bg-slate-950 text-white' : 'text-slate-400 hover:text-slate-700'}`}>
-                    {r === "ALL" ? "All Time" : r === "7D" ? "7 Days" : r === "30D" ? "30 Days" : "90 Days"}
-                  </button>
-                ))}
-              </div>
-              <div className="flex bg-white p-1 rounded-xl border border-slate-100 gap-1">
-                {["ALL","STUDENT","STAFF"].map(t => (
-                  <button key={t} onClick={() => setTypeFilter(t)}
-                    className={`px-4 py-2 rounded-lg font-black text-[9px] uppercase tracking-widest transition-all
-                      ${typeFilter === t ? 'bg-slate-950 text-white' : 'text-slate-400 hover:text-slate-700'}`}>
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Summary Stats */}
-            <div className="grid grid-cols-3 gap-4">
-              {[
-                { label: "Total Leaves", value: analysisLeaves.length, icon: "📋", color: "border-indigo-300 bg-indigo-50" },
-                { label: "Total Days",   value: analysisLeaves.reduce((s,l) => s + Number(l.Total_Days||1), 0), icon: "📅", color: "border-blue-300 bg-blue-50" },
-                { label: "Approved",     value: analysisLeaves.filter(l=>l.Status==="Approved").length, icon: "✅", color: "border-emerald-300 bg-emerald-50" },
-              ].map((s,i) => (
-                <div key={i} className={`${s.color} p-5 rounded-[2rem] border-b-[6px] shadow-md flex flex-col items-center gap-2`}>
-                  <span className="text-2xl">{s.icon}</span>
-                  <p className="text-2xl md:text-3xl font-black text-slate-950 leading-none">{s.value}</p>
-                  <p className="uppercase tracking-widest font-black text-slate-500 text-center" style={{fontSize:'8px'}}>{s.label}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Monthly Trend Bar Chart */}
-            <div className="bg-white p-6 md:p-8 border-slate-200 shadow-xl" style={{borderRadius:'2.5rem', borderBottomWidth:'8px'}}>
-              <h3 className="text-xs uppercase font-black text-slate-400 mb-6" style={{letterSpacing:'0.3em'}}>Monthly Trend (6 Months)</h3>
-              <div className="flex items-end gap-3 h-32">
-                {monthlyData.map((m, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-2">
-                    <p className="font-black text-slate-600" style={{fontSize:'9px'}}>{m.count > 0 ? m.count : ""}</p>
-                    <div className="w-full rounded-t-xl bg-slate-950 transition-all duration-500"
-                      style={{ height: `${Math.max((m.count / maxMonthCount) * 96, m.count > 0 ? 8 : 4)}px` }} />
-                    <p className="uppercase font-black text-slate-400" style={{fontSize:'8px'}}>{m.label}</p>
+                {/* Month nav */}
+                <div style={{...S.card,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <button onClick={()=>setViewDate(v=>{ const d=new Date(v.year,v.month-1); return {year:d.getFullYear(),month:d.getMonth()}; })}
+                    style={{...S.btnSm,background:'none',border:'none',color:'rgba(255,255,255,0.5)',fontSize:'20px'}}>‹</button>
+                  <div style={{textAlign:'center'}}>
+                    <p style={{fontWeight:900,fontSize:'16px',color:'#fff',margin:0}}>{MONTHS[viewDate.month]} {viewDate.year}</p>
+                    <p style={{fontSize:'9px',color:'rgba(255,255,255,0.3)',margin:0}}>{monthEvents.length} events</p>
                   </div>
-                ))}
-              </div>
-            </div>
+                  <button onClick={()=>setViewDate(v=>{ const d=new Date(v.year,v.month+1); return {year:d.getFullYear(),month:d.getMonth()}; })}
+                    style={{...S.btnSm,background:'none',border:'none',color:'rgba(255,255,255,0.5)',fontSize:'20px'}}>›</button>
+                </div>
 
-            {/* Leave Type Breakdown */}
-            <div className="bg-white p-6 md:p-8 border-slate-200 shadow-xl" style={{borderRadius:'2.5rem', borderBottomWidth:'8px'}}>
-              <h3 className="text-xs uppercase font-black text-slate-400 mb-6" style={{letterSpacing:'0.3em'}}>Leave Type Breakdown</h3>
-              {leaveTypes.length === 0 ? (
-                <p className="text-center text-slate-300 italic py-8">No data</p>
-              ) : (
-                <div className="space-y-4">
-                  {leaveTypes.map(([type, count], i) => (
-                    <div key={i} className="space-y-1.5">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-black text-slate-700 uppercase italic truncate pr-4">{type}</span>
-                        <span className="text-sm font-black text-slate-950 shrink-0">{count}</span>
+                {/* Calendar grid */}
+                <div style={{...S.card,padding:'12px'}}>
+                  {/* Day headers */}
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'2px',marginBottom:'4px'}}>
+                    {['M','T','W','T','F','S','S'].map((d,i)=>(
+                      <div key={i} style={{textAlign:'center',fontSize:'9px',color:'rgba(255,255,255,0.3)',fontWeight:900,padding:'4px 0'}}>{d}</div>
+                    ))}
+                  </div>
+                  {/* Day cells */}
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'2px'}}>
+                    {Array(firstDow).fill(null).map((_,i)=><div key={`e${i}`}/>)}
+                    {Array(daysInMonth).fill(null).map((_,i)=>{
+                      const day  = i+1;
+                      const isToday = day===today.getDate() && viewDate.month===today.getMonth() && viewDate.year===today.getFullYear();
+                      const dayEvts = eventsByDay[day] || [];
+                      return (
+                        <button key={day} onClick={()=>{ setSelectedDay(day); if(isMgt){ setEventForm(f=>({...f,Date:`${viewDate.year}-${String(viewDate.month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`})); setShowEventForm(true); }}}
+                          style={{border:'none',borderRadius:'8px',padding:'4px 2px',cursor:isMgt?'pointer':'default',minHeight:'36px',display:'flex',flexDirection:'column',alignItems:'center',gap:'2px',
+                            background: isToday?'rgba(251,191,36,0.2)':dayEvts.length?'rgba(255,255,255,0.06)':'transparent',
+                            outline: isToday?'1px solid rgba(251,191,36,0.5)':'none'}}>
+                          <span style={{fontSize:'11px',fontWeight:900,color:isToday?'#fbbf24':'rgba(255,255,255,0.7)'}}>{day}</span>
+                          <div style={{display:'flex',flexWrap:'wrap',gap:'1px',justifyContent:'center'}}>
+                            {dayEvts.slice(0,3).map((e,j)=>(
+                              <div key={j} style={{width:'5px',height:'5px',borderRadius:'50%',background:e.Color||'#fbbf24'}}/>
+                            ))}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Add event button */}
+                {isMgt && (
+                  <button onClick={()=>{ setEventForm(f=>({...f,Date:''})); setShowEventForm(true); }}
+                    style={S.btn}>+ Add Event</button>
+                )}
+
+                {/* Event list */}
+                {monthEvents.length > 0 && (
+                  <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
+                    <p style={{fontSize:'9px',color:'rgba(255,255,255,0.3)',textTransform:'uppercase',letterSpacing:'0.15em',fontWeight:900}}>This Month</p>
+                    {monthEvents.sort((a,b)=>a.Date>b.Date?1:-1).map((e,i)=>(
+                      <div key={i} style={{...S.card,padding:'12px 16px',borderLeft:`4px solid ${e.Color||'#fbbf24'}`,display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+                        <div style={{flex:1}}>
+                          <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'4px',flexWrap:'wrap'}}>
+                            <span style={{fontWeight:900,fontSize:'13px'}}>{e.Title}</span>
+                            <span style={{fontSize:'8px',padding:'2px 8px',borderRadius:'99px',fontWeight:900,background:'rgba(255,255,255,0.08)',color:'rgba(255,255,255,0.5)'}}>{e.Type}</span>
+                          </div>
+                          <p style={{fontSize:'9px',color:'rgba(255,255,255,0.3)',margin:0}}>
+                            📅 {e.Date}{e.End_Date&&e.End_Date!==e.Date?' → '+e.End_Date:''} · 👥 {e.Target||'All'}
+                          </p>
+                          {e.Description && <p style={{fontSize:'11px',color:'rgba(255,255,255,0.45)',marginTop:'4px'}}>{e.Description}</p>}
+                        </div>
+                        {isMgt && (
+                          <button onClick={()=>handleDeleteEvent(e)}
+                            style={{background:'none',border:'none',color:'rgba(248,113,113,0.6)',cursor:'pointer',fontSize:'14px',marginLeft:'8px',padding:'4px',flexShrink:0}}>🗑</button>
+                        )}
                       </div>
-                      <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-slate-950 rounded-full transition-all duration-700"
-                          style={{ width: `${(count / maxTypeCount) * 100}%` }}
-                        />
-                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {monthEvents.length === 0 && (
+                  <div style={{textAlign:'center',padding:'30px 0',color:'rgba(255,255,255,0.2)'}}>
+                    {isMgt ? 'Event မရှိသေးပါ — ထည့်ရန် ခြင်္ကေ့ ကနေ နှိပ်ပါ' : 'Event မရှိသေးပါ'}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ══════════════ TIMETABLE ══════════════ */}
+            {tab==='timetable' && cfg && (
+              <div style={{display:'flex',flexDirection:'column',gap:'12px',marginTop:'8px'}}>
+                {/* Controls */}
+                <div style={S.card}>
+                  <div style={{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'flex-end'}}>
+                    <div style={{flex:1,minWidth:'100px'}}>
+                      <label style={S.label}>Grade</label>
+                      <select value={selGrade} onChange={e=>{setSelGrade(e.target.value);setEditMode(false);}} style={S.select}>
+                        {(cfg.grades||[]).map(g=><option key={g} value={g} style={{background:'#1a1030'}}>Grade {g}</option>)}
+                      </select>
                     </div>
+                    <div style={{flex:1,minWidth:'100px'}}>
+                      <label style={S.label}>Teacher View</label>
+                      <select value={teacherView} onChange={e=>setTeacherView(e.target.value)} style={S.select}>
+                        <option value="" style={{background:'#1a1030'}}>All Teachers</option>
+                        {allTeachers.map(t=><option key={t} value={t} style={{background:'#1a1030'}}>{t}</option>)}
+                      </select>
+                    </div>
+                    {isMgt && (
+                      <button onClick={()=>setEditMode(!editMode)}
+                        style={{...S.btnSm, background:editMode?'rgba(251,191,36,0.2)':'rgba(255,255,255,0.08)', color:editMode?'#fbbf24':'rgba(255,255,255,0.6)', border:editMode?'1px solid rgba(251,191,36,0.4)':'1px solid rgba(255,255,255,0.1)'}}>
+                        {editMode?'✕ Cancel':'✏️ Edit'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Timetable grid */}
+                <div style={{overflowX:'auto'}}>
+                  <table style={{width:'100%',borderCollapse:'collapse',minWidth:'600px'}}>
+                    <thead>
+                      <tr>
+                        <th style={{padding:'8px',fontSize:'9px',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.1em',textAlign:'left',minWidth:'80px',borderBottom:'1px solid rgba(255,255,255,0.08)'}}>Period</th>
+                        {(cfg.days||[]).map(d=>(
+                          <th key={d} style={{padding:'8px',fontSize:'9px',color:'rgba(255,255,255,0.5)',textTransform:'uppercase',letterSpacing:'0.1em',textAlign:'center',borderBottom:'1px solid rgba(255,255,255,0.08)',fontWeight:900}}>
+                            {DAYS_SHORT[['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].indexOf(d)]||d.slice(0,3)}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(cfg.periods||[]).map((p,pi)=>(
+                        <tr key={pi} style={{background:pi%2===0?'rgba(255,255,255,0.02)':'transparent'}}>
+                          <td style={{padding:'8px 6px',borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'middle'}}>
+                            <div style={{fontSize:'10px',fontWeight:900,color:p.isBreak?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.6)'}}>{p.label}</div>
+                            <div style={{fontSize:'8px',color:'rgba(255,255,255,0.2)'}}>{p.start}–{p.end}</div>
+                          </td>
+                          {(cfg.days||[]).map(day=>{
+                            const key = `${day}_${p.no}`;
+                            const cell = ttCells[key] || {};
+                            const highlight = teacherView && cell.teacher===teacherView;
+                            if (p.isBreak) return (
+                              <td key={day} style={{textAlign:'center',padding:'6px',borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
+                                <span style={{fontSize:'9px',color:'rgba(255,255,255,0.15)',fontStyle:'italic'}}>{p.label}</span>
+                              </td>
+                            );
+                            return (
+                              <td key={day} style={{padding:'4px',borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'top'}}>
+                                {editMode ? (
+                                  <div style={{display:'flex',flexDirection:'column',gap:'3px'}}>
+                                    <select value={cell.subject||''} onChange={e=>handleCellChange(day,p.no,'subject',e.target.value)}
+                                      style={{...S.select,padding:'5px 8px',fontSize:'10px',borderRadius:'8px',background:'rgba(255,255,255,0.06)'}}>
+                                      <option value="" style={{background:'#1a1030'}}>—</option>
+                                      {(cfg.subjects||[]).map(s=><option key={s} value={s} style={{background:'#1a1030'}}>{s}</option>)}
+                                    </select>
+                                    <input value={cell.teacher||''} onChange={e=>handleCellChange(day,p.no,'teacher',e.target.value)}
+                                      placeholder="Teacher" style={{...S.input,padding:'5px 8px',fontSize:'10px',borderRadius:'8px'}}/>
+                                    <input value={cell.room||''} onChange={e=>handleCellChange(day,p.no,'room',e.target.value)}
+                                      placeholder="Room" style={{...S.input,padding:'5px 8px',fontSize:'10px',borderRadius:'8px'}}/>
+                                  </div>
+                                ) : (
+                                  <div style={{background:highlight?'rgba(251,191,36,0.12)':cell.subject?'rgba(255,255,255,0.04)':'transparent',borderRadius:'8px',padding:cell.subject?'6px 8px':'4px',border:highlight?'1px solid rgba(251,191,36,0.3)':'none',minHeight:'36px'}}>
+                                    {cell.subject ? (
+                                      <>
+                                        <div style={{fontSize:'10px',fontWeight:900,color:highlight?'#fbbf24':'rgba(255,255,255,0.8)',lineHeight:1.2}}>{cell.subject}</div>
+                                        {cell.teacher && <div style={{fontSize:'8px',color:'rgba(255,255,255,0.35)',marginTop:'2px'}}>👤 {cell.teacher}</div>}
+                                        {cell.room    && <div style={{fontSize:'8px',color:'rgba(255,255,255,0.25)'}}>🚪 {cell.room}</div>}
+                                      </>
+                                    ) : (
+                                      <div style={{fontSize:'9px',color:'rgba(255,255,255,0.1)',textAlign:'center',paddingTop:'6px'}}>—</div>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {editMode && (
+                  <button onClick={handleSaveTimetable} disabled={saving}
+                    style={{...S.btn,opacity:saving?0.5:1,cursor:saving?'default':'pointer'}}>
+                    {saving?'Saving...':'💾 Save Timetable — Grade '+selGrade}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* ══════════════ CONFIG (Management only) ══════════════ */}
+            {tab==='config' && isMgt && editCfg && (
+              <div style={{display:'flex',flexDirection:'column',gap:'12px',marginTop:'8px'}}>
+                <div style={{display:'flex',gap:'6px',overflowX:'auto'}}>
+                  {['periods','days','grades','subjects'].map(t=>(
+                    <button key={t} onClick={()=>setCfgTab(t)}
+                      style={cfgTab===t?S.tabOn:{...S.tabOff}}>
+                      {t.charAt(0).toUpperCase()+t.slice(1)}
+                    </button>
                   ))}
                 </div>
-              )}
-            </div>
 
-            {/* Top Leave Takers */}
-            <div className="bg-slate-950 p-6 md:p-8 shadow-2xl" style={{borderRadius:'2.5rem', borderBottomWidth:'8px', borderColor:'#fbbf24'}}>
-              <h3 className="text-xs uppercase font-black mb-6 flex items-center gap-2" style={{letterSpacing:'0.3em', color:'#fbbf24'}}>
-                <span className="w-1.5 h-4 rounded-full" style={{background:'#fbbf24'}} />
-                Top Leave Takers
-              </h3>
-              {topLeaves.length === 0 ? (
-                <p className="text-center text-white/20 italic py-8 uppercase text-sm">No data in selected range</p>
-              ) : (
-                <div className="space-y-3">
-                  {topLeaves.map((person, i) => (
-                    <div key={i} className="bg-white/5 border border-white/10 rounded-2xl px-5 py-4 flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-4 min-w-0">
-                        <span className={`text-lg font-black shrink-0 ${i === 0 ? 'text-gold' : i === 1 ? 'text-slate-300' : i === 2 ? 'text-amber-600' : 'text-white/30'}`}>
-                          #{i + 1}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-white font-black uppercase italic text-sm truncate">{person.name}</p>
-                          <p className="uppercase font-black text-slate-500 mt-0.5" style={{fontSize:'8px'}}>{person.type}</p>
+                {/* PERIODS config */}
+                {cfgTab==='periods' && (
+                  <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
+                    {editCfg.periods.map((p,i)=>(
+                      <div key={i} style={{...S.card,display:'grid',gridTemplateColumns:'1fr 1fr 1fr auto',gap:'8px',alignItems:'center'}}>
+                        <div>
+                          <label style={S.label}>Label</label>
+                          <input value={p.label} onChange={e=>{ const a=[...editCfg.periods]; a[i]={...a[i],label:e.target.value}; setEditCfg(c=>({...c,periods:a})); }} style={S.input}/>
+                        </div>
+                        <div>
+                          <label style={S.label}>Start</label>
+                          <input type="time" value={p.start} onChange={e=>{ const a=[...editCfg.periods]; a[i]={...a[i],start:e.target.value}; setEditCfg(c=>({...c,periods:a})); }} style={S.input}/>
+                        </div>
+                        <div>
+                          <label style={S.label}>End</label>
+                          <input type="time" value={p.end} onChange={e=>{ const a=[...editCfg.periods]; a[i]={...a[i],end:e.target.value}; setEditCfg(c=>({...c,periods:a})); }} style={S.input}/>
+                        </div>
+                        <div style={{display:'flex',flexDirection:'column',gap:'4px',paddingTop:'14px'}}>
+                          <button onClick={()=>{ const a=[...editCfg.periods]; a[i]={...a[i],isBreak:!a[i].isBreak}; setEditCfg(c=>({...c,periods:a})); }}
+                            style={{...S.btnSm,padding:'4px 8px',fontSize:'8px',background:p.isBreak?'rgba(251,191,36,0.2)':'rgba(255,255,255,0.06)',color:p.isBreak?'#fbbf24':'rgba(255,255,255,0.4)'}}>
+                            {p.isBreak?'Break':'—'}
+                          </button>
+                          <button onClick={()=>{ const a=editCfg.periods.filter((_,j)=>j!==i); setEditCfg(c=>({...c,periods:a})); }}
+                            style={{...S.btnSm,padding:'4px 8px',fontSize:'8px',color:'rgba(248,113,113,0.7)',border:'1px solid rgba(248,113,113,0.2)'}}>✕</button>
                         </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <p className="font-black text-lg leading-none" style={{color:'#fbbf24'}}>{person.days}</p>
-                        <p className="uppercase font-black text-slate-500" style={{fontSize:'8px'}}>days · {person.count}x</p>
-                      </div>
+                    ))}
+                    <button onClick={()=>{ const no=editCfg.periods.length+1; setEditCfg(c=>({...c,periods:[...c.periods,{no,label:`Period ${no}`,start:'',end:'',isBreak:false}]})); }}
+                      style={{...S.btnSm,textAlign:'center'}}>+ Add Period</button>
+                  </div>
+                )}
+
+                {/* DAYS config */}
+                {cfgTab==='days' && (
+                  <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
+                    {['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d=>(
+                      <button key={d} onClick={()=>{ const inc=editCfg.days.includes(d); setEditCfg(c=>({...c,days:inc?c.days.filter(x=>x!==d):[...c.days,d]})); }}
+                        style={{...S.card,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',border:editCfg.days.includes(d)?'1px solid rgba(251,191,36,0.4)':'1px solid rgba(255,255,255,0.08)',background:editCfg.days.includes(d)?'rgba(251,191,36,0.06)':'rgba(255,255,255,0.03)'}}>
+                        <span style={{fontWeight:900,color:editCfg.days.includes(d)?'#fbbf24':'rgba(255,255,255,0.4)'}}>{d}</span>
+                        <span style={{fontSize:'16px'}}>{editCfg.days.includes(d)?'✓':'○'}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* GRADES config */}
+                {cfgTab==='grades' && (
+                  <div style={{display:'flex',flexWrap:'wrap',gap:'8px'}}>
+                    {['KG','1','2','3','4','5','6','7','8','9','10','11','12'].map(g=>(
+                      <button key={g} onClick={()=>{ const inc=editCfg.grades.includes(g); setEditCfg(c=>({...c,grades:inc?c.grades.filter(x=>x!==g):[...c.grades,g]})); }}
+                        style={{padding:'10px 18px',borderRadius:'10px',border:'none',cursor:'pointer',fontWeight:900,fontSize:'13px',background:editCfg.grades.includes(g)?'#fbbf24':'rgba(255,255,255,0.06)',color:editCfg.grades.includes(g)?'#0f172a':'rgba(255,255,255,0.4)'}}>
+                        G{g}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* SUBJECTS config */}
+                {cfgTab==='subjects' && (
+                  <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
+                    <div style={{display:'flex',flexWrap:'wrap',gap:'6px'}}>
+                      {editCfg.subjects.map((s,i)=>(
+                        <div key={i} style={{display:'flex',alignItems:'center',gap:'4px',background:'rgba(255,255,255,0.06)',borderRadius:'99px',padding:'4px 12px',border:'1px solid rgba(255,255,255,0.1)'}}>
+                          <span style={{fontSize:'11px',color:'rgba(255,255,255,0.7)'}}>{s}</span>
+                          <button onClick={()=>setEditCfg(c=>({...c,subjects:c.subjects.filter((_,j)=>j!==i)}))}
+                            style={{background:'none',border:'none',color:'rgba(248,113,113,0.6)',cursor:'pointer',fontSize:'12px',padding:'0 0 0 4px'}}>✕</button>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+                    <div style={{display:'flex',gap:'8px'}}>
+                      <input id="newSubj" placeholder="Subject နာမည်" style={{...S.input,flex:1}}/>
+                      <button onClick={()=>{ const v=document.getElementById('newSubj').value.trim(); if(v){setEditCfg(c=>({...c,subjects:[...c.subjects,v]}));document.getElementById('newSubj').value='';} }}
+                        style={{...S.btnSm,flexShrink:0,padding:'10px 16px'}}>+ Add</button>
+                    </div>
+                  </div>
+                )}
 
-        {/* ══════════════════════════════════════════════ */}
-        {/* TAB 3 — HISTORY                               */}
-        {/* ══════════════════════════════════════════════ */}
-        {tab === "HISTORY" && (
-          <div className="space-y-4">
-            {history.length === 0 ? (
-              <div className="py-24 text-center">
-                <p className="font-black uppercase italic text-slate-300 text-xl tracking-widest">No history yet</p>
+                <button onClick={handleSaveConfig} disabled={saving}
+                  style={{...S.btn,opacity:saving?0.5:1,cursor:saving?'default':'pointer',marginTop:'4px'}}>
+                  {saving?'Saving...':'💾 Save Config'}
+                </button>
               </div>
-            ) : history.slice().reverse().map((l, i) => (
-              <div key={i} className="bg-white p-5 border-slate-100 shadow-md flex items-center gap-4" style={{borderRadius:'2rem', borderBottomWidth:'6px'}}>
-                <div className={`shrink-0 w-10 h-10 rounded-2xl flex items-center justify-center text-lg
-                  ${l.Status === "Approved" ? "bg-emerald-100" : "bg-rose-100"}`}>
-                  {l.Status === "Approved" ? "✅" : "❌"}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-black uppercase italic text-sm text-slate-950 truncate">{l.Name}</p>
-                  <p className="uppercase font-black text-slate-400 mt-0.5" style={{fontSize:'9px'}}>
-                    {l.Leave_Type} · {l.Total_Days} days · {l.Start_Date}
-                  </p>
-                </div>
-                <div className="shrink-0 text-right">
-                  <span className={`text-[8px] px-3 py-1 rounded-full font-black uppercase
-                    ${l.Status === "Approved" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
-                    {l.Status}
-                  </span>
-                  {l.Approved_By && l.Approved_By !== "-" && (
-                    <p className="text-slate-400 font-black uppercase mt-1" style={{fontSize:'7px'}}>by {l.Approved_By}</p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
-
       </div>
+
+      {/* EVENT FORM MODAL */}
+      {showEventForm && isMgt && (
+        <div style={{position:'fixed',inset:0,zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center',background:'rgba(0,0,0,0.7)',backdropFilter:'blur(6px)'}}
+          onClick={()=>setShowEventForm(false)}>
+          <div style={{width:'100%',maxWidth:'420px',background:'#1a1030',border:'1px solid rgba(255,255,255,0.1)',borderRadius:'24px 24px 0 0',padding:'24px',paddingBottom:'32px',display:'flex',flexDirection:'column',gap:'12px'}}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <p style={{fontWeight:900,fontSize:'14px',margin:0}}>Add Event</p>
+              <button onClick={()=>setShowEventForm(false)} style={{background:'none',border:'none',color:'rgba(255,255,255,0.3)',cursor:'pointer',fontSize:'18px'}}>✕</button>
+            </div>
+            <div><label style={S.label}>Title *</label><input value={eventForm.Title} onChange={e=>setEventForm(f=>({...f,Title:e.target.value}))} placeholder="e.g. ပြည်ထောင်စုနေ့" style={S.input}/></div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
+              <div><label style={S.label}>Start Date *</label><input type="date" value={eventForm.Date} onChange={e=>setEventForm(f=>({...f,Date:e.target.value}))} style={S.input}/></div>
+              <div><label style={S.label}>End Date</label><input type="date" value={eventForm.End_Date} onChange={e=>setEventForm(f=>({...f,End_Date:e.target.value}))} style={S.input}/></div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
+              <div>
+                <label style={S.label}>Type</label>
+                <select value={eventForm.Type} onChange={e=>setEventForm(f=>({...f,Type:e.target.value}))} style={S.select}>
+                  {EVENT_TYPES.map(t=><option key={t} value={t} style={{background:'#1a1030'}}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={S.label}>Target</label>
+                <select value={eventForm.Target} onChange={e=>setEventForm(f=>({...f,Target:e.target.value}))} style={S.select}>
+                  {['All','Staff','Student','Public'].map(t=><option key={t} value={t} style={{background:'#1a1030'}}>{t}</option>)}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label style={S.label}>Color</label>
+              <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
+                {EVENT_COLORS.map(c=>(
+                  <button key={c} onClick={()=>setEventForm(f=>({...f,Color:c}))}
+                    style={{width:'28px',height:'28px',borderRadius:'50%',background:c,border:eventForm.Color===c?'3px solid #fff':'2px solid transparent',cursor:'pointer'}}/>
+                ))}
+              </div>
+            </div>
+            <div><label style={S.label}>Description</label><input value={eventForm.Description} onChange={e=>setEventForm(f=>({...f,Description:e.target.value}))} placeholder="Optional" style={S.input}/></div>
+            <button onClick={handleSaveEvent} disabled={saving}
+              style={{...S.btn,background:eventForm.Color,color:'#fff',opacity:saving?0.5:1}}>
+              {saving?'Saving...':'+ Save Event'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
