@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 
 const S = {
-  page: { minHeight:'100vh', background:'#0f0a1e', color:'#fff', fontFamily:'system-ui,sans-serif', paddingBottom:'32px' },
+  page: {display:'flex', height:'100%', background:'#0f0a1e', color:'#fff', fontFamily:'system-ui,sans-serif',flexDirection:'column',overflow:'hidden'},
   card: { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'16px', padding:'16px' },
 };
 
@@ -12,6 +12,7 @@ const NAV_CARDS = [
   { label:'School Dashboard', sublabel:'ကျောင်းသတင်းများ', icon:'🏫', path:'/student/school-dashboard', color:'#60a5fa' },
   { label:'My Profile',       sublabel:'ကိုယ်ရေးအချက်အလက်', icon:'👤', path:'/student/profile',          color:'#c084fc' },
   { label:'My Performance',   sublabel:'ရမှတ်များ / Scores',  icon:'⭐', path:'/student/my-performance',   color:'#fbbf24' },
+  { label:'My Timetable',      sublabel:'နေ့စဉ် ဘာသာရပ်ဇယား',  icon:'🗓️', path:'/student/timetable',          color:'#34d399' },
 
   { label:'Lost & Found',     sublabel:'ပစ္စည်းပျောက်/တွေ့',   icon:'🔍', path:'/student/lost-found',       color:'#fb923c' },
 ];
@@ -46,13 +47,17 @@ export default function StudentHome() {
         setAnn(all.filter(a => a.Target_Student === true || a.Target_Student === 'TRUE').slice(0, 5));
       }
       if (fee.success && myID) {
-        setFees((fee.data || []).filter(f => f.Student_ID?.toString().trim() === myID));
+        const myIDStr = myID?.toString().trim();
+        setFees((fee.data || []).filter(f => {
+          const fid = (f.Student_ID || f.student_id || f['Enrollment No.'] || '').toString().trim();
+          return myIDStr && fid === myIDStr;
+        }));
       }
     } catch {}
     setLoading(false);
   };
 
-  const unpaidFees = fees.filter(f => f.Status !== 'Paid' && f.Status !== 'paid' && f.Status);
+  const unpaidFees = fees.filter(f => { const s = (f.Status||'').toLowerCase(); const amt = Number(f.Next_Due_Amount||f.Amount_Due||f.Amount||0); return amt > 0 && s !== 'paid' && s !== 'complete' && s !== 'completed'; });
   const urgentAnn  = announcements.filter(a => a.Is_Priority === true || a.Is_Priority === 'TRUE');
 
   return (
@@ -80,6 +85,7 @@ export default function StudentHome() {
           )}
         </div>
       </div>
+      <div style={{flex:1,overflowY:'auto',WebkitOverflowScrolling:'touch',paddingBottom:'80px'}}>
 
       <div style={{ maxWidth:'480px', margin:'0 auto', padding:'16px', display:'flex', flexDirection:'column', gap:'14px' }}>
 
@@ -161,11 +167,11 @@ export default function StudentHome() {
               {unpaidFees.slice(0, 3).map((f, i) => (
                 <div key={i} style={{ ...S.card, display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 14px' }}>
                   <div>
-                    <p style={{ fontWeight:900, fontSize:'12px', color:'#fff', margin:'0 0 2px' }}>{f.Fee_Type || f.Description || 'Fee'}</p>
-                    <p style={{ fontSize:'9px', color:'rgba(255,255,255,0.3)', margin:0 }}>Due: {f.Due_Date || f.Next_Due_Date || '—'}</p>
+                    <p style={{ fontWeight:900, fontSize:'12px', color:'#fff', margin:'0 0 2px' }}>{f.Fee_Category || f.Fee_Type || f.Description || 'Fee'}</p>
+                    <p style={{ fontSize:'9px', color:'rgba(255,255,255,0.3)', margin:0 }}>Due: {f.Next_Due_Date || f.Due_Date || '—'}</p>
                   </div>
                   <div style={{ textAlign:'right' }}>
-                    <p style={{ fontWeight:900, fontSize:'13px', color:'#fbbf24', margin:0 }}>{Number(f.Amount||0).toLocaleString()} ks</p>
+                    <p style={{ fontWeight:900, fontSize:'13px', color:'#fbbf24', margin:0 }}>{Number(f.Next_Due_Amount||f.Amount||0).toLocaleString()} ks</p>
                     <span style={{ fontSize:'8px', padding:'2px 8px', borderRadius:'99px', background:'rgba(251,191,36,0.15)', color:'#fbbf24', fontWeight:900 }}>Pending</span>
                   </div>
                 </div>
@@ -173,6 +179,7 @@ export default function StudentHome() {
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

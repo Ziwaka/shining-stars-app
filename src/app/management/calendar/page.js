@@ -1,11 +1,11 @@
 "use client";
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 
 const S = {
-  page:    { minHeight:'100vh', background:'#0f0a1e', color:'#fff', fontFamily:'system-ui,sans-serif', paddingBottom:'80px' },
-  header:  { position:'sticky', top:0, zIndex:40, background:'rgba(15,10,30,0.97)', backdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.07)', padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' },
+  page: { display:'flex', flexDirection:'column', height:'100%', overflow:'hidden', background:'#0f0a1e', color:'#fff', fontFamily:'system-ui,sans-serif' },
+  header: {flexShrink:0, zIndex:40, background:'rgba(15,10,30,0.97)', backdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.07)', padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between'},
   card:    { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'16px', padding:'16px' },
   input:   { width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:'12px', padding:'10px 14px', color:'#fff', fontSize:'13px', outline:'none', boxSizing:'border-box' },
   select:  { width:'100%', background:'rgba(15,10,30,0.9)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:'12px', padding:'10px 14px', color:'#fff', fontSize:'13px', outline:'none', boxSizing:'border-box' },
@@ -19,6 +19,29 @@ const S = {
 const EVENT_TYPES  = ['Holiday','Exam','Sports','Activity','Meeting','Other'];
 const EVENT_COLORS = ['#fbbf24','#60a5fa','#34d399','#f87171','#c084fc','#fb923c','#e879f9'];
 const DAYS_SHORT   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const WEEKEND_DAYS = new Set(['Saturday','Sunday']);
+// Deterministic pastel color per subject name
+const SUBJECT_COLORS = [
+  {bg:'rgba(96,165,250,0.15)',  border:'rgba(96,165,250,0.4)',  text:'#93c5fd'},  // blue
+  {bg:'rgba(167,139,250,0.15)', border:'rgba(167,139,250,0.4)', text:'#c4b5fd'},  // purple
+  {bg:'rgba(52,211,153,0.15)',  border:'rgba(52,211,153,0.4)',  text:'#6ee7b7'},  // green
+  {bg:'rgba(251,146,60,0.15)',  border:'rgba(251,146,60,0.4)',  text:'#fdba74'},  // orange
+  {bg:'rgba(244,114,182,0.15)', border:'rgba(244,114,182,0.4)', text:'#f9a8d4'},  // pink
+  {bg:'rgba(34,211,238,0.15)',  border:'rgba(34,211,238,0.4)',  text:'#67e8f9'},  // cyan
+  {bg:'rgba(163,230,53,0.15)',  border:'rgba(163,230,53,0.4)',  text:'#bef264'},  // lime
+  {bg:'rgba(251,191,36,0.15)',  border:'rgba(251,191,36,0.4)',  text:'#fbbf24'},  // amber
+  {bg:'rgba(248,113,113,0.15)', border:'rgba(248,113,113,0.4)', text:'#fca5a5'},  // red
+  {bg:'rgba(45,212,191,0.15)',  border:'rgba(45,212,191,0.4)',  text:'#5eead4'},  // teal
+];
+const subjectColorMap = {};
+const getSubjectColor = (subjectList, subject) => {
+  if (!subject) return null;
+  if (!subjectColorMap[subject]) {
+    const idx = subjectList.indexOf(subject);
+    subjectColorMap[subject] = SUBJECT_COLORS[(idx >= 0 ? idx : Object.keys(subjectColorMap).length) % SUBJECT_COLORS.length];
+  }
+  return subjectColorMap[subject];
+};
 const MONTHS       = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 export default function CalendarTimetablePage() {
@@ -41,15 +64,20 @@ export default function CalendarTimetablePage() {
   const [selectedDay, setSelectedDay] = useState(null);
 
   // Timetable state
-  const [selGrade, setSelGrade] = useState('');
-  const [selDay, setSelDay]     = useState('');
+  const [selGrade, setSelGrade]   = useState('');
+  const [selSection, setSelSection] = useState('');
+  const [selDay, setSelDay]         = useState('');
   const [editMode, setEditMode] = useState(false);
   const [ttCells, setTtCells]   = useState({}); // {day_period: {subject,teacher,room}}
   const [teacherView, setTeacherView] = useState('');
+  const [staffList, setStaffList]     = useState([]);
 
   // Config state
-  const [cfgTab, setCfgTab]     = useState('periods');
+  const [cfgTab, setCfgTab]         = useState('periods');
+  const [cfgPeriodGrade, setCfgPeriodGrade] = useState('default');
   const [editCfg, setEditCfg]   = useState(null);
+  const [dragIdx, setDragIdx]   = useState(null);
+  const [conflicts, setConflicts] = useState([]); // [{teacher, day, period, grades:[]}]
 
   useEffect(() => {
     const saved = localStorage.getItem('user');
@@ -63,33 +91,86 @@ export default function CalendarTimetablePage() {
   const fetchAll = async (u) => {
     setLoading(true);
     try {
-      const [cfgRes, evtRes] = await Promise.all([
+      const [cfgRes, evtRes, staffRes] = await Promise.all([
         fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetableConfig' }) }),
         fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getEvents' }) }),
+        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getData', sheetName:'Staff_Directory' }) }),
       ]);
-      const cfgData = await cfgRes.json();
-      const evtData = await evtRes.json();
-      if (cfgData.success) { setCfg(cfgData.config); setEditCfg(JSON.parse(JSON.stringify(cfgData.config))); if (cfgData.config.grades?.[0]) setSelGrade(cfgData.config.grades[0]); if (cfgData.config.days?.[0]) setSelDay(cfgData.config.days[0]); }
+      const cfgData   = await cfgRes.json();
+      const evtData   = await evtRes.json();
+      const staffData = await staffRes.json();
+      if (cfgData.success) {
+        // Normalize grades: old format is array ['KG','1',...], new format is object {'KG':['A'],...}
+        const rawCfg = cfgData.config;
+        if (Array.isArray(rawCfg.grades)) {
+          const obj = {};
+          rawCfg.grades.forEach(g => { obj[g] = ['A']; });
+          rawCfg.grades = obj;
+        }
+        if (!rawCfg.grades || typeof rawCfg.grades !== 'object') rawCfg.grades = {};
+        // Normalize periods_by_grade
+        if (!rawCfg.periods_by_grade) rawCfg.periods_by_grade = { default: rawCfg.periods || [] };
+        // Normalize isBreak to boolean (GAS sometimes returns string)
+        const normPeriods = (arr) => (arr||[]).map((p,i) => ({...p, no: p.no ?? (i+1), isBreak: p.isBreak===true||p.isBreak==='true'||String(p.label).toLowerCase().includes('break')||String(p.label).toLowerCase().includes('lunch')}));
+        rawCfg.periods = normPeriods(rawCfg.periods);
+        Object.keys(rawCfg.periods_by_grade).forEach(k => { rawCfg.periods_by_grade[k] = normPeriods(rawCfg.periods_by_grade[k]); });
+        setCfg(rawCfg);
+        setEditCfg(JSON.parse(JSON.stringify(rawCfg)));
+        // Restore last selected grade/section from session, fallback to first grade
+        const savedGrade = sessionStorage.getItem('tt_grade');
+        const savedSec   = sessionStorage.getItem('tt_section');
+        const grades     = rawCfg.grades || {};
+        const firstG     = (savedGrade && grades[savedGrade]) ? savedGrade : (Object.keys(grades)[0] || '');
+        const firstSecs  = grades[firstG] || [];
+        const firstSec   = (savedSec && firstSecs.includes(savedSec)) ? savedSec : (Array.isArray(firstSecs) ? firstSecs[0]||'' : '');
+        setSelGrade(firstG);
+        setSelSection(firstSec);
+        if (rawCfg.days?.[0]) setSelDay(rawCfg.days[0]);
+      }
       if (evtData.success) setEvents(evtData.data || []);
+      if (staffData.success) setStaffList(staffData.data || []);
     } catch {}
     setLoading(false);
   };
 
-  const fetchTimetable = useCallback(async (grade) => {
-    if (!grade) return;
-    try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetable', grade }) });
-      const r = await res.json();
-      if (r.success) {
-        const cells = {};
-        r.data.forEach(row => { cells[`${row.Day}_${row.Period_No}`] = { subject: row.Subject, teacher: row.Teacher, room: row.Room }; });
-        setTtCells(cells);
-        setTimetable(r.data);
-      }
-    } catch {}
-  }, []);
+  const ttCacheKey = (g, s) => `tt_cells_${g}_${s}`;
 
-  useEffect(() => { if (selGrade && tab === 'timetable') fetchTimetable(selGrade); }, [selGrade, tab]);
+  const fetchTimetable = async (grade, section) => {
+    if (!grade) return;
+    const VDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        // ★ grade ပဲ GAS ပို့မည် — section filter ကို frontend မှာ လုပ်မည်
+        const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetable', grade }) });
+        const r = await res.json();
+        if (r.success) {
+          const rows = (r.data || []).filter(row => {
+            // ★ Frontend section filter — blank stored = any section
+            const stored = String(row.Section || '').trim();
+            return !section || stored === '' || stored === String(section).trim();
+          });
+          const cells = {};
+          rows.forEach(row => {
+            let day = String(row.Day || '');
+            if (!VDAYS.includes(day)) {
+              const p = day.split('_');
+              day = p.find(x => VDAYS.includes(x)) || day;
+            }
+            const k = `${day}_${String(row.Period_No)}`;
+            cells[k] = { subject: row.Subject, teacher: row.Teacher, asst_teacher: row.Asst_Teacher||'', room: row.Room };
+          });
+          setTtCells(cells);
+          setTimetable(rows);
+          return;
+        }
+      } catch(e) {
+        if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+  };
+
+  useEffect(() => { if (selGrade && selSection && tab === 'timetable') fetchTimetable(selGrade, selSection); }, [selGrade, selSection, tab]);
 
   const showMsg = (text, type='success') => { setMsg({text,type}); setTimeout(()=>setMsg(null),3500); };
 
@@ -132,48 +213,138 @@ export default function CalendarTimetablePage() {
 
   // ── TIMETABLE HELPERS ──
   const handleCellChange = (day, periodNo, field, value) => {
-    const key = `${day}_${periodNo}`;
+    const key = `${day}_${String(periodNo)}`;
+    console.log('[TT] cellChange key='+key+' field='+field+' val='+value);
     setTtCells(prev => ({ ...prev, [key]: { ...(prev[key]||{}), [field]:value } }));
   };
 
   const handleSaveTimetable = async () => {
-    if (!selGrade) return showMsg('Grade ရွေးပါ', 'error');
+    if (!selGrade || !selSection) return showMsg('Grade နှင့် Section ရွေးပါ', 'error');
     setSaving(true);
-    const cells = [];
+
+    // Build ALL cells at once — single call with allDays:true
+    const allCells = [];
     Object.entries(ttCells).forEach(([key, val]) => {
       if (val.subject) {
-        const [day, period] = key.split('_');
-        cells.push({ Grade:selGrade, Day:day, Period_No:period, Subject:val.subject, Teacher:val.teacher||'', Room:val.room||'' });
+        const parts = key.split('_');
+        const day    = parts[0];
+        const period = parts.slice(1).join('_');
+        allCells.push({
+          Grade:        selGrade,
+          Section:      selSection,
+          Day:          day,
+          Period_No:    period,
+          Subject:      val.subject,
+          Teacher:      val.teacher      || '',
+          Asst_Teacher: val.asst_teacher || '',
+          Room:         val.room         || ''
+        });
       }
     });
+
     try {
-      // Save all days for this grade
-      const days = cfg?.days || [];
-      for (const day of days) {
-        const dayCells = cells.filter(c => c.Day === day);
-        const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'saveTimetable', grade:selGrade, day, cells:dayCells, Updated_By:user?.Name||user?.name||user?.username }) });
-        await res.json();
+      // Single GAS call — delete all for this grade+section, then write all cells
+      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({
+        action:     'saveTimetable',
+        grade:      selGrade,
+        section:    selSection,
+        allDays:    true,
+        cells:      allCells,
+        Updated_By: user?.Name || user?.name || user?.username
+      })});
+      const r = await res.json();
+
+      if (r.success) {
+        showMsg('Timetable သိမ်းပြီးပါပြီ ✓');
+        setEditMode(false);
+      } else {
+        showMsg('မသိမ်းရပါ: ' + (r.message || 'GAS error'), 'error');
       }
-      showMsg('Timetable သိမ်းပြီးပါပြီ');
-      setEditMode(false);
-    } catch { showMsg('Network error','error'); }
+    } catch(err) {
+      showMsg('Network error — ' + err.message, 'error');
+    }
     setSaving(false);
   };
 
-  const handleSaveConfig = async () => {
-    setSaving(true);
+  const handleSaveConfig = async (silent=false) => {
+    if (!silent) setSaving(true);
+    if (!silent) showMsg('သိမ်းနေသည်…');
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'saveTimetableConfig', ...editCfg }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'saveTimetableConfig', ...editCfg, periods_by_grade: editCfg.periods_by_grade||{default: editCfg.periods||[]} }) });
       const r = await res.json();
-      if (r.success) { showMsg(r.message); setCfg(JSON.parse(JSON.stringify(editCfg))); }
-      else showMsg(r.message||'Error','error');
-    } catch { showMsg('Network error','error'); }
-    setSaving(false);
+      if (r.success) {
+        if (!silent) showMsg(r.message || 'Config သိမ်းပြီးပါပြီ ✓');
+        const newCfg = JSON.parse(JSON.stringify(editCfg));
+        setCfg(newCfg);
+      } else {
+        showMsg('မသိမ်းရပါ: ' + (r.message||'GAS error'), 'error');
+      }
+    } catch(e) { showMsg('Network error — ' + e.message, 'error'); }
+    if (!silent) setSaving(false);
+  };
+
+
+  // ── Conflict detection ──
+  const checkConflicts = async () => {
+    if (!cfg) return;
+    showMsg('Conflict စစ်နေသည်…');
+    try {
+      // Fetch all grades' timetables
+      const grades = Object.keys(cfg.grades || {});
+      const allRows = [];
+      await Promise.all(grades.map(async g => {
+        const secs = cfg.grades[g] || ['A'];
+        await Promise.all(secs.map(async sec => {
+          const res = await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getTimetable',grade:g})});
+          const r = await res.json();
+          if (r.success) {
+            (r.data||[]).filter(row=>{
+              const stored=String(row.Section||'').trim();
+              return !sec||stored===''||stored===sec;
+            }).forEach(row=>{
+              if(row.Teacher) allRows.push({teacher:row.Teacher,day:row.Day,period:String(row.Period_No),grade:g,section:sec});
+              if(row.Asst_Teacher) allRows.push({teacher:row.Asst_Teacher,day:row.Day,period:String(row.Period_No),grade:g,section:sec});
+            });
+          }
+        }));
+      }));
+      // Group by teacher+day+period
+      const map = {};
+      allRows.forEach(r=>{
+        const k = r.teacher+'|'+r.day+'|'+r.period;
+        if(!map[k]) map[k]={teacher:r.teacher,day:r.day,period:r.period,assignments:[]};
+        map[k].assignments.push(r.grade+(r.section?'/'+r.section:''));
+      });
+      const found = Object.values(map).filter(v=>v.assignments.length>1);
+      setConflicts(found);
+      if(found.length===0) showMsg('Conflict မရှိပါ ✓');
+      else showMsg(found.length+' conflict တွေ့ရသည်!','error');
+    } catch(e){ showMsg('Error: '+e.message,'error'); }
+  };
+
+  // ── Helper: get periods for a grade+section (fallback chain: Grade12A → Grade12 → default) ──
+  // Always normalize isBreak at render time — covers old data + GAS string issues
+  const fixBreak = (arr) => (arr||[]).map((p,i) => {
+    const lbl = String(p.label||'').toLowerCase();
+    const autoBreak = ['break','lunch','recess','duty','assembly','prayer','chapel','နားချိန်','အနားယူ'].some(kw=>lbl.includes(kw));
+    return { ...p, no: p.no ?? (i+1), isBreak: p.isBreak===true || p.isBreak==='true' || autoBreak };
+  });
+
+  const getGradePeriods = (config, grade, section) => {
+    if (!config) return [];
+    const byGrade = config.periods_by_grade || {};
+    const gLabel = grade === 'KG' ? 'KG' : grade ? `Grade ${grade}` : 'default';
+    // 1. Try grade+section key e.g. "Grade 12A"
+    if (section && byGrade[`${gLabel}${section}`]) return fixBreak(byGrade[`${gLabel}${section}`]);
+    // 2. Try grade-only key e.g. "Grade 12"
+    if (byGrade[gLabel]) return fixBreak(byGrade[gLabel]);
+    // 3. Fallback to default
+    return fixBreak(byGrade['default'] || config.periods || []);
   };
 
   // Teacher view — filter timetable by teacher
   const teacherSchedule = timetable.filter(r => !teacherView || r.Teacher === teacherView);
-  const allTeachers = [...new Set(timetable.map(r=>r.Teacher).filter(Boolean))];
+  const allTeachers = [...new Set([...timetable.map(r=>r.Teacher), ...timetable.map(r=>r.Asst_Teacher)].filter(Boolean))];
 
   const MAIN_TABS = [
     { id:'calendar',   label:'📅 Calendar' },
@@ -193,6 +364,7 @@ export default function CalendarTimetablePage() {
         </div>
         <button onClick={()=>fetchAll(user)} style={{background:'none',border:'none',color:'rgba(255,255,255,0.4)',cursor:'pointer',fontSize:'18px'}}>↻</button>
       </div>
+      <div style={{flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', paddingBottom:'80px'}}>
 
       {msg && (
         <div style={{position:'fixed',top:'64px',left:'50%',transform:'translateX(-50%)',zIndex:50,padding:'8px 20px',borderRadius:'999px',fontSize:'12px',fontWeight:900,color:'#fff',background:msg.type==='error'?'#ef4444':'#10b981',boxShadow:'0 4px 20px rgba(0,0,0,0.4)',whiteSpace:'nowrap'}}>
@@ -292,7 +464,7 @@ export default function CalendarTimetablePage() {
 
                 {monthEvents.length === 0 && (
                   <div style={{textAlign:'center',padding:'30px 0',color:'rgba(255,255,255,0.2)'}}>
-                    {isMgt ? 'Event မရှိသေးပါ — ထည့်ရန် ခြင်္ကေ့ ကနေ နှိပ်ပါ' : 'Event မရှိသေးပါ'}
+                    {isMgt ? 'Event မရှိသေးပါ — "+ ADD EVENT" ကိုနှိပ်ပါ' : 'Event မရှိသေးပါ'}
                   </div>
                 )}
               </div>
@@ -306,8 +478,14 @@ export default function CalendarTimetablePage() {
                   <div style={{display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'flex-end'}}>
                     <div style={{flex:1,minWidth:'100px'}}>
                       <label style={S.label}>Grade</label>
-                      <select value={selGrade} onChange={e=>{setSelGrade(e.target.value);setEditMode(false);}} style={S.select}>
-                        {(cfg.grades||[]).map(g=><option key={g} value={g} style={{background:'#1a1030'}}>Grade {g}</option>)}
+                      <select value={selGrade} onChange={e=>{const g=e.target.value; setSelGrade(g); setEditMode(false); sessionStorage.setItem('tt_grade',g); const secs=(cfg.grades||{})[g]; const s=Array.isArray(secs)?(secs[0]||''):''; setSelSection(s); sessionStorage.setItem('tt_section',s);}} style={S.select}>
+                        {Object.keys(cfg.grades||{}).map(g=><option key={g} value={g} style={{background:'#1a1030'}}>Grade {g}</option>)}
+                      </select>
+                    </div>
+                    <div style={{flex:1,minWidth:'80px'}}>
+                      <label style={S.label}>Section</label>
+                      <select value={selSection} onChange={e=>{setSelSection(e.target.value);setEditMode(false);sessionStorage.setItem('tt_section',e.target.value);}} style={S.select}>
+                        {(Array.isArray((cfg.grades||{})[selGrade])?(cfg.grades||{})[selGrade]:[]).map(s=><option key={s} value={s} style={{background:'#1a1030'}}>{s}</option>)}
                       </select>
                     </div>
                     <div style={{flex:1,minWidth:'100px'}}>
@@ -323,8 +501,48 @@ export default function CalendarTimetablePage() {
                         {editMode?'✕ Cancel':'✏️ Edit'}
                       </button>
                     )}
+                    {isMgt && (
+                      <button onClick={checkConflicts}
+                        style={{...S.btnSm,background:'rgba(248,113,113,0.1)',color:'rgba(248,113,113,0.8)',border:'1px solid rgba(248,113,113,0.25)',flexShrink:0}}>
+                        ⚠ Conflicts
+                      </button>
+                    )}
                   </div>
                 </div>
+
+                {/* Conflict results */}
+                {conflicts.length > 0 && (
+                  <div style={{background:'rgba(248,113,113,0.08)',border:'1px solid rgba(248,113,113,0.25)',borderRadius:'12px',padding:'12px 14px'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}}>
+                      <span style={{fontSize:'10px',fontWeight:900,color:'rgba(248,113,113,0.9)',textTransform:'uppercase',letterSpacing:'0.1em'}}>⚠ Teacher Conflicts တွေ့ရသည်</span>
+                      <button onClick={()=>setConflicts([])} style={{background:'none',border:'none',color:'rgba(255,255,255,0.3)',cursor:'pointer',fontSize:'14px'}}>✕</button>
+                    </div>
+                    {conflicts.map((c,i)=>(
+                      <div key={i} style={{marginBottom:'6px',padding:'6px 10px',background:'rgba(248,113,113,0.07)',borderRadius:'8px',borderLeft:'3px solid rgba(248,113,133,0.5)'}}>
+                        <span style={{fontSize:'11px',fontWeight:900,color:'#fca5a5'}}>👤 {c.teacher}</span>
+                        <span style={{fontSize:'10px',color:'rgba(255,255,255,0.4)',marginLeft:'8px'}}>{c.day} · Period {c.period}</span>
+                        <div style={{fontSize:'9px',color:'rgba(248,113,113,0.6)',marginTop:'2px'}}>→ {c.assignments.join(', ')}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Conflict results */}
+                {conflicts.length > 0 && (
+                  <div style={{background:'rgba(248,113,113,0.08)',border:'1px solid rgba(248,113,113,0.25)',borderRadius:'12px',padding:'12px 14px'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}}>
+                      <span style={{fontSize:'10px',fontWeight:900,color:'rgba(248,113,113,0.9)',textTransform:'uppercase',letterSpacing:'0.1em'}}>⚠ Teacher Conflicts တွေ့ရသည်</span>
+                      <button onClick={()=>setConflicts([])} style={{background:'none',border:'none',color:'rgba(255,255,255,0.3)',cursor:'pointer',fontSize:'14px'}}>✕</button>
+                    </div>
+                    {conflicts.map((c,i)=>(
+                      <div key={i} style={{marginBottom:'6px',padding:'6px 10px',background:'rgba(248,113,113,0.07)',borderRadius:'8px',borderLeft:'3px solid rgba(248,113,113,0.5)'}}>
+                        <span style={{fontSize:'11px',fontWeight:900,color:'#fca5a5'}}>👤 {c.teacher}</span>
+                        <span style={{fontSize:'10px',color:'rgba(255,255,255,0.4)',marginLeft:'8px'}}>{c.day} · Period {c.period}</span>
+                        <div style={{fontSize:'9px',color:'rgba(248,113,113,0.6)',marginTop:'2px'}}>→ {c.assignments.join(', ')}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Timetable grid */}
                 <div style={{overflowX:'auto'}}>
@@ -333,60 +551,89 @@ export default function CalendarTimetablePage() {
                       <tr>
                         <th style={{padding:'8px',fontSize:'9px',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.1em',textAlign:'left',minWidth:'80px',borderBottom:'1px solid rgba(255,255,255,0.08)'}}>Period</th>
                         {(cfg.days||[]).map(d=>(
-                          <th key={d} style={{padding:'8px',fontSize:'9px',color:'rgba(255,255,255,0.5)',textTransform:'uppercase',letterSpacing:'0.1em',textAlign:'center',borderBottom:'1px solid rgba(255,255,255,0.08)',fontWeight:900}}>
+                          <th key={d} style={{padding:'8px',fontSize:'9px',color:WEEKEND_DAYS.has(d)?'rgba(251,191,36,0.5)':'rgba(255,255,255,0.5)',textTransform:'uppercase',letterSpacing:'0.1em',textAlign:'center',borderBottom:'1px solid rgba(255,255,255,0.08)',fontWeight:900,background:WEEKEND_DAYS.has(d)?'rgba(251,191,36,0.04)':'transparent'}}>
                             {DAYS_SHORT[['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].indexOf(d)]||d.slice(0,3)}
                           </th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {(cfg.periods||[]).map((p,pi)=>(
-                        <tr key={pi} style={{background:pi%2===0?'rgba(255,255,255,0.02)':'transparent'}}>
-                          <td style={{padding:'8px 6px',borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'middle'}}>
-                            <div style={{fontSize:'10px',fontWeight:900,color:p.isBreak?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.6)'}}>{p.label}</div>
-                            <div style={{fontSize:'8px',color:'rgba(255,255,255,0.2)'}}>{p.start}–{p.end}</div>
+                      {getGradePeriods(cfg, selGrade, selSection).map((p,pi)=>{
+                        const pKey = p.no ?? (pi + 1); // single source of truth for period key
+                        // console.log('[TT] period pKey='+pKey+' label='+p.label);
+                        return (
+                        <tr key={pKey} style={{background:p.isBreak?'rgba(251,191,36,0.07)':pi%2===0?'rgba(255,255,255,0.02)':'transparent'}}>
+                          <td style={{padding:'8px 6px',borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'middle',borderLeft:p.isBreak?'3px solid rgba(251,191,36,0.4)':'3px solid transparent'}}>
+                            <div style={{fontSize:'10px',fontWeight:900,color:p.isBreak?'rgba(251,191,36,0.7)':'rgba(255,255,255,0.6)'}}>{p.label}</div>
+                            <div style={{fontSize:'8px',color:p.isBreak?'rgba(251,191,36,0.35)':'rgba(255,255,255,0.2)'}}>{p.start}–{p.end}</div>
                           </td>
                           {(cfg.days||[]).map(day=>{
-                            const key = `${day}_${p.no}`;
+                            const key = `${day}_${String(pKey)}`;
                             const cell = ttCells[key] || {};
-                            const highlight = teacherView && cell.teacher===teacherView;
+                            const highlight = teacherView && (cell.teacher===teacherView || cell.asst_teacher===teacherView);
+                            const isWeekend = WEEKEND_DAYS.has(day);
                             if (p.isBreak) return (
-                              <td key={day} style={{textAlign:'center',padding:'6px',borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
-                                <span style={{fontSize:'9px',color:'rgba(255,255,255,0.15)',fontStyle:'italic'}}>{p.label}</span>
+                              <td key={day} style={{textAlign:'center',padding:'4px',borderBottom:'1px solid rgba(255,255,255,0.04)',background:isWeekend?'rgba(251,191,36,0.04)':'transparent'}}>
+                                {p.dutyPerson
+                                  ? <div style={{fontSize:'8px',color:'rgba(251,191,36,0.7)',fontWeight:900,lineHeight:1.3}}>⚑<br/>{p.dutyPerson}</div>
+                                  : <span style={{fontSize:'9px',color:'rgba(251,191,36,0.2)',fontStyle:'italic'}}>—</span>
+                                }
                               </td>
                             );
                             return (
-                              <td key={day} style={{padding:'4px',borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'top'}}>
+                              <td key={day} style={{padding:'4px',borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'top',background:isWeekend?'rgba(251,191,36,0.025)':'transparent'}}>
                                 {editMode ? (
                                   <div style={{display:'flex',flexDirection:'column',gap:'3px'}}>
-                                    <select value={cell.subject||''} onChange={e=>handleCellChange(day,p.no,'subject',e.target.value)}
+                                    <select value={cell.subject||''} onChange={e=>handleCellChange(day,pKey,'subject',e.target.value)}
                                       style={{...S.select,padding:'5px 8px',fontSize:'10px',borderRadius:'8px',background:'rgba(255,255,255,0.06)'}}>
                                       <option value="" style={{background:'#1a1030'}}>—</option>
                                       {(cfg.subjects||[]).map(s=><option key={s} value={s} style={{background:'#1a1030'}}>{s}</option>)}
                                     </select>
-                                    <input value={cell.teacher||''} onChange={e=>handleCellChange(day,p.no,'teacher',e.target.value)}
-                                      placeholder="Teacher" style={{...S.input,padding:'5px 8px',fontSize:'10px',borderRadius:'8px'}}/>
-                                    <input value={cell.room||''} onChange={e=>handleCellChange(day,p.no,'room',e.target.value)}
+                                    <select value={cell.teacher||''} onChange={e=>handleCellChange(day,pKey,'teacher',e.target.value)}
+                                      style={{...S.select,padding:'5px 8px',fontSize:'10px',borderRadius:'8px',background:'rgba(255,255,255,0.06)'}}>
+                                      <option value="" style={{background:'#1a1030'}}>— ဆရာ —</option>
+                                      {staffList.map((s,i)=>{
+                                        const name = s['Name (ALL CAPITAL)']||s.Name||'';
+                                        return name ? <option key={i} value={name} style={{background:'#1a1030'}}>{name}</option> : null;
+                                      })}
+                                    </select>
+                                    <select value={cell.asst_teacher||''} onChange={e=>handleCellChange(day,pKey,'asst_teacher',e.target.value)}
+                                      style={{...S.select,padding:'5px 8px',fontSize:'10px',borderRadius:'8px',background:'rgba(255,255,255,0.04)',opacity:0.8}}>
+                                      <option value="" style={{background:'#1a1030'}}>— Asst. —</option>
+                                      {staffList.map((s,i)=>{
+                                        const name = s['Name (ALL CAPITAL)']||s.Name||'';
+                                        return name ? <option key={i} value={name} style={{background:'#1a1030'}}>{name}</option> : null;
+                                      })}
+                                    </select>
+                                    <input value={cell.room||''} onChange={e=>handleCellChange(day,pKey,'room',e.target.value)}
                                       placeholder="Room" style={{...S.input,padding:'5px 8px',fontSize:'10px',borderRadius:'8px'}}/>
                                   </div>
-                                ) : (
-                                  <div style={{background:highlight?'rgba(251,191,36,0.12)':cell.subject?'rgba(255,255,255,0.04)':'transparent',borderRadius:'8px',padding:cell.subject?'6px 8px':'4px',border:highlight?'1px solid rgba(251,191,36,0.3)':'none',minHeight:'36px'}}>
+                                ) : (() => {
+                                    const sc = highlight ? null : getSubjectColor(cfg.subjects||[], cell.subject);
+                                    const cellBg     = highlight ? 'rgba(251,191,36,0.12)' : sc ? sc.bg : cell.subject ? 'rgba(255,255,255,0.04)' : 'transparent';
+                                    const cellBorder  = highlight ? '1px solid rgba(251,191,36,0.3)' : sc ? `1px solid ${sc.border}` : 'none';
+                                    const subjectColor = highlight ? '#fbbf24' : sc ? sc.text : 'rgba(255,255,255,0.8)';
+                                    return (
+                                  <div style={{background:cellBg,borderRadius:'8px',padding:cell.subject?'6px 8px':'4px',border:cellBorder,minHeight:'36px'}}>
                                     {cell.subject ? (
                                       <>
-                                        <div style={{fontSize:'10px',fontWeight:900,color:highlight?'#fbbf24':'rgba(255,255,255,0.8)',lineHeight:1.2}}>{cell.subject}</div>
+                                        <div style={{fontSize:'10px',fontWeight:900,color:subjectColor,lineHeight:1.2}}>{cell.subject}</div>
                                         {cell.teacher && <div style={{fontSize:'8px',color:'rgba(255,255,255,0.35)',marginTop:'2px'}}>👤 {cell.teacher}</div>}
+                                        {cell.asst_teacher && <div style={{fontSize:'8px',color:'rgba(255,255,255,0.25)',marginTop:'1px'}}>👤 {cell.asst_teacher} <span style={{fontSize:'7px',opacity:0.6}}>(Asst)</span></div>}
                                         {cell.room    && <div style={{fontSize:'8px',color:'rgba(255,255,255,0.25)'}}>🚪 {cell.room}</div>}
                                       </>
                                     ) : (
                                       <div style={{fontSize:'9px',color:'rgba(255,255,255,0.1)',textAlign:'center',paddingTop:'6px'}}>—</div>
                                     )}
                                   </div>
-                                )}
+                                    );
+                                  })()}
                               </td>
                             );
                           })}
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -394,7 +641,7 @@ export default function CalendarTimetablePage() {
                 {editMode && (
                   <button onClick={handleSaveTimetable} disabled={saving}
                     style={{...S.btn,opacity:saving?0.5:1,cursor:saving?'default':'pointer'}}>
-                    {saving?'Saving...':'💾 Save Timetable — Grade '+selGrade}
+                    {saving?'Saving...':'💾 Save — Grade '+selGrade+' / '+selSection}
                   </button>
                 )}
               </div>
@@ -412,37 +659,138 @@ export default function CalendarTimetablePage() {
                   ))}
                 </div>
 
-                {/* PERIODS config */}
-                {cfgTab==='periods' && (
-                  <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
-                    {editCfg.periods.map((p,i)=>(
-                      <div key={i} style={{...S.card,display:'grid',gridTemplateColumns:'1fr 1fr 1fr auto',gap:'8px',alignItems:'center'}}>
-                        <div>
-                          <label style={S.label}>Label</label>
-                          <input value={p.label} onChange={e=>{ const a=[...editCfg.periods]; a[i]={...a[i],label:e.target.value}; setEditCfg(c=>({...c,periods:a})); }} style={S.input}/>
-                        </div>
-                        <div>
-                          <label style={S.label}>Start</label>
-                          <input type="time" value={p.start} onChange={e=>{ const a=[...editCfg.periods]; a[i]={...a[i],start:e.target.value}; setEditCfg(c=>({...c,periods:a})); }} style={S.input}/>
-                        </div>
-                        <div>
-                          <label style={S.label}>End</label>
-                          <input type="time" value={p.end} onChange={e=>{ const a=[...editCfg.periods]; a[i]={...a[i],end:e.target.value}; setEditCfg(c=>({...c,periods:a})); }} style={S.input}/>
-                        </div>
-                        <div style={{display:'flex',flexDirection:'column',gap:'4px',paddingTop:'14px'}}>
-                          <button onClick={()=>{ const a=[...editCfg.periods]; a[i]={...a[i],isBreak:!a[i].isBreak}; setEditCfg(c=>({...c,periods:a})); }}
-                            style={{...S.btnSm,padding:'4px 8px',fontSize:'8px',background:p.isBreak?'rgba(251,191,36,0.2)':'rgba(255,255,255,0.06)',color:p.isBreak?'#fbbf24':'rgba(255,255,255,0.4)'}}>
-                            {p.isBreak?'Break':'—'}
+                {/* PERIODS config — drag-to-reorder + duty assign */}
+                {cfgTab==='periods' && (() => {
+                  const byGrade = editCfg.periods_by_grade || { default: editCfg.periods || [] };
+                  const gradeMap = Array.isArray(editCfg.grades||{})
+                    ? Object.fromEntries((editCfg.grades||[]).map(g=>[g,['A']]))
+                    : (editCfg.grades||{});
+                  const gradeKeys = ['default', ...Object.entries(gradeMap).flatMap(([g, secs]) => {
+                    const gLabel = g==='KG' ? 'KG' : `Grade ${g}`;
+                    const sections = Array.isArray(secs) ? secs : ['A'];
+                    if (sections.length === 1) return [gLabel];
+                    return sections.map(s => `${gLabel}${s}`);
+                  })];
+                  const activePeriods = byGrade[cfgPeriodGrade] || byGrade['default'] || [];
+                  const updatePeriods = (newArr) => {
+                    const nb = { ...byGrade, [cfgPeriodGrade]: newArr };
+                    setEditCfg(c => ({ ...c, periods_by_grade: nb, periods: nb['default'] || newArr }));
+                  };
+                  const staffNames = staffList.map(s=>s['Name (ALL CAPITAL)']||s.Name||'').filter(Boolean);
+
+                  // Drag handlers
+                  const onDragStart = (i) => setDragIdx(i);
+                  const onDragOver  = (e, i) => {
+                    e.preventDefault();
+                    if (dragIdx === null || dragIdx === i) return;
+                    const arr = [...activePeriods];
+                    const [moved] = arr.splice(dragIdx, 1);
+                    arr.splice(i, 0, moved);
+                    setDragIdx(i);
+                    updatePeriods(arr);
+                  };
+                  const onDragEnd = () => setDragIdx(null);
+
+                  return (
+                    <div style={{display:'flex',flexDirection:'column',gap:'10px'}}>
+                      {/* Grade selector */}
+                      <div style={{...S.card,padding:'10px 14px'}}>
+                        <label style={S.label}>Grade အလိုက် Period သတ်မှတ်မည်</label>
+                        <select value={cfgPeriodGrade} onChange={e=>setCfgPeriodGrade(e.target.value)}
+                          style={{...S.select,marginTop:'6px',fontWeight:900}}>
+                          {gradeKeys.map(gk=>(
+                            <option key={gk} value={gk} style={{background:'#1a1030'}}>
+                              {gk==='default'?'🌐 Default (အတန်းအားလုံး)':gk+(byGrade[gk]?' ✓':'')}
+                            </option>
+                          ))}
+                        </select>
+                        {cfgPeriodGrade!=='default' && !byGrade[cfgPeriodGrade] && (
+                          <div style={{marginTop:'8px',display:'flex',gap:'8px',alignItems:'center'}}>
+                            <span style={{fontSize:'10px',color:'rgba(255,255,255,0.35)'}}>Default periods ကိုသုံးနေသည်</span>
+                            <button onClick={()=>{const nb={...byGrade,[cfgPeriodGrade]:JSON.parse(JSON.stringify(byGrade['default']||[]))};setEditCfg(c=>({...c,periods_by_grade:nb}));}}
+                              style={{...S.btnSm,padding:'4px 10px',fontSize:'9px',background:'rgba(251,191,36,0.1)',color:'#fbbf24',border:'1px solid rgba(251,191,36,0.3)'}}>
+                              + ကိုယ်ပိုင် Period သတ်မှတ်မည်
+                            </button>
+                          </div>
+                        )}
+                        {cfgPeriodGrade!=='default' && byGrade[cfgPeriodGrade] && (
+                          <button onClick={()=>{const nb={...byGrade};delete nb[cfgPeriodGrade];setEditCfg(c=>({...c,periods_by_grade:nb}));}}
+                            style={{...S.btnSm,marginTop:'8px',padding:'4px 10px',fontSize:'9px',color:'rgba(248,113,113,0.6)',border:'1px solid rgba(248,113,113,0.2)'}}>
+                            ✕ ဖျက်ပြီး Default ပြန်သုံးမည်
                           </button>
-                          <button onClick={()=>{ const a=editCfg.periods.filter((_,j)=>j!==i); setEditCfg(c=>({...c,periods:a})); }}
-                            style={{...S.btnSm,padding:'4px 8px',fontSize:'8px',color:'rgba(248,113,113,0.7)',border:'1px solid rgba(248,113,113,0.2)'}}>✕</button>
-                        </div>
+                        )}
                       </div>
-                    ))}
-                    <button onClick={()=>{ const no=editCfg.periods.length+1; setEditCfg(c=>({...c,periods:[...c.periods,{no,label:`Period ${no}`,start:'',end:'',isBreak:false}]})); }}
-                      style={{...S.btnSm,textAlign:'center'}}>+ Add Period</button>
-                  </div>
-                )}
+
+                      <p style={{fontSize:'9px',color:'rgba(255,255,255,0.25)',margin:'0 2px',letterSpacing:'0.05em'}}>
+                        ☰ ဘယ်ဘက်ဆုံး handle ကို ဆွဲဆြဲ၍ အစဉ်ပြောင်းနိုင်သည်
+                      </p>
+
+                      {/* Period rows — draggable */}
+                      {activePeriods.map((p,i)=>{
+                        const lbl = String(p.label||'').toLowerCase();
+                        const isBreakNow = p.isBreak===true||['break','lunch','recess','duty','assembly','prayer','chapel','နားချိန်','အနားယူ'].some(kw=>lbl.includes(kw));
+                        return (
+                        <div key={i}
+                          draggable
+                          onDragStart={()=>onDragStart(i)}
+                          onDragOver={e=>onDragOver(e,i)}
+                          onDragEnd={onDragEnd}
+                          style={{...S.card,
+                            display:'flex',flexDirection:'column',gap:'8px',
+                            opacity:dragIdx===i?0.5:1,
+                            border:dragIdx===i?'1px solid rgba(251,191,36,0.5)':isBreakNow?'1px solid rgba(251,191,36,0.3)':'1px solid rgba(255,255,255,0.1)',
+                            background:isBreakNow?'rgba(251,191,36,0.04)':'rgba(255,255,255,0.05)',
+                            cursor:'grab',userSelect:'none'
+                          }}>
+                          {/* Top row: drag handle + fields + buttons */}
+                          <div style={{display:'grid',gridTemplateColumns:'24px 1fr 1fr 1fr auto',gap:'8px',alignItems:'center'}}>
+                            <div style={{fontSize:'14px',color:'rgba(255,255,255,0.2)',textAlign:'center',cursor:'grab'}}>☰</div>
+                            <div>
+                              <label style={S.label}>Label</label>
+                              <input value={p.label} onChange={e=>{const a=[...activePeriods];a[i]={...a[i],label:e.target.value};updatePeriods(a);}} style={S.input}/>
+                            </div>
+                            <div>
+                              <label style={S.label}>Start</label>
+                              <input type="time" value={p.start||''} onChange={e=>{const a=[...activePeriods];a[i]={...a[i],start:e.target.value};updatePeriods(a);}} style={S.input}/>
+                            </div>
+                            <div>
+                              <label style={S.label}>End</label>
+                              <input type="time" value={p.end||''} onChange={e=>{const a=[...activePeriods];a[i]={...a[i],end:e.target.value};updatePeriods(a);}} style={S.input}/>
+                            </div>
+                            <div style={{display:'flex',flexDirection:'column',gap:'4px',paddingTop:'14px'}}>
+                              <button onClick={()=>{const a=[...activePeriods];a[i]={...a[i],isBreak:!a[i].isBreak};updatePeriods(a);}}
+                                style={{...S.btnSm,padding:'4px 8px',fontSize:'8px',
+                                  background:isBreakNow?'rgba(251,191,36,0.2)':'rgba(255,255,255,0.06)',
+                                  color:isBreakNow?'#fbbf24':'rgba(255,255,255,0.4)'}}>
+                                {isBreakNow?'☕ Break':'—'}
+                              </button>
+                              <button onClick={()=>updatePeriods(activePeriods.filter((_,j)=>j!==i))}
+                                style={{...S.btnSm,padding:'4px 8px',fontSize:'8px',color:'rgba(248,113,113,0.7)',border:'1px solid rgba(248,113,113,0.2)'}}>✕</button>
+                            </div>
+                          </div>
+                          {/* Duty assign row — only for break periods */}
+                          {isBreakNow && (
+                            <div style={{paddingLeft:'32px',display:'flex',alignItems:'center',gap:'8px'}}>
+                              <span style={{fontSize:'9px',color:'rgba(251,191,36,0.5)',whiteSpace:'nowrap'}}>⚑ Duty Person</span>
+                              <select value={p.dutyPerson||''} onChange={e=>{const a=[...activePeriods];a[i]={...a[i],dutyPerson:e.target.value};updatePeriods(a);}}
+                                style={{...S.select,flex:1,padding:'6px 10px',fontSize:'11px',background:'rgba(251,191,36,0.05)',border:'1px solid rgba(251,191,36,0.2)',color:'rgba(255,255,255,0.8)'}}>
+                                <option value="" style={{background:'#1a1030'}}>— မသတ်မှတ်ရသေးပါ —</option>
+                                {staffNames.map((n,ni)=><option key={ni} value={n} style={{background:'#1a1030'}}>{n}</option>)}
+                              </select>
+                              {p.dutyPerson && (
+                                <button onClick={()=>{const a=[...activePeriods];a[i]={...a[i],dutyPerson:''};updatePeriods(a);}}
+                                  style={{background:'none',border:'none',color:'rgba(248,113,113,0.5)',cursor:'pointer',fontSize:'13px',padding:'2px'}}>✕</button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );})}
+
+                      <button onClick={()=>{const no=activePeriods.length+1;updatePeriods([...activePeriods,{no,label:`Period ${no}`,start:'',end:'',isBreak:false}]);}}
+                        style={{...S.btnSm,textAlign:'center'}}>+ Add Period</button>
+                    </div>
+                  );
+                })()}
 
                 {/* DAYS config */}
                 {cfgTab==='days' && (
@@ -457,15 +805,49 @@ export default function CalendarTimetablePage() {
                   </div>
                 )}
 
-                {/* GRADES config */}
+                {/* GRADES + SECTIONS config */}
                 {cfgTab==='grades' && (
-                  <div style={{display:'flex',flexWrap:'wrap',gap:'8px'}}>
-                    {['KG','1','2','3','4','5','6','7','8','9','10','11','12'].map(g=>(
-                      <button key={g} onClick={()=>{ const inc=editCfg.grades.includes(g); setEditCfg(c=>({...c,grades:inc?c.grades.filter(x=>x!==g):[...c.grades,g]})); }}
-                        style={{padding:'10px 18px',borderRadius:'10px',border:'none',cursor:'pointer',fontWeight:900,fontSize:'13px',background:editCfg.grades.includes(g)?'#fbbf24':'rgba(255,255,255,0.06)',color:editCfg.grades.includes(g)?'#0f172a':'rgba(255,255,255,0.4)'}}>
-                        G{g}
-                      </button>
-                    ))}
+                  <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+                    {['KG','1','2','3','4','5','6','7','8','9','10','11','12'].map(g=>{
+                      const rawGrades = editCfg.grades||{}; const gradeObj = Array.isArray(rawGrades) ? Object.fromEntries(rawGrades.map(g=>[g,['A']])) : rawGrades;
+                      const active   = !!gradeObj[g];
+                      const sections = gradeObj[g]||[];
+                      return (
+                        <div key={g} style={{background:'rgba(255,255,255,0.03)',borderRadius:'12px',padding:'12px 14px',border:active?'1px solid rgba(251,191,36,0.25)':'1px solid rgba(255,255,255,0.06)'}}>
+                          <div style={{display:'flex',alignItems:'center',gap:'10px',marginBottom: active?'10px':'0'}}>
+                            {/* Grade toggle */}
+                            <button onClick={()=>{ const ng={...gradeObj}; if(active){delete ng[g];}else{ng[g]=['A'];} setEditCfg(c=>({...c,grades:ng})); }}
+                              style={{minWidth:'52px',padding:'6px 10px',borderRadius:'8px',border:'none',cursor:'pointer',fontWeight:900,fontSize:'13px',background:active?'#fbbf24':'rgba(255,255,255,0.08)',color:active?'#0f172a':'rgba(255,255,255,0.35)'}}>
+                              G{g}
+                            </button>
+                            {active && (
+                              <span style={{fontSize:'10px',color:'rgba(255,255,255,0.35)',fontWeight:700}}>
+                                {sections.length} section{sections.length!==1?'s':''}
+                              </span>
+                            )}
+                          </div>
+                          {active && (
+                            <div style={{display:'flex',flexWrap:'wrap',gap:'6px',alignItems:'center'}}>
+                              {sections.map((s,si)=>(
+                                <div key={si} style={{display:'flex',alignItems:'center',gap:'4px',background:'rgba(251,191,36,0.1)',borderRadius:'8px',padding:'5px 10px',border:'1px solid rgba(251,191,36,0.2)'}}>
+                                  <span style={{fontSize:'12px',fontWeight:900,color:'#fbbf24'}}>{s}</span>
+                                  <button onClick={()=>{ const ns=sections.filter((_,j)=>j!==si); const ng={...gradeObj,[g]:ns.length?ns:undefined}; if(!ns.length)delete ng[g]; setEditCfg(c=>({...c,grades:ng})); }}
+                                    style={{background:'none',border:'none',color:'rgba(248,113,113,0.7)',cursor:'pointer',fontSize:'11px',padding:'0 0 0 2px',fontWeight:900}}>✕</button>
+                                </div>
+                              ))}
+                              {/* Add section button */}
+                              <button onClick={()=>{
+                                const next = String.fromCharCode(65+sections.length);
+                                const ng={...gradeObj,[g]:[...sections,next]};
+                                setEditCfg(c=>({...c,grades:ng}));
+                              }} style={{padding:'5px 10px',borderRadius:'8px',border:'1px dashed rgba(251,191,36,0.3)',background:'transparent',color:'rgba(251,191,36,0.6)',cursor:'pointer',fontSize:'11px',fontWeight:900}}>
+                                + Section
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -490,8 +872,9 @@ export default function CalendarTimetablePage() {
                 )}
 
                 <button onClick={handleSaveConfig} disabled={saving}
-                  style={{...S.btn,opacity:saving?0.5:1,cursor:saving?'default':'pointer',marginTop:'4px'}}>
-                  {saving?'Saving...':'💾 Save Config'}
+                  style={{...S.btn,opacity:saving?0.6:1,cursor:saving?'default':'pointer',marginTop:'4px',
+                    background:saving?'rgba(251,191,36,0.5)':'#fbbf24',transition:'all 0.2s'}}>
+                  {saving ? '⏳ သိမ်းနေသည်…' : '💾 Save Config'}
                 </button>
               </div>
             )}
@@ -501,9 +884,9 @@ export default function CalendarTimetablePage() {
 
       {/* EVENT FORM MODAL */}
       {showEventForm && isMgt && (
-        <div style={{position:'fixed',inset:0,zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center',background:'rgba(0,0,0,0.7)',backdropFilter:'blur(6px)'}}
+        <div style={{position:'fixed',inset:0,zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center',background:'rgba(0,0,0,0.7)',backdropFilter:'blur(6px)',paddingBottom:'72px'}}
           onClick={()=>setShowEventForm(false)}>
-          <div style={{width:'100%',maxWidth:'420px',background:'#1a1030',border:'1px solid rgba(255,255,255,0.1)',borderRadius:'24px 24px 0 0',padding:'24px',paddingBottom:'32px',display:'flex',flexDirection:'column',gap:'12px'}}
+          <div style={{width:'100%',maxWidth:'420px',background:'#1a1030',border:'1px solid rgba(255,255,255,0.1)',borderRadius:'24px 24px 0 0',padding:'24px',paddingBottom:'32px',display:'flex',flexDirection:'column',gap:'12px',maxHeight:'85dvh',overflowY:'auto'}}
             onClick={e=>e.stopPropagation()}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               <p style={{fontWeight:900,fontSize:'14px',margin:0}}>Add Event</p>
@@ -545,6 +928,7 @@ export default function CalendarTimetablePage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

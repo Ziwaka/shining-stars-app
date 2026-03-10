@@ -216,7 +216,7 @@ export default function FeesManagementHub() {
   );
 
   return (
-    <div style={{minHeight:'100vh',background:'#F0F9FF',fontFamily:'system-ui,sans-serif',paddingBottom:'80px'}}>
+    <div style={{display:'flex',flexDirection:'column',height:'100dvh',overflow:'hidden',background:'#F0F9FF',fontFamily:'system-ui,sans-serif'}}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box}input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}input[type=number]{-moz-appearance:textfield}::-webkit-scrollbar{height:4px}::-webkit-scrollbar-thumb{background:#fbbf24;border-radius:4px}`}</style>
 
       <div style={{background:'#4c1d95',padding:'20px 16px',borderBottom:'8px solid #fbbf24'}}>
@@ -228,6 +228,7 @@ export default function FeesManagementHub() {
           </div>
         </div>
       </div>
+      <div style={{flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', paddingBottom:'80px'}}>
 
       {msg && (
         <div style={{position:'fixed',top:'12px',left:'50%',transform:'translateX(-50%)',zIndex:50,padding:'8px 20px',borderRadius:'999px',fontSize:'12px',fontWeight:900,color:'white',background:msg.type==='error'?'#ef4444':'#10b981',boxShadow:'0 4px 20px rgba(0,0,0,0.2)',whiteSpace:'nowrap',fontStyle:'italic'}}>
@@ -488,6 +489,7 @@ export default function FeesManagementHub() {
             )}
           </div>
         )}
+      </div>
       </div>
     </div>
   );

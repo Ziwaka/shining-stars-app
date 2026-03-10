@@ -19,16 +19,23 @@
   }
 }
 
+/* ── Base reset ── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  font-weight: 900;
 }
 
 /* ── Shining Stars Utility Classes ──────────────────────────────────── */
-/* Used as safe replacements for Tailwind arbitrary values in           */
-/* conditional template literals where inline styles cannot be applied  */
-
 .bg-gold          { background-color: #fbbf24 !important; }
 .text-gold        { color:            #fbbf24 !important; }
 .border-gold      { border-color:     #fbbf24 !important; }
@@ -41,7 +48,6 @@ body {
 .bg-dark          { background-color: #020617 !important; }
 .bg-app           { background-color: #0f0a1e !important; }
 
-/* hover variants */
 .hover\:bg-gold:hover        { background-color: #fbbf24; }
 .hover\:text-gold:hover      { color:            #fbbf24; }
 .hover\:border-gold:hover    { border-color:     #fbbf24; }
@@ -49,6 +55,6 @@ body {
 .focus\:border-gold:focus    { border-color:     #fbbf24; }
 .focus\:border-purple:focus  { border-color:     #4c1d95; }
 
-/* Scrollbar */
+/* ── Scrollbar ── */
 ::-webkit-scrollbar       { width: 6px; height: 6px; }
 ::-webkit-scrollbar-thumb { background: #fbbf24; border-radius: 10px; }

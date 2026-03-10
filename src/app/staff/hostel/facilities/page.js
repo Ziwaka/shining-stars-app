@@ -12,8 +12,8 @@ const EMPTY_FORM = {
 };
 
 const S = {
-  page:   { minHeight:'100vh', background:'#0f0a1e', color:'#fff', fontFamily:'system-ui,sans-serif', paddingBottom:'80px' },
-  header: { position:'sticky', top:0, zIndex:40, background:'rgba(15,10,30,0.97)', backdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.07)', padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' },
+  page: { display:'flex', flexDirection:'column', height:'100dvh', overflow:'hidden', background:'#0f0a1e', color:'#fff', fontFamily:'system-ui,sans-serif' },
+  header: { zIndex:40, background:'rgba(15,10,30,0.97)', backdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.07)', padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' },
   card:   { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'16px', padding:'16px' },
   input:  { width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:'12px', padding:'10px 14px', color:'#fff', fontSize:'13px', outline:'none', boxSizing:'border-box' },
   select: { width:'100%', background:'rgba(15,10,30,0.9)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:'12px', padding:'10px 14px', color:'#fff', fontSize:'13px', outline:'none', boxSizing:'border-box' },
@@ -177,6 +177,7 @@ export default function HostelInventoryPage() {
           <button key={t.id} onClick={() => { setTab(t.id); if (t.id==='add' && !editItem) { setForm({ ...EMPTY_FORM, Hostel_Name: hostels[0]||'' }); setEditItem(null); } }} style={tab===t.id ? S.tabOn : S.tabOff}>{t.label}</button>
         ))}
       </div>
+      <div style={{flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', paddingBottom:'80px'}}>
 
       <div style={{ padding:'12px 16px' }}>
         {loading ? (
@@ -474,9 +475,9 @@ export default function HostelInventoryPage() {
 
       {/* ── UPDATE MODAL ── */}
       {usageModal && (
-        <div style={{ position:'fixed', inset:0, zIndex:50, background:'rgba(0,0,0,0.75)', backdropFilter:'blur(6px)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}
+        <div style={{ position:'fixed', inset:0, zIndex:50, background:'rgba(0,0,0,0.75)', backdropFilter:'blur(6px)', paddingBottom:'72px', display:'flex', alignItems:'flex-end', justifyContent:'center' }}
           onClick={() => setUsageModal(null)}>
-          <div style={{ width:'100%', maxWidth:'440px', background:'#1a1030', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'24px 24px 0 0', padding:'20px', paddingBottom:'32px', display:'flex', flexDirection:'column', gap:'12px' }}
+          <div style={{ width:'100%', maxWidth:'440px', background:'#1a1030', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'24px 24px 0 0', padding:'20px', paddingBottom:'32px', display:'flex', flexDirection:'column', gap:'12px', maxHeight:'82dvh', overflowY:'auto' }}
             onClick={e => e.stopPropagation()}>
 
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
@@ -541,6 +542,7 @@ export default function HostelInventoryPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

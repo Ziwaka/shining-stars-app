@@ -82,13 +82,13 @@ export default function ManagementDashboard() {
   ];
 
   if (loading) return (
-    <div className="min-h-screen bg-[#F0F9FF] flex items-center justify-center font-black text-[#4c1d95] animate-pulse text-xl uppercase italic tracking-widest px-6 text-center">
+    <div className="h-full overflow-y-auto bg-[#F0F9FF] flex items-center justify-center font-black text-[#4c1d95] animate-pulse text-xl uppercase italic tracking-widest px-6 text-center">
       Loading Management Hub...
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-[#F0F9FF] font-black text-slate-950 p-5 md:p-12 pb-32">
+    <div className="h-full overflow-y-auto bg-[#F0F9FF] font-black text-slate-950 p-5 md:p-12 pb-32">
       <div className="max-w-[1400px] mx-auto space-y-12">
 
         {/* ── IDENTITY HEADER (Same style as Staff) ── */}

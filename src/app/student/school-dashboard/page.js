@@ -173,14 +173,14 @@ export default function StudentSchoolDashboard() {
   }, [router]);
 
   if (loading) return (
-    <div className="min-h-screen bg-[#FDFCF0] flex flex-col items-center justify-center font-black text-[#020617] animate-pulse">
+    <div className="h-full overflow-y-auto bg-[#FDFCF0] flex flex-col items-center justify-center font-black text-[#020617] animate-pulse">
       <div className="text-7xl mb-6">🏛️</div>
       <div className="text-sm uppercase italic tracking-[0.4em] text-[#020617]">Synchronizing Global Data...</div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-[#FDFCF0] font-black text-[#020617] pb-32">
+    <div className="bg-[#FDFCF0] font-black text-[#020617]" style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",paddingBottom:"120px",minHeight:0}}>
       
       {/* 🚨 STRICT MARQUEE (အဝါအောက်ခံ၊ အနီစာလုံး Inline Styles) */}
       {priorityAnns.length > 0 && (

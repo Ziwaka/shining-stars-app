@@ -75,6 +75,7 @@ export default function StaffAccessHub() {
         { name: 'Communication', path: '/management/communication', icon: '📢', locked: !hasPermission('Can_Record_Note') },
         { name: 'Exam Records',   path: '/staff/exam-records',  icon: '📝', locked: !hasPermission('Can_Record_Note') },
         { name: 'Calendar', path: '/staff/calendar', icon: '📅', locked: false },
+        { name: 'My Timetable', path: '/staff/timetable', icon: '🗓️', locked: false },
       ]
     }
   ];
@@ -86,7 +87,7 @@ export default function StaffAccessHub() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F0F9FF] font-black text-slate-950 p-5 md:p-12 pb-32">
+    <div className="h-full overflow-y-auto bg-[#F0F9FF] font-black text-slate-950 p-5 md:p-12 pb-32">
       <div className="max-w-[1400px] mx-auto space-y-12">
 
         {/* HEADER */}

@@ -4,8 +4,8 @@ import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 
 const S = {
-  page:   { minHeight:'100vh', background:'#0f0a1e', color:'#fff', fontFamily:'system-ui,sans-serif', paddingBottom:'80px' },
-  header: { position:'sticky', top:0, zIndex:40, background:'rgba(15,10,30,0.97)', backdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.07)', padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' },
+  page: { display:'flex', flexDirection:'column', height:'100dvh', overflow:'hidden', background:'#0f0a1e', color:'#fff', fontFamily:'system-ui,sans-serif' },
+  header: { zIndex:40, background:'rgba(15,10,30,0.97)', backdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.07)', padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' },
   card:   { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'16px', padding:'16px' },
   select: { background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:'12px', padding:'9px 14px', color:'#fff', fontSize:'12px', outline:'none' },
   tabOn:  { background:'#fbbf24', color:'#0f172a', border:'none', borderRadius:'10px', padding:'7px 18px', fontSize:'10px', fontWeight:900, textTransform:'uppercase', cursor:'pointer' },
@@ -87,6 +87,7 @@ export default function MgtPerformanceHub() {
         </div>
         <button onClick={loadData} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.4)', cursor:'pointer', fontSize:'18px' }}>↻</button>
       </div>
+      <div style={{flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', paddingBottom:'80px'}}>
 
       <div style={{ padding:'12px 16px', display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap' }}>
         <button onClick={() => setTab('rankings')} style={tab==='rankings'?S.tabOn:S.tabOff}>🏆 Rankings</button>
@@ -171,6 +172,7 @@ export default function MgtPerformanceHub() {
             )}
           </>
         )}
+      </div>
       </div>
     </div>
   );

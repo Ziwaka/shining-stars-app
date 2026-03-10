@@ -110,7 +110,7 @@ export default function MyPerformanceRegistry() {
   }, [router]);
 
   if (loading) return (
-    <div className="min-h-screen flex flex-col items-center justify-center font-black animate-pulse" style={{background:'#FDFCF0', color:'#020617'}}>
+    <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center font-black animate-pulse" style={{background:'#FDFCF0', color:'#020617'}}>
       <div className="text-7xl mb-6">🗂️</div>
       <div className="text-sm uppercase italic" style={{letterSpacing:'0.4em', color:'#020617'}}>Decrypting Personal Archives...</div>
     </div>
@@ -121,7 +121,7 @@ export default function MyPerformanceRegistry() {
   const leavesTaken = data.leaves.filter(x => String(x.Status).toLowerCase().includes("approved")).length;
 
   return (
-    <div className="min-h-screen p-4 md:p-10 font-black selection:bg-gold text-slate-950 pb-40" style={{background:'#FDFCF0'}}>
+    <div className="p-4 md:p-10 font-black selection:bg-gold text-slate-950" style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",paddingBottom:"120px",minHeight:0,background:'#FDFCF0'}}>
       <div className="mx-auto space-y-12" style={{maxWidth:'1500px'}}>
         
         {/* HEADER SECTION */}

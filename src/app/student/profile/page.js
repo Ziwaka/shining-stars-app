@@ -106,7 +106,7 @@ export default function UltimateMaThweProfile() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFCF0] font-black text-slate-950">
+      <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center bg-[#FDFCF0] font-black text-slate-950">
          <div className="text-7xl mb-6 animate-pulse">🗃️</div>
          <div className="text-sm uppercase italic tracking-[0.4em]">Retrieving Master Ledger...</div>
       </div>
@@ -114,7 +114,7 @@ export default function UltimateMaThweProfile() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FDFCF0] text-slate-950 font-black selection:bg-[#fbbf24] pb-40">
+    <div className="bg-[#FDFCF0] text-slate-950 font-black selection:bg-[#fbbf24]" style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",paddingBottom:"120px",minHeight:0}}>
       <div className="max-w-[1400px] mx-auto p-4 md:p-10 space-y-10 relative z-10">
         
         {selectedStudent ? (

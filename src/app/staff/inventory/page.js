@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 
-const CATEGORIES = ['Stationery', 'Cleaning', 'Furniture', 'Tool', 'Electronics', 'Other'];
 const CONDITIONS = ['Good', 'Fair', 'Damaged'];
 const UNITS = ['Pcs', 'Box', 'Set', 'Bottle', 'Pack', 'Roll', 'Kg', 'Liter'];
 const EMPTY_FORM = {
@@ -13,8 +12,8 @@ const EMPTY_FORM = {
 };
 
 const S = {
-  page:   { minHeight:'100vh', background:'#0f0a1e', color:'#fff', fontFamily:'system-ui,sans-serif', paddingBottom:'80px' },
-  header: { position:'sticky', top:0, zIndex:40, background:'rgba(15,10,30,0.97)', backdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.07)', padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' },
+  page: { display:'flex', flexDirection:'column', height:'100dvh', overflow:'hidden', background:'#0f0a1e', color:'#fff', fontFamily:'system-ui,sans-serif' },
+  header: { zIndex:40, background:'rgba(15,10,30,0.97)', backdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.07)', padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' },
   card:   { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'16px', padding:'16px' },
   input:  { width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:'12px', padding:'10px 14px', color:'#fff', fontSize:'13px', outline:'none', boxSizing:'border-box' },
   label:  { display:'block', fontSize:'9px', color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:'6px' },
@@ -39,6 +38,11 @@ export default function InventoryPage() {
   const [photoUploading, setPhotoUploading] = useState(false);
   const [usageModal, setUsageModal] = useState(null);
   const [usageForm, setUsageForm] = useState({ qty:'', action:'Use', note:'' });
+  // System_Config driven
+  const [invCategories, setInvCategories] = useState(['Stationery','Cleaning','Furniture','Tool','Electronics','Other']);
+  const [invLocations,  setInvLocations]  = useState(['Store Room','Office','Classroom','Lab','Gym','Library']);
+  // Smart item name: 'existing' picks from list, 'new' free text
+  const [nameMode, setNameMode] = useState('existing');
 
   useEffect(() => {
     const saved = localStorage.getItem('user');
@@ -54,13 +58,18 @@ export default function InventoryPage() {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [invRes, logRes] = await Promise.all([
+      const [invRes, logRes, cfgRes] = await Promise.all([
         fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getInventory' }) }),
         fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getInventoryLog' }) }),
+        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getInventoryConfig' }) }),
       ]);
-      const inv = await invRes.json(); const log = await logRes.json();
+      const inv = await invRes.json(); const log = await logRes.json(); const cfg = await cfgRes.json();
       if (inv.success) setItems(inv.data || []);
       if (log.success) setLogs(log.data || []);
+      if (cfg.success) {
+        if (cfg.categories?.length) setInvCategories(cfg.categories);
+        if (cfg.locations?.length)  setInvLocations(cfg.locations);
+      }
     } catch {} setLoading(false);
   };
 
@@ -134,6 +143,7 @@ export default function InventoryPage() {
         </div>
         <button onClick={fetchAll} style={{background:'none',border:'none',color:'rgba(255,255,255,0.4)',cursor:'pointer',fontSize:'18px'}}>↻</button>
       </div>
+      <div style={{flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', paddingBottom:'80px'}}>
 
       {msg && (
         <div style={{position:'fixed',top:'64px',left:'50%',transform:'translateX(-50%)',zIndex:50,padding:'8px 20px',borderRadius:'999px',fontSize:'12px',fontWeight:900,color:'#fff',background:msg.type==='error'?'#ef4444':'#10b981',boxShadow:'0 4px 20px rgba(0,0,0,0.4)',whiteSpace:'nowrap'}}>
@@ -187,7 +197,7 @@ export default function InventoryPage() {
                 )}
                 <div style={S.card}>
                   <p style={{...S.label,marginBottom:'12px'}}>By Category</p>
-                  {CATEGORIES.map(cat=>{
+                  {invCategories.map(cat=>{
                     const count=items.filter(i=>i.Category===cat).length;
                     if(!count) return null;
                     const pct=Math.round((count/totalItems)*100);
@@ -314,12 +324,58 @@ export default function InventoryPage() {
                 </div>
                 <div style={{...S.card,display:'flex',flexDirection:'column',gap:'12px'}}>
                   <p style={S.label}>Basic Info</p>
-                  <div><label style={S.label}>Item Name *</label><input value={form.Item_Name} onChange={e=>setForm(p=>({...p,Item_Name:e.target.value}))} placeholder="e.g. Whiteboard Marker" style={S.input}/></div>
+                  <div>
+                    <label style={S.label}>Item Name *</label>
+                    {/* Toggle: pick existing or type new */}
+                    {!editItem && (
+                      <div style={{display:'flex',gap:'6px',marginBottom:'8px'}}>
+                        {[{v:'existing',label:'📋 Existing'},{v:'new',label:'✨ New Item'}].map(opt=>(
+                          <button key={opt.v} onClick={()=>{setNameMode(opt.v);setForm(p=>({...p,Item_Name:''}));}}
+                            style={{flex:1,padding:'7px',borderRadius:'9px',border:'none',cursor:'pointer',fontWeight:900,fontSize:'11px',
+                              background:nameMode===opt.v?'rgba(251,191,36,0.2)':'rgba(255,255,255,0.05)',
+                              color:nameMode===opt.v?'#fbbf24':'rgba(255,255,255,0.3)',
+                              outline:nameMode===opt.v?'1px solid rgba(251,191,36,0.4)':'none'}}>
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {(nameMode==='existing' && !editItem) ? (
+                      <select value={form.Item_Name} onChange={e=>{
+                        const sel = items.find(i=>i.Item_Name===e.target.value);
+                        if (sel) setForm(p=>({...p, Item_Name:sel.Item_Name, Category:sel.Category||p.Category, Unit:sel.Unit||p.Unit, Location:sel.Location||p.Location, Unit_Price:sel.Unit_Price||p.Unit_Price, Is_Tool:sel.Is_Tool||p.Is_Tool}));
+                        else setForm(p=>({...p, Item_Name:e.target.value}));
+                      }} style={S.input}>
+                        <option value="" style={{background:'#1a1030'}}>— ပစ္စည်းရွေးပါ —</option>
+                        {[...new Set(items.map(i=>i.Item_Name))].sort().map(n=>(
+                          <option key={n} value={n} style={{background:'#1a1030'}}>{n}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input value={form.Item_Name} onChange={e=>setForm(p=>({...p,Item_Name:e.target.value}))}
+                        placeholder="e.g. Whiteboard Marker" style={S.input}/>
+                    )}
+                    {nameMode==='existing' && !editItem && form.Item_Name && (
+                      <p style={{fontSize:'9px',color:'rgba(251,191,36,0.5)',marginTop:'4px'}}>
+                        ✓ ရှိပြီးသား ပစ္စည်းကို Stock ထပ်ဖြည့်မည်
+                      </p>
+                    )}
+                  </div>
                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
-                    <div><label style={S.label}>Category</label><select value={form.Category} onChange={e=>setForm(p=>({...p,Category:e.target.value}))} style={S.input}>{CATEGORIES.map(c=><option key={c} value={c} style={{background:'#1a1030'}}>{c}</option>)}</select></div>
+                    <div><label style={S.label}>Category</label>
+                      <select value={form.Category} onChange={e=>setForm(p=>({...p,Category:e.target.value}))} style={S.input}>
+                        {invCategories.map(cat=><option key={cat} value={cat} style={{background:'#1a1030'}}>{cat}</option>)}
+                      </select>
+                    </div>
                     <div><label style={S.label}>Condition</label><select value={form.Condition} onChange={e=>setForm(p=>({...p,Condition:e.target.value}))} style={S.input}>{CONDITIONS.map(c=><option key={c} value={c} style={{background:'#1a1030'}}>{c}</option>)}</select></div>
                   </div>
-                  <div><label style={S.label}>Location</label><input value={form.Location} onChange={e=>setForm(p=>({...p,Location:e.target.value}))} placeholder="e.g. Store Room" style={S.input}/></div>
+                  <div>
+                    <label style={S.label}>Location</label>
+                    <select value={form.Location} onChange={e=>setForm(p=>({...p,Location:e.target.value}))} style={S.input}>
+                      <option value="" style={{background:'#1a1030'}}>— ရွေးပါ —</option>
+                      {invLocations.map(loc=><option key={loc} value={loc} style={{background:'#1a1030'}}>{loc}</option>)}
+                    </select>
+                  </div>
                   <div><label style={S.label}>Note</label><input value={form.Note} onChange={e=>setForm(p=>({...p,Note:e.target.value}))} placeholder="Optional" style={S.input}/></div>
                 </div>
                 <div style={{...S.card,display:'flex',flexDirection:'column',gap:'12px'}}>
@@ -369,8 +425,8 @@ export default function InventoryPage() {
 
       {/* USAGE MODAL */}
       {usageModal&&(
-        <div style={{position:'fixed',inset:0,zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center',background:'rgba(0,0,0,0.65)',backdropFilter:'blur(6px)'}} onClick={()=>setUsageModal(null)}>
-          <div style={{width:'100%',maxWidth:'420px',background:'#1a1030',border:'1px solid rgba(255,255,255,0.1)',borderRadius:'24px 24px 0 0',padding:'24px',paddingBottom:'32px',display:'flex',flexDirection:'column',gap:'14px'}} onClick={e=>e.stopPropagation()}>
+        <div style={{position:'fixed',inset:0,zIndex:50,display:'flex',alignItems:'flex-end',justifyContent:'center',background:'rgba(0,0,0,0.65)',backdropFilter:'blur(6px)',paddingBottom:'72px'}} onClick={()=>setUsageModal(null)}>
+          <div style={{width:'100%',maxWidth:'420px',background:'#1a1030',border:'1px solid rgba(255,255,255,0.1)',borderRadius:'24px 24px 0 0',padding:'24px',paddingBottom:'32px',display:'flex',flexDirection:'column',gap:'14px',maxHeight:'85dvh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               <p style={{fontWeight:900,fontSize:'14px',color:'#fff',margin:0}}>Log Usage</p>
               <button onClick={()=>setUsageModal(null)} style={{background:'none',border:'none',color:'rgba(255,255,255,0.3)',cursor:'pointer',fontSize:'18px'}}>✕</button>
@@ -393,6 +449,7 @@ export default function InventoryPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

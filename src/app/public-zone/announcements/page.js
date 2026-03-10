@@ -21,18 +21,19 @@ export default function PublicAnnouncements() {
   const urgent = filtered.filter(a => a.Is_Priority === true || a.Is_Priority === 'TRUE');
   const normal = filtered.filter(a => a.Is_Priority !== true && a.Is_Priority !== 'TRUE');
 
-  const S = { page:{minHeight:'100vh',background:'#fdfcf0',fontFamily:'system-ui,sans-serif',color:'#020617',paddingBottom:'40px'} };
+  const S = { page: { display:'flex', flexDirection:'column', height:'100dvh', overflow:'hidden', background:'#0f0a1e', color:'#fff', fontFamily:'system-ui,sans-serif' } };
 
   return (
     <div style={S.page}>
       <style>{`*{box-sizing:border-box;margin:0;padding:0}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
       {/* HEADER */}
-      <div style={{background:'#020617',borderBottom:'6px solid #fbbf24',padding:'14px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,zIndex:40}}>
+      <div style={{background:'#020617',borderBottom:'6px solid #fbbf24',padding:'14px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',zIndex:40}}>
         <Link href="/public-zone" style={{color:'rgba(255,255,255,0.5)',fontSize:'13px',fontWeight:700}}>← Back</Link>
         <p style={{fontWeight:900,fontSize:'13px',color:'#fff',textTransform:'uppercase',letterSpacing:'0.1em'}}>📢 ကြေညာချက်များ</p>
         <div style={{width:'40px'}}/>
       </div>
+      <div style={{flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', paddingBottom:'80px'}}>
 
       <div style={{maxWidth:'480px',margin:'0 auto',padding:'16px'}}>
         {/* Search */}
@@ -79,6 +80,7 @@ export default function PublicAnnouncements() {
             )}
           </div>
         )}
+      </div>
       </div>
     </div>
   );

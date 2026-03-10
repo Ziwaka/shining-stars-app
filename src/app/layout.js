@@ -59,11 +59,7 @@ export default function RootLayout({ children }) {
           {children}
         </div>
 
-        <style jsx global>{`
-          body { font-weight: 900 !important; color: #020617 !important; }
-          ::-webkit-scrollbar { width: 8px; }
-          ::-webkit-scrollbar-thumb { background: #020617; border-radius: 10px; }
-        `}</style>
+
       </body>
     </html>
   );
