@@ -296,40 +296,40 @@ export default function CalendarTimetablePage() {
   };
 
   const handleSaveConfig = async (silent=false) => {
-    console.log('[CFG] handleSaveConfig called, silent=', silent, 'editCfg=', !!editCfg);
     if (!silent) setCfgSaving('saving');
-    console.log('[CFG] setCfgSaving(saving) called');
     try {
       const snapshotCfg = JSON.parse(JSON.stringify(editCfg));
       const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'saveTimetableConfig', ...snapshotCfg, periods_by_grade: snapshotCfg.periods_by_grade||{default: snapshotCfg.periods||[]} }) });
       const r = await res.json();
-      console.log('[CFG] fetch done, r=', r);
       if (!silent) setCfgSaving('ok');
-      console.log('[CFG] setCfgSaving(ok) called');
       // delay setCfg so React re-render happens AFTER 'ok' state renders to screen
       setTimeout(() => {
         setCfg(snapshotCfg);
         if (!silent) setCfgSaving('idle');
       }, 2500);
     } catch(e) {
-      console.log('[CFG] ERROR:', e);
       if (!silent) { setCfgSaving('error'); setTimeout(()=>setCfgSaving('idle'), 2500); }
     }
   };
-
 
   // ── Conflict detection ──
   const [printData, setPrintData] = useState(null); // {teacher, rows:[{day,period,subject,grade,section,room}]}
 
   const handlePrint = async () => {
     if (!teacherView) {
-      // No teacher selected — print current grade/section timetable as-is
+      // Grade timetable print — show main grid, hide personal print div
       window.document.title = `Timetable Grade ${selGrade} Section ${selSection}`;
       setPrintData(null);
-      setTimeout(() => window.print(), 100);
+      setTimeout(() => {
+        const personal = document.getElementById('tt-personal-print');
+        const mainGrid = document.getElementById('tt-main-grid');
+        if (personal) personal.style.display = 'none';
+        if (mainGrid) mainGrid.style.display = '';
+        window.print();
+      }, 100);
       return;
     }
-    // Fetch ALL grades to build personal timetable for selected teacher
+    // Personal timetable — fetch all grades, hide main grid during print
     showMsg('Personal Timetable ဆောက်နေသည်…');
     try {
       const grades = Object.keys(cfg.grades || {});
@@ -358,7 +358,17 @@ export default function CalendarTimetablePage() {
       }));
       setPrintData({ teacher: teacherView, rows: allRows });
       window.document.title = `Personal Timetable — ${teacherView}`;
-      setTimeout(() => window.print(), 150);
+      setTimeout(() => {
+        // Hide main grid, show personal print div only
+        const mainGrid = document.getElementById('tt-main-grid');
+        const personal = document.getElementById('tt-personal-print');
+        if (mainGrid) mainGrid.style.display = 'none';
+        if (personal) personal.style.display = 'block';
+        window.print();
+        // Restore after print
+        if (mainGrid) mainGrid.style.display = '';
+        if (personal) personal.style.display = 'none';
+      }, 200);
     } catch { showMsg('Error','error'); }
   };
 
@@ -421,7 +431,10 @@ export default function CalendarTimetablePage() {
 
   // Teacher view — filter timetable by teacher
   const teacherSchedule = timetable.filter(r => !teacherView || r.Teacher === teacherView);
-  const allTeachers = [...new Set([...timetable.map(r=>r.Teacher), ...timetable.map(r=>r.Asst_Teacher)].filter(Boolean))];
+  // Only show valid staff names — filter against staffList to exclude bad data (numbers, subjects, etc)
+  const validStaffNames = new Set(staffList.map(s => (s['Name (ALL CAPITAL)']||s.Name||'').trim()).filter(Boolean));
+  const allTeachersRaw = [...new Set([...timetable.map(r=>r.Teacher), ...timetable.map(r=>r.Asst_Teacher)].filter(Boolean))];
+  const allTeachers = validStaffNames.size > 0 ? allTeachersRaw.filter(t => validStaffNames.has(String(t).trim())) : allTeachersRaw;
 
   const MAIN_TABS = [
     { id:'calendar',   label:'📅 Calendar' },
@@ -601,24 +614,7 @@ export default function CalendarTimetablePage() {
                   </div>
                 </div>
 
-                {/* Conflict results */}
-                {conflicts.length > 0 && (
-                  <div style={{background:'rgba(248,113,113,0.08)',border:'1px solid rgba(248,113,113,0.25)',borderRadius:'12px',padding:'12px 14px'}}>
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}}>
-                      <span style={{fontSize:'10px',fontWeight:900,color:'rgba(248,113,113,0.9)',textTransform:'uppercase',letterSpacing:'0.1em'}}>⚠ Teacher Conflicts တွေ့ရသည်</span>
-                      <button onClick={()=>setConflicts([])} style={{background:'none',border:'none',color:'rgba(255,255,255,0.3)',cursor:'pointer',fontSize:'14px'}}>✕</button>
-                    </div>
-                    {conflicts.map((c,i)=>(
-                      <div key={i} style={{marginBottom:'6px',padding:'6px 10px',background:'rgba(248,113,113,0.07)',borderRadius:'8px',borderLeft:'3px solid rgba(248,113,133,0.5)'}}>
-                        <span style={{fontSize:'11px',fontWeight:900,color:'#fca5a5'}}>👤 {c.teacher}</span>
-                        <span style={{fontSize:'10px',color:'rgba(255,255,255,0.4)',marginLeft:'8px'}}>{c.day} · Period {c.period}</span>
-                        <div style={{fontSize:'9px',color:'rgba(248,113,113,0.6)',marginTop:'2px'}}>→ {c.assignments.join(', ')}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Conflict results */}
+                {/* ── FIX: Conflict results block — ONCE only (duplicate removed) ── */}
                 {conflicts.length > 0 && (
                   <div style={{background:'rgba(248,113,113,0.08)',border:'1px solid rgba(248,113,113,0.25)',borderRadius:'12px',padding:'12px 14px'}}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}}>
@@ -671,7 +667,7 @@ export default function CalendarTimetablePage() {
                         </thead>
                         <tbody>
                           {getGradePeriods(cfg, selGrade, selSection).filter(p=>!p.isBreak).map((p,pi)=>(
-                            <tr key={pi} style={{background:pi%2===0?'#f9f9f9':'#fff'}}>
+                            <tr key={`print-${pi}`} style={{background:pi%2===0?'#f9f9f9':'#fff'}}>
                               <td style={{border:'1px solid #ddd',padding:'5px 8px',fontWeight:700,fontSize:'8pt',color:'#333'}}>
                                 <div>{p.label}</div>
                                 <div style={{fontWeight:400,color:'#888',fontSize:'7pt'}}>{p.start}–{p.end}</div>
@@ -697,7 +693,7 @@ export default function CalendarTimetablePage() {
                       </table>
                     </div>
                   )}
-                  <table style={{width:'100%',borderCollapse:'collapse',minWidth:'600px'}}>
+                  <table id="tt-main-grid" style={{width:'100%',borderCollapse:'collapse',minWidth:'600px'}}>
                     <thead>
                       <tr>
                         <th style={{padding:'8px',fontSize:'9px',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.1em',textAlign:'left',minWidth:'80px',borderBottom:'1px solid rgba(255,255,255,0.08)'}}>Period</th>
@@ -710,10 +706,10 @@ export default function CalendarTimetablePage() {
                     </thead>
                     <tbody>
                       {getGradePeriods(cfg, selGrade, selSection).map((p,pi)=>{
-                        const pKey = p.no ?? (pi + 1); // single source of truth for period key
-                        // console.log('[TT] period pKey='+pKey+' label='+p.label);
+                        const pKey = p.no ?? (pi + 1); // period number used for cell key lookup only
                         return (
-                        <tr key={pi} style={{background:p.isBreak?'rgba(251,191,36,0.07)':pi%2===0?'rgba(255,255,255,0.02)':'transparent'}}>
+                        // ── FIX: use pi (index) as row key — avoids duplicate key when p.no values repeat ──
+                        <tr key={`row-${pi}`} style={{background:p.isBreak?'rgba(251,191,36,0.07)':pi%2===0?'rgba(255,255,255,0.02)':'transparent'}}>
                           <td style={{padding:'8px 6px',borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'middle',borderLeft:p.isBreak?'3px solid rgba(251,191,36,0.4)':'3px solid transparent'}}>
                             <div style={{fontSize:'10px',fontWeight:900,color:p.isBreak?'rgba(251,191,36,0.7)':'rgba(255,255,255,0.6)'}}>{p.label}</div>
                             <div style={{fontSize:'8px',color:p.isBreak?'rgba(251,191,36,0.35)':'rgba(255,255,255,0.2)'}}>{p.start}–{p.end}</div>
@@ -745,7 +741,7 @@ export default function CalendarTimetablePage() {
                                       <option value="" style={{background:'#1a1030'}}>— ဆရာ —</option>
                                       {staffList.map((s,i)=>{
                                         const name = s['Name (ALL CAPITAL)']||s.Name||'';
-                                        return name ? <option key={i} value={name} style={{background:'#1a1030'}}>{name}</option> : null;
+                                        return name ? <option key={`t-${i}`} value={name} style={{background:'#1a1030'}}>{name}</option> : null;
                                       })}
                                     </select>
                                     <select value={cell.asst_teacher||''} onChange={e=>handleCellChange(day,pKey,'asst_teacher',e.target.value)}
@@ -753,7 +749,7 @@ export default function CalendarTimetablePage() {
                                       <option value="" style={{background:'#1a1030'}}>— Asst. —</option>
                                       {staffList.map((s,i)=>{
                                         const name = s['Name (ALL CAPITAL)']||s.Name||'';
-                                        return name ? <option key={i} value={name} style={{background:'#1a1030'}}>{name}</option> : null;
+                                        return name ? <option key={`a-${i}`} value={name} style={{background:'#1a1030'}}>{name}</option> : null;
                                       })}
                                     </select>
                                     <input value={cell.room||''} onChange={e=>handleCellChange(day,pKey,'room',e.target.value)}
