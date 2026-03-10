@@ -280,11 +280,54 @@ export default function CalendarTimetablePage() {
         showMsg('မသိမ်းရပါ: ' + (r.message||'GAS error'), 'error');
       }
     } catch(e) { showMsg('Network error — ' + e.message, 'error'); }
-    if (!silent) setSaving(false);
+    if (!silent) { setSaving(false); }
   };
 
 
   // ── Conflict detection ──
+  const [printData, setPrintData] = useState(null); // {teacher, rows:[{day,period,subject,grade,section,room}]}
+
+  const handlePrint = async () => {
+    if (!teacherView) {
+      // No teacher selected — print current grade/section timetable as-is
+      window.document.title = `Timetable Grade ${selGrade} Section ${selSection}`;
+      setPrintData(null);
+      setTimeout(() => window.print(), 100);
+      return;
+    }
+    // Fetch ALL grades to build personal timetable for selected teacher
+    showMsg('Personal Timetable ဆောက်နေသည်…');
+    try {
+      const grades = Object.keys(cfg.grades || {});
+      const allRows = [];
+      const fetched = {};
+      await Promise.all(grades.map(async g => {
+        if (fetched[g]) return;
+        fetched[g] = true;
+        const res = await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getTimetable',grade:g})});
+        const r = await res.json();
+        if (r.success) {
+          (r.data||[]).forEach(row => {
+            if (row.Teacher===teacherView || row.Asst_Teacher===teacherView) {
+              allRows.push({
+                day: row.Day,
+                period: String(row.Period_No),
+                subject: row.Subject,
+                grade: row.Grade,
+                section: row.Section||'',
+                room: row.Room||'',
+                isAsst: row.Teacher!==teacherView,
+              });
+            }
+          });
+        }
+      }));
+      setPrintData({ teacher: teacherView, rows: allRows });
+      window.document.title = `Personal Timetable — ${teacherView}`;
+      setTimeout(() => window.print(), 150);
+    } catch { showMsg('Error','error'); }
+  };
+
   const checkConflicts = async () => {
     if (!cfg) return;
     showMsg('Conflict စစ်နေသည်…');
@@ -354,7 +397,21 @@ export default function CalendarTimetablePage() {
 
   return (
     <div style={S.page}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box}`}</style>
+      <style>{`
+        @keyframes spin{to{transform:rotate(360deg)}}
+        *{box-sizing:border-box}
+        @media print {
+          @page { size: A4 landscape; margin: 10mm 8mm; }
+          body * { visibility: hidden; }
+          #tt-print-area, #tt-print-area * { visibility: visible; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          #tt-print-area { position: fixed; top: 0; left: 0; width: 100%; overflow: visible !important; }
+          #tt-print-area table { width: 100% !important; min-width: unset !important; font-size: 8pt !important; }
+          #tt-print-area th, #tt-print-area td { padding: 4px 3px !important; }
+          #tt-print-title { display: block !important; }
+          #tt-personal-print { display: block !important; }
+          #tt-personal-print table { page-break-inside: avoid; }
+        }
+      `}</style>
 
       <div style={S.header}>
         <button onClick={()=>router.back()} style={{background:'none',border:'none',color:'rgba(255,255,255,0.4)',cursor:'pointer',fontSize:'14px'}}>← Back</button>
@@ -507,6 +564,10 @@ export default function CalendarTimetablePage() {
                         ⚠ Conflicts
                       </button>
                     )}
+                    <button onClick={handlePrint}
+                      style={{...S.btnSm,background:'rgba(52,211,153,0.12)',color:'rgba(52,211,153,0.9)',border:'1px solid rgba(52,211,153,0.3)',flexShrink:0}}>
+                      🖨️ {teacherView ? 'Personal Timetable' : 'Print'}
+                    </button>
                   </div>
                 </div>
 
@@ -545,7 +606,67 @@ export default function CalendarTimetablePage() {
                 )}
 
                 {/* Timetable grid */}
-                <div style={{overflowX:'auto'}}>
+                <div id="tt-print-area" style={{overflowX:'auto'}}>
+                  <div id="tt-print-title" style={{display:'none',textAlign:'center',marginBottom:'10px',fontFamily:'Arial,sans-serif',borderBottom:'2px solid #333',paddingBottom:'8px'}}>
+                    <div style={{fontSize:'16pt',fontWeight:900,color:'#000',textTransform:'uppercase',letterSpacing:'0.05em'}}>
+                      {cfg.schoolName || 'Shining Stars - Ma Thwe'}
+                    </div>
+                    <div style={{fontSize:'10pt',color:'#444',marginTop:'2px'}}>
+                      {cfg.schoolLevel || 'Private High School'}
+                    </div>
+                    <div style={{fontSize:'9pt',color:'#555',marginTop:'6px',fontWeight:700}}>
+                      {printData ? printData.teacher : `Grade ${selGrade} Section ${selSection}`}
+                    </div>
+                    <div style={{fontSize:'9pt',color:'#333',marginTop:'2px',fontWeight:700}}>
+                      Personal Timetable
+                    </div>
+                    <div style={{fontSize:'8pt',color:'#777',marginTop:'4px'}}>
+                      Academic Year: {cfg.academicYear || '2024–2025'}
+                    </div>
+                    <div style={{fontSize:'8pt',color:'#999',marginTop:'2px',fontStyle:'italic'}}>
+                      Printed at: {new Date().toLocaleDateString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}
+                    </div>
+                  </div>
+                  {/* Personal timetable print table */}
+                  {printData && (
+                    <div id="tt-personal-print" style={{display:'none'}}>
+                      <table style={{width:'100%',borderCollapse:'collapse',fontSize:'9pt',fontFamily:'Arial,sans-serif'}}>
+                        <thead>
+                          <tr style={{background:'#1a1a2e'}}>
+                            <th style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'left',color:'#fff',width:'80px'}}>Period</th>
+                            {(cfg.days||[]).map(d=>(
+                              <th key={d} style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'center',color:'#fff',background:['Saturday','Sunday'].includes(d)?'#2a0a0a':'#1a1a2e'}}>{d.slice(0,3).toUpperCase()}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {getGradePeriods(cfg, selGrade, selSection).filter(p=>!p.isBreak).map((p,pi)=>(
+                            <tr key={pi} style={{background:pi%2===0?'#f9f9f9':'#fff'}}>
+                              <td style={{border:'1px solid #ddd',padding:'5px 8px',fontWeight:700,fontSize:'8pt',color:'#333'}}>
+                                <div>{p.label}</div>
+                                <div style={{fontWeight:400,color:'#888',fontSize:'7pt'}}>{p.start}–{p.end}</div>
+                              </td>
+                              {(cfg.days||[]).map(day=>{
+                                const row = printData.rows.find(r=>r.day===day && r.period===String(p.no));
+                                return (
+                                  <td key={day} style={{border:'1px solid #ddd',padding:'5px 8px',verticalAlign:'top',minWidth:'100px'}}>
+                                    {row ? (
+                                      <>
+                                        <div style={{fontWeight:700,color:'#111',fontSize:'9pt'}}>{row.subject}</div>
+                                        <div style={{fontSize:'8pt',color:'#555',marginTop:'2px'}}>G{row.grade}{row.section?`/`+row.section:''}</div>
+                                        {row.room && <div style={{fontSize:'7pt',color:'#888'}}>Room: {row.room}</div>}
+                                        {row.isAsst && <div style={{fontSize:'7pt',color:'#aaa',fontStyle:'italic'}}>(Asst.)</div>}
+                                      </>
+                                    ) : <span style={{color:'#ddd',fontSize:'8pt'}}>—</span>}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                   <table style={{width:'100%',borderCollapse:'collapse',minWidth:'600px'}}>
                     <thead>
                       <tr>
@@ -562,7 +683,7 @@ export default function CalendarTimetablePage() {
                         const pKey = p.no ?? (pi + 1); // single source of truth for period key
                         // console.log('[TT] period pKey='+pKey+' label='+p.label);
                         return (
-                        <tr key={pKey} style={{background:p.isBreak?'rgba(251,191,36,0.07)':pi%2===0?'rgba(255,255,255,0.02)':'transparent'}}>
+                        <tr key={pi} style={{background:p.isBreak?'rgba(251,191,36,0.07)':pi%2===0?'rgba(255,255,255,0.02)':'transparent'}}>
                           <td style={{padding:'8px 6px',borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'middle',borderLeft:p.isBreak?'3px solid rgba(251,191,36,0.4)':'3px solid transparent'}}>
                             <div style={{fontSize:'10px',fontWeight:900,color:p.isBreak?'rgba(251,191,36,0.7)':'rgba(255,255,255,0.6)'}}>{p.label}</div>
                             <div style={{fontSize:'8px',color:p.isBreak?'rgba(251,191,36,0.35)':'rgba(255,255,255,0.2)'}}>{p.start}–{p.end}</div>
@@ -651,13 +772,35 @@ export default function CalendarTimetablePage() {
             {tab==='config' && isMgt && editCfg && (
               <div style={{display:'flex',flexDirection:'column',gap:'12px',marginTop:'8px'}}>
                 <div style={{display:'flex',gap:'6px',overflowX:'auto'}}>
-                  {['periods','days','grades','subjects'].map(t=>(
+                  {['school','periods','days','grades','subjects'].map(t=>(
                     <button key={t} onClick={()=>setCfgTab(t)}
                       style={cfgTab===t?S.tabOn:{...S.tabOff}}>
-                      {t.charAt(0).toUpperCase()+t.slice(1)}
+                      {t==='school'?'🏫 School':t.charAt(0).toUpperCase()+t.slice(1)}
                     </button>
                   ))}
                 </div>
+
+                {/* SCHOOL config */}
+                {cfgTab==='school' && (
+                  <div style={{display:'flex',flexDirection:'column',gap:'10px'}}>
+                    <p style={{fontSize:'9px',color:'rgba(255,255,255,0.3)',textTransform:'uppercase',letterSpacing:'0.12em',margin:0}}>Print Header Info</p>
+                    {[
+                      {key:'academicYear',  label:'Academic Year',   placeholder:'2024–2025'},
+                      {key:'schoolName',    label:'ကျောင်းအမည်',     placeholder:'Shining Stars - Ma Thwe'},
+                      {key:'schoolLevel',   label:'ကျောင်းအဆင့်',    placeholder:'Private High School'},
+                    ].map(({key,label,placeholder})=>(
+                      <div key={key}>
+                        <label style={{fontSize:'9px',color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.1em',display:'block',marginBottom:'4px'}}>{label}</label>
+                        <input
+                          value={editCfg[key]||''}
+                          onChange={e=>setEditCfg(c=>({...c,[key]:e.target.value}))}
+                          placeholder={placeholder}
+                          style={{width:'100%',background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:'8px',padding:'8px 10px',color:'#fff',fontSize:'12px',outline:'none'}}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* PERIODS config — drag-to-reorder + duty assign */}
                 {cfgTab==='periods' && (() => {
@@ -872,9 +1015,19 @@ export default function CalendarTimetablePage() {
                 )}
 
                 <button onClick={handleSaveConfig} disabled={saving}
-                  style={{...S.btn,opacity:saving?0.6:1,cursor:saving?'default':'pointer',marginTop:'4px',
-                    background:saving?'rgba(251,191,36,0.5)':'#fbbf24',transition:'all 0.2s'}}>
-                  {saving ? '⏳ သိမ်းနေသည်…' : '💾 Save Config'}
+                  style={{...S.btn,marginTop:'4px',transition:'all 0.25s',
+                    background:saving?'rgba(251,191,36,0.35)':'#fbbf24',
+                    opacity:saving?0.75:1,
+                    cursor:saving?'not-allowed':'pointer',
+                    boxShadow:saving?'none':'0 0 12px rgba(251,191,36,0.3)',
+                    transform:saving?'scale(0.98)':'scale(1)'}}>
+                  {saving
+                    ? <span style={{display:'flex',alignItems:'center',justifyContent:'center',gap:'8px'}}>
+                        <span style={{display:'inline-block',width:'12px',height:'12px',border:'2px solid rgba(0,0,0,0.3)',borderTop:'2px solid #000',borderRadius:'50%',animation:'spin 0.7s linear infinite'}}/>
+                        သိမ်းနေသည်…
+                      </span>
+                    : '💾 Save Config'
+                  }
                 </button>
               </div>
             )}
