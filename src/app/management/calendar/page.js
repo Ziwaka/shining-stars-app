@@ -54,6 +54,8 @@ export default function CalendarTimetablePage() {
   const [timetable, setTimetable] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState(false);
+  const [cfgSaving, setCfgSaving] = useState('idle');
+  const [cfgStatus, setCfgStatus] = useState(null);
   const [msg, setMsg]           = useState(null);
 
   // Calendar state
@@ -172,7 +174,34 @@ export default function CalendarTimetablePage() {
 
   useEffect(() => { if (selGrade && selSection && tab === 'timetable') fetchTimetable(selGrade, selSection); }, [selGrade, selSection, tab]);
 
-  const showMsg = (text, type='success') => { setMsg({text,type}); setTimeout(()=>setMsg(null),3500); };
+  const showMsg = (text, type='success') => {
+    // Direct DOM toast — bypasses all overflow:hidden / stacking context issues
+    const existing = document.getElementById('__app_toast__');
+    if (existing) existing.remove();
+    const el = document.createElement('div');
+    el.id = '__app_toast__';
+    el.textContent = text;
+    Object.assign(el.style, {
+      position: 'fixed',
+      top: '80px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      zIndex: '2147483647',
+      padding: '10px 24px',
+      borderRadius: '999px',
+      fontSize: '13px',
+      fontWeight: '900',
+      color: '#fff',
+      background: type === 'error' ? '#ef4444' : '#10b981',
+      boxShadow: '0 4px 28px rgba(0,0,0,0.7)',
+      whiteSpace: 'nowrap',
+      pointerEvents: 'none',
+      fontFamily: 'system-ui, sans-serif',
+      letterSpacing: '0.02em',
+    });
+    document.body.appendChild(el);
+    setTimeout(() => { el.remove(); }, 3000);
+  };
 
   // ── CALENDAR HELPERS ──
   const monthKey = `${viewDate.year}-${String(viewDate.month+1).padStart(2,'0')}`;
@@ -267,20 +296,25 @@ export default function CalendarTimetablePage() {
   };
 
   const handleSaveConfig = async (silent=false) => {
-    if (!silent) setSaving(true);
-    if (!silent) showMsg('သိမ်းနေသည်…');
+    console.log('[CFG] handleSaveConfig called, silent=', silent, 'editCfg=', !!editCfg);
+    if (!silent) setCfgSaving('saving');
+    console.log('[CFG] setCfgSaving(saving) called');
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'saveTimetableConfig', ...editCfg, periods_by_grade: editCfg.periods_by_grade||{default: editCfg.periods||[]} }) });
+      const snapshotCfg = JSON.parse(JSON.stringify(editCfg));
+      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'saveTimetableConfig', ...snapshotCfg, periods_by_grade: snapshotCfg.periods_by_grade||{default: snapshotCfg.periods||[]} }) });
       const r = await res.json();
-      if (r.success) {
-        if (!silent) showMsg(r.message || 'Config သိမ်းပြီးပါပြီ ✓');
-        const newCfg = JSON.parse(JSON.stringify(editCfg));
-        setCfg(newCfg);
-      } else {
-        showMsg('မသိမ်းရပါ: ' + (r.message||'GAS error'), 'error');
-      }
-    } catch(e) { showMsg('Network error — ' + e.message, 'error'); }
-    if (!silent) { setSaving(false); }
+      console.log('[CFG] fetch done, r=', r);
+      if (!silent) setCfgSaving('ok');
+      console.log('[CFG] setCfgSaving(ok) called');
+      // delay setCfg so React re-render happens AFTER 'ok' state renders to screen
+      setTimeout(() => {
+        setCfg(snapshotCfg);
+        if (!silent) setCfgSaving('idle');
+      }, 2500);
+    } catch(e) {
+      console.log('[CFG] ERROR:', e);
+      if (!silent) { setCfgSaving('error'); setTimeout(()=>setCfgSaving('idle'), 2500); }
+    }
   };
 
 
@@ -396,6 +430,8 @@ export default function CalendarTimetablePage() {
   ];
 
   return (
+    <>
+
     <div style={S.page}>
       <style>{`
         @keyframes spin{to{transform:rotate(360deg)}}
@@ -422,12 +458,6 @@ export default function CalendarTimetablePage() {
         <button onClick={()=>fetchAll(user)} style={{background:'none',border:'none',color:'rgba(255,255,255,0.4)',cursor:'pointer',fontSize:'18px'}}>↻</button>
       </div>
       <div style={{flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', paddingBottom:'80px'}}>
-
-      {msg && (
-        <div style={{position:'fixed',top:'64px',left:'50%',transform:'translateX(-50%)',zIndex:50,padding:'8px 20px',borderRadius:'999px',fontSize:'12px',fontWeight:900,color:'#fff',background:msg.type==='error'?'#ef4444':'#10b981',boxShadow:'0 4px 20px rgba(0,0,0,0.4)',whiteSpace:'nowrap'}}>
-          {msg.text}
-        </div>
-      )}
 
       <div style={{display:'flex',gap:'6px',padding:'12px 16px 8px',overflowX:'auto'}}>
         {MAIN_TABS.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={tab===t.id?S.tabOn:S.tabOff}>{t.label}</button>)}
@@ -607,23 +637,23 @@ export default function CalendarTimetablePage() {
 
                 {/* Timetable grid */}
                 <div id="tt-print-area" style={{overflowX:'auto'}}>
-                  <div id="tt-print-title" style={{display:'none',textAlign:'center',marginBottom:'10px',fontFamily:'Arial,sans-serif',borderBottom:'2px solid #333',paddingBottom:'8px'}}>
-                    <div style={{fontSize:'16pt',fontWeight:900,color:'#000',textTransform:'uppercase',letterSpacing:'0.05em'}}>
-                      {cfg.schoolName || 'Shining Stars - Ma Thwe'}
-                    </div>
-                    <div style={{fontSize:'10pt',color:'#444',marginTop:'2px'}}>
-                      {cfg.schoolLevel || 'Private High School'}
-                    </div>
-                    <div style={{fontSize:'9pt',color:'#555',marginTop:'6px',fontWeight:700}}>
-                      {printData ? printData.teacher : `Grade ${selGrade} Section ${selSection}`}
-                    </div>
-                    <div style={{fontSize:'9pt',color:'#333',marginTop:'2px',fontWeight:700}}>
-                      Personal Timetable
-                    </div>
-                    <div style={{fontSize:'8pt',color:'#777',marginTop:'4px'}}>
+                  <div id="tt-print-title" style={{display:'none',textAlign:'center',fontFamily:'Arial,sans-serif',borderBottom:'2px solid #222',paddingBottom:'10px',marginBottom:'12px'}}>
+                    <div style={{fontSize:'10pt',color:'#555',fontWeight:700,marginBottom:'6px'}}>
                       Academic Year: {cfg.academicYear || '2024–2025'}
                     </div>
-                    <div style={{fontSize:'8pt',color:'#999',marginTop:'2px',fontStyle:'italic'}}>
+                    <div style={{fontSize:'18pt',fontWeight:900,color:'#000',textTransform:'uppercase',letterSpacing:'0.04em'}}>
+                      {cfg.schoolName || 'Shining Stars - Ma Thwe'}
+                    </div>
+                    <div style={{fontSize:'11pt',color:'#333',marginTop:'3px'}}>
+                      {cfg.schoolLevel || 'Private High School'}
+                    </div>
+                    <div style={{fontSize:'10pt',color:'#222',marginTop:'8px',fontWeight:700}}>
+                      {printData ? printData.teacher : `Grade ${selGrade} — Section ${selSection}`}
+                    </div>
+                    <div style={{fontSize:'9pt',color:'#444',marginTop:'2px'}}>
+                      Personal Timetable
+                    </div>
+                    <div style={{fontSize:'8pt',color:'#888',marginTop:'6px',fontStyle:'italic'}}>
                       Printed at: {new Date().toLocaleDateString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}
                     </div>
                   </div>
@@ -1014,20 +1044,20 @@ export default function CalendarTimetablePage() {
                   </div>
                 )}
 
-                <button onClick={handleSaveConfig} disabled={saving}
-                  style={{...S.btn,marginTop:'4px',transition:'all 0.25s',
-                    background:saving?'rgba(251,191,36,0.35)':'#fbbf24',
-                    opacity:saving?0.75:1,
-                    cursor:saving?'not-allowed':'pointer',
-                    boxShadow:saving?'none':'0 0 12px rgba(251,191,36,0.3)',
-                    transform:saving?'scale(0.98)':'scale(1)'}}>
-                  {saving
-                    ? <span style={{display:'flex',alignItems:'center',justifyContent:'center',gap:'8px'}}>
-                        <span style={{display:'inline-block',width:'12px',height:'12px',border:'2px solid rgba(0,0,0,0.3)',borderTop:'2px solid #000',borderRadius:'50%',animation:'spin 0.7s linear infinite'}}/>
-                        သိမ်းနေသည်…
-                      </span>
-                    : '💾 Save Config'
-                  }
+                <button
+                  onClick={() => handleSaveConfig(false)}
+                  disabled={cfgSaving==='saving'}
+                  style={{...S.btn, marginTop:'4px', transition:'background 0.3s',
+                    background: cfgSaving==='ok' ? '#10b981' : cfgSaving==='error' ? '#ef4444' : '#fbbf24',
+                    cursor: cfgSaving==='saving' ? 'not-allowed' : 'pointer',
+                    opacity: cfgSaving==='saving' ? 0.7 : 1,
+                    color: '#0f172a',
+                    textTransform: 'none',
+                  }}>
+                  {cfgSaving==='saving' ? '⏳ သိမ်းနေသည်…'
+                  : cfgSaving==='ok'    ? '✓ Config သိမ်းပြီးပါပြီ'
+                  : cfgSaving==='error' ? '✕ Error — ထပ်ကြိုးစားပါ'
+                  : '💾 Save Config'}
                 </button>
               </div>
             )}
@@ -1083,5 +1113,6 @@ export default function CalendarTimetablePage() {
       )}
       </div>
     </div>
+    </>
   );
 }
