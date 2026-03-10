@@ -178,16 +178,17 @@ export default function CalendarTimetablePage() {
 
   // When teacher is selected, fetch ALL grades to build personal schedule
   useEffect(() => {
-    if (!teacherView || !cfg || tab !== 'timetable') { setTeacherAllRows([]); return; }
+    if (!teacherView || !cfg || tab !== 'timetable') { setTeacherAllRows([]); setTeacherLoading(false); return; }
     const VDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
     setTeacherLoading(true);
     const grades = Object.keys(cfg.grades || {});
     const allRows = [];
+    let cancelled = false; // stale-fetch guard
     Promise.all(grades.map(async g => {
       try {
         const res = await fetch(WEB_APP_URL, {method:'POST', body:JSON.stringify({action:'getTimetable', grade:g})});
         const r = await res.json();
-        if (r.success) {
+        if (r.success && !cancelled) {
           (r.data||[]).forEach(row => {
             if (row.Teacher===teacherView || row.Asst_Teacher===teacherView) {
               let day = String(row.Day||'');
@@ -197,8 +198,11 @@ export default function CalendarTimetablePage() {
           });
         }
       } catch {}
-    })).then(() => { setTeacherAllRows([...allRows]); setTeacherLoading(false); });
-  }, [teacherView, cfg, tab]);
+    })).then(() => {
+      if (!cancelled) { setTeacherAllRows([...allRows]); setTeacherLoading(false); }
+    });
+    return () => { cancelled = true; setTeacherLoading(false); }; // cancel on teacherView change
+  }, [teacherView, tab]); // cfg intentionally excluded — avoids re-fetch on every config save
 
   const showMsg = (text, type='success') => {
     // Direct DOM toast — bypasses all overflow:hidden / stacking context issues
@@ -670,7 +674,12 @@ export default function CalendarTimetablePage() {
                     )}
                     {!teacherLoading && teacherAllRows.length > 0 && (() => {
                       const activeDays = (cfg.days||[]).filter(day => teacherAllRows.some(r=>r.day===day));
-                      const activePeriods = getGradePeriods(cfg, selGrade, selSection).filter(p=>!p.isBreak);
+                      // Use default periods — covers all grades' period slots, not just selGrade's
+                      const _defaultPeriods = ((cfg.periods_by_grade||{})['default'] || cfg.periods || []);
+                      const activePeriods = _defaultPeriods.filter(p => {
+                        const lbl = String(p.label||'').toLowerCase();
+                        return !(p.isBreak===true || ['break','lunch','recess','duty','assembly','prayer','chapel'].some(k=>lbl.includes(k)));
+                      });
                       return (
                         <div style={{overflowX:'auto'}}>
                           <table style={{width:'100%',borderCollapse:'collapse',minWidth:'400px'}}>
@@ -927,8 +936,10 @@ export default function CalendarTimetablePage() {
                   })];
                   const activePeriods = byGrade[cfgPeriodGrade] || byGrade['default'] || [];
                   const updatePeriods = (newArr) => {
-                    const nb = { ...byGrade, [cfgPeriodGrade]: newArr };
-                    setEditCfg(c => ({ ...c, periods_by_grade: nb, periods: nb['default'] || newArr }));
+                    // Renumber no sequentially — prevents duplicate keys after delete+add
+                    const renumbered = newArr.map((p, i) => ({ ...p, no: i + 1 }));
+                    const nb = { ...byGrade, [cfgPeriodGrade]: renumbered };
+                    setEditCfg(c => ({ ...c, periods_by_grade: nb, periods: nb['default'] || renumbered }));
                   };
                   const staffNames = staffList.map(s=>s['Name (ALL CAPITAL)']||s.Name||'').filter(Boolean);
 
@@ -1040,7 +1051,7 @@ export default function CalendarTimetablePage() {
                         </div>
                       );})}
 
-                      <button onClick={()=>{const no=activePeriods.length+1;updatePeriods([...activePeriods,{no,label:`Period ${no}`,start:'',end:'',isBreak:false}]);}}
+                      <button onClick={()=>{const no=Math.max(0,...activePeriods.map(p=>Number(p.no)||0))+1;updatePeriods([...activePeriods,{no,label:`Period ${no}`,start:'',end:'',isBreak:false}]);}}
                         style={{...S.btnSm,textAlign:'center'}}>+ Add Period</button>
                     </div>
                   );
