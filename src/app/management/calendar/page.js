@@ -735,9 +735,20 @@ export default function CalendarTimetablePage() {
                       <div style={{fontSize:'11px',color:'rgba(255,255,255,0.25)',textAlign:'center',padding:'16px 0'}}>သင်ကြားချိန်မရှိသေးပါ</div>
                     )}
                     {!teacherLoading && teacherAllRows.length > 0 && (() => {
-                      // FIX3: Default periods ကို timeline structure အဖြစ်သုံး
-                      // Break row = teacher class မရှိ + config says break → thin divider သာပြ
                       const activeDays = (cfg.days||[]).filter(day => teacherAllRows.some(r=>r.day===day));
+
+                      // ── 12hr AM/PM converter ──
+                      const to12 = (t) => {
+                        if (!t) return '';
+                        const [hh,mm] = t.split(':').map(Number);
+                        if (isNaN(hh)||isNaN(mm)) return t;
+                        const ampm = hh < 12 ? 'AM' : 'PM';
+                        const h = hh % 12 || 12;
+                        return h + ':' + String(mm).padStart(2,'0') + ' ' + ampm;
+                      };
+                      const toRange = (s,e) => s ? to12(s) + ' – ' + to12(e) : '';
+
+                      // ── Build period list from default config ──
                       const _fixBrk = (arr) => (arr||[]).map((p,idx2) => {
                         const lbl = String(p.label||'').toLowerCase();
                         const auto = ['break','lunch','recess','duty','assembly','prayer','chapel','နားချိန်','အနားယူ'].some(kw=>lbl.includes(kw));
@@ -753,12 +764,13 @@ export default function CalendarTimetablePage() {
                         .sort((a,b)=>Number(a)-Number(b))
                         .map(n=>({ no:n, label:'Period '+n, start:'', end:'', isBreak:false }));
                       const _allP = [..._defP, ..._extraP];
+
                       return (
                         <div style={{overflowX:'auto'}}>
                           <table style={{width:'100%',borderCollapse:'collapse',minWidth:'400px'}}>
                             <thead>
                               <tr>
-                                <th style={{padding:'6px 8px',fontSize:'9px',color:'rgba(255,255,255,0.3)',textAlign:'left',borderBottom:'1px solid rgba(255,255,255,0.08)',minWidth:'60px'}}>Period</th>
+                                <th style={{padding:'6px 8px',fontSize:'9px',color:'rgba(255,255,255,0.3)',textAlign:'left',borderBottom:'1px solid rgba(255,255,255,0.08)',minWidth:'80px'}}>Period</th>
                                 {activeDays.map(d=>(
                                   <th key={d} style={{padding:'6px 8px',fontSize:'9px',color:WEEKEND_DAYS.has(d)?'rgba(251,191,36,0.6)':'rgba(255,255,255,0.5)',textAlign:'center',borderBottom:'1px solid rgba(255,255,255,0.08)',fontWeight:900}}>
                                     {DAYS_SHORT[['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].indexOf(d)]||d.slice(0,3)}
@@ -770,22 +782,31 @@ export default function CalendarTimetablePage() {
                               {_allP.map((p,pi)=>{
                                 const pNo = p.no;
                                 const hasCls = _taughtNos.has(pNo);
-                                if (p.isBreak && !hasCls) return (
-                                  <tr key={'brk-'+pi}>
-                                    <td colSpan={activeDays.length+1} style={{padding:'3px 8px'}}>
-                                      <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
-                                        <div style={{flex:1,height:'1px',background:'rgba(255,255,255,0.05)'}}/>
-                                        <span style={{fontSize:'8px',color:'rgba(255,255,255,0.15)',fontStyle:'italic'}}>{p.label}{p.start?' '+p.start+'–'+p.end:''}</span>
-                                        <div style={{flex:1,height:'1px',background:'rgba(255,255,255,0.05)'}}/>
+
+                                // ── CONFIG says BREAK → ALWAYS show as break divider ──
+                                // Even if data has a class there (data entry error) — trust config
+                                if (p.isBreak) return (
+                                  <tr key={'brk-'+pi} style={{background:'rgba(251,191,36,0.04)'}}>
+                                    <td colSpan={activeDays.length+1} style={{padding:'4px 8px',borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
+                                      <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                                        <div style={{flex:1,height:'1px',background:'rgba(251,191,36,0.15)'}}/>
+                                        <span style={{fontSize:'8px',fontWeight:900,color:'rgba(251,191,36,0.45)',letterSpacing:'0.08em'}}>
+                                          {p.label.toUpperCase()}{p.start ? '  ' + toRange(p.start,p.end) : ''}
+                                        </span>
+                                        <div style={{flex:1,height:'1px',background:'rgba(251,191,36,0.15)'}}/>
                                       </div>
                                     </td>
                                   </tr>
                                 );
+
+                                // ── Normal period row ──
                                 return (
                                   <tr key={pNo+'-'+pi} style={{background:pi%2===0?'rgba(255,255,255,0.02)':'transparent'}}>
-                                    <td style={{padding:'6px 8px',borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'middle'}}>
-                                      <div style={{fontSize:'9px',fontWeight:900,color:'rgba(255,255,255,0.5)'}}>{p.isBreak?'P'+pNo:p.label}</div>
-                                      {p.start && <div style={{fontSize:'7px',color:'rgba(255,255,255,0.2)'}}>{p.start}–{p.end}</div>}
+                                    <td style={{padding:'6px 8px',borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'middle',minWidth:'80px'}}>
+                                      <div style={{fontSize:'9px',fontWeight:900,color:'rgba(255,255,255,0.55)'}}>{p.label}</div>
+                                      {p.start && (
+                                        <div style={{fontSize:'7px',color:'rgba(255,255,255,0.25)',marginTop:'1px'}}>{toRange(p.start,p.end)}</div>
+                                      )}
                                     </td>
                                     {activeDays.map(day=>{
                                       const row = teacherAllRows.find(r=>r.day===day && String(r.period)===pNo);
