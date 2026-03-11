@@ -748,22 +748,43 @@ export default function CalendarTimetablePage() {
                       };
                       const toRange = (s,e) => s ? to12(s) + ' – ' + to12(e) : '';
 
-                      // ── Build period list from default config ──
+                      // ── FIX: ဆရာ ကြုံတဲ့ grade အားလုံးရဲ့ period config ကို merge ──
+                      // Default ပဲ ဆွဲရင် afternoon/other-grade periods ကို time မရ
                       const _fixBrk = (arr) => (arr||[]).map((p,idx2) => {
                         const lbl = String(p.label||'').toLowerCase();
                         const auto = ['break','lunch','recess','duty','assembly','prayer','chapel','နားချိန်','အနားယူ'].some(kw=>lbl.includes(kw));
                         return { ...p, no: String(p.no ?? (idx2+1)), isBreak: p.isBreak===true||p.isBreak==='true'||auto };
                       });
-                      const _defP = _fixBrk(
-                        cfg.periods_by_grade?.default || cfg.periods ||
-                        Object.values(cfg.periods_by_grade||{})[0] || []
-                      );
+
+                      // ဆရာ ကြုံတဲ့ grade unique list
+                      const _taughtGrades = [...new Set(teacherAllRows.map(r=>String(r.grade)))];
+
+                      // Grade တစ်ခုချင်းစီ + default ကနေ period list ဆောက် → Map by period no
+                      const _periodMap = new Map(); // no → period obj (best data wins)
+                      const _allConfigs = [
+                        cfg.periods_by_grade?.default || cfg.periods || [],
+                        ..._taughtGrades.map(g => {
+                          const pbg = cfg.periods_by_grade || {};
+                          // Try Grade 12A, Grade 12, then default
+                          return pbg['Grade '+g] || pbg[g] || pbg['default'] || cfg.periods || [];
+                        }),
+                        ...Object.values(cfg.periods_by_grade || {}),
+                      ];
+
+                      _allConfigs.forEach(arr => {
+                        _fixBrk(arr).forEach(p => {
+                          const existing = _periodMap.get(p.no);
+                          // Keep entry with more info (has start time) or first seen
+                          if (!existing || (!existing.start && p.start)) {
+                            _periodMap.set(p.no, p);
+                          }
+                        });
+                      });
+
+                      // Sort by period number, filter to only periods that exist in any config
                       const _taughtNos = new Set(teacherAllRows.map(r=>String(r.period)));
-                      const _defNos = new Set(_defP.map(p=>p.no));
-                      const _extraP = [..._taughtNos].filter(n=>!_defNos.has(n))
-                        .sort((a,b)=>Number(a)-Number(b))
-                        .map(n=>({ no:n, label:'Period '+n, start:'', end:'', isBreak:false }));
-                      const _allP = [..._defP, ..._extraP];
+                      // Include ALL periods from any config (for proper ordering + break detection)
+                      const _allP = [..._periodMap.values()].sort((a,b)=>Number(a.no)-Number(b.no));
 
                       return (
                         <div style={{overflowX:'auto'}}>
