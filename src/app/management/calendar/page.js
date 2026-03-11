@@ -389,55 +389,58 @@ export default function CalendarTimetablePage() {
     try {
       const grades = Object.keys(cfg.grades || {});
       const allRows = [];
+
+      // ── Fetch once per grade (not per section) ──
       await Promise.all(grades.map(async g => {
-        const secs = cfg.grades[g] || ['A'];
-        await Promise.all(secs.map(async sec => {
-          const res = await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getTimetable',grade:g})});
-          const r = await res.json();
-          if (r.success) {
-            (r.data||[]).filter(row=>{
-              const stored=String(row.Section||'').trim();
-              return !sec||stored===''||stored===sec;
-            }).forEach(row=>{
-              // Resolve start time from this grade's period config
-              const gPeriods = getGradePeriods(cfg, g, sec);
-              const pCfg = gPeriods.find(p => String(p.no) === String(row.Period_No));
-              const startTime = pCfg?.start || null;
-              const endTime   = pCfg?.end   || null;
-              // timeKey: use start time if available, else fallback to day_period
-              const timeKey = startTime
-                ? `${row.Day}|${startTime}`
-                : `${row.Day}|period_${row.Period_No}`;
-              const baseRow = {
-                day: row.Day,
-                period: String(row.Period_No),
-                startTime,
-                endTime,
-                timeKey,
-                grade: g,
-                section: sec,
-              };
-              if (row.Teacher)      allRows.push({...baseRow, teacher: row.Teacher});
-              if (row.Asst_Teacher) allRows.push({...baseRow, teacher: row.Asst_Teacher});
-            });
-          }
-        }));
+        let rdata = [];
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const res = await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getTimetable',grade:g})});
+            const r = await res.json();
+            if (r.success) { rdata = r.data||[]; break; }
+          } catch { if (attempt===0) await new Promise(res=>setTimeout(res,800)); }
+        }
+        rdata.forEach(row => {
+          const sec = String(row.Section||'').trim(); // use actual stored section
+          const gPeriods = getGradePeriods(cfg, g, sec||'A');
+          const pCfg = gPeriods.find(p => String(p.no) === String(row.Period_No));
+          const startTime = pCfg?.start || null;
+          const endTime   = pCfg?.end   || null;
+          const timeKey = startTime
+            ? `${row.Day}|${startTime}`
+            : `${row.Day}|period_${row.Period_No}`;
+          const baseRow = {
+            day: row.Day,
+            period: String(row.Period_No),
+            startTime, endTime, timeKey,
+            grade: g,
+            section: sec,
+          };
+          if (row.Teacher)      allRows.push({...baseRow, teacher: row.Teacher});
+          if (row.Asst_Teacher) allRows.push({...baseRow, teacher: row.Asst_Teacher});
+        });
       }));
 
-      // Group by teacher + timeKey (day+startTime)
+      // ── Group by teacher + grade + timeKey ──
+      // section ကွဲရင် OK — grade တူ + time တူ + section တူ မှသာ conflict
       const map = {};
       allRows.forEach(r => {
-        const k = `${r.teacher}|${r.timeKey}`;
+        // key includes section — so 12/A and 12/B are separate buckets, never conflict
+        const k = `${r.teacher}|${r.grade}|${r.section}|${r.timeKey}`;
         if (!map[k]) map[k] = {
           teacher: r.teacher,
           day: r.day,
           period: r.period,
           startTime: r.startTime,
           endTime: r.endTime,
+          grade: r.grade,
+          section: r.section,
           assignments: [],
         };
-        map[k].assignments.push(r.grade + (r.section ? '/'+r.section : ''));
+        const label = r.grade + (r.section ? '/'+r.section : '');
+        if (!map[k].assignments.includes(label)) map[k].assignments.push(label);
       });
+      // conflict = same teacher assigned to same grade+section+time more than once
       const found = Object.values(map).filter(v => v.assignments.length > 1);
       setConflicts(found);
       if (found.length === 0) showMsg('Conflict မရှိပါ ✓');
