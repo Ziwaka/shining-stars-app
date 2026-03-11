@@ -542,15 +542,17 @@ export default function CalendarTimetablePage() {
         @keyframes spin{to{transform:rotate(360deg)}}
         *{box-sizing:border-box}
         @media print {
-          @page { size: A4 landscape; margin: 10mm 8mm; }
+          @page { size: A4 landscape; margin: 6mm 6mm; }
           body * { visibility: hidden; }
           #tt-print-area, #tt-print-area * { visibility: visible; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           #tt-print-area { position: fixed; top: 0; left: 0; width: 100%; overflow: visible !important; }
-          #tt-print-area table { width: 100% !important; min-width: unset !important; font-size: 8pt !important; }
-          #tt-print-area th, #tt-print-area td { padding: 4px 3px !important; }
+          #tt-print-area table { width: 100% !important; min-width: unset !important; font-size: 7pt !important; table-layout: fixed !important; }
+          #tt-print-area th, #tt-print-area td { padding: 3px 4px !important; word-wrap: break-word !important; overflow-wrap: break-word !important; }
           #tt-print-title { display: block !important; }
           #tt-personal-print { display: block !important; }
-          #tt-personal-print table { page-break-inside: avoid; }
+          #tt-personal-print table { page-break-inside: avoid; width: 100% !important; table-layout: fixed !important; }
+          #tt-personal-print th, #tt-personal-print td { word-wrap: break-word !important; overflow-wrap: break-word !important; }
+          #tt-personal-print .no-print { display: none !important; }
         }
       `}</style>
 
@@ -916,12 +918,12 @@ export default function CalendarTimetablePage() {
 
                     return (
                     <div id="tt-personal-print" style={{display:'none'}}>
-                      <table style={{width:'100%',borderCollapse:'collapse',fontSize:'9pt',fontFamily:'Arial,sans-serif'}}>
+                      <table style={{width:'100%',borderCollapse:'collapse',fontSize:'8pt',fontFamily:'Arial,sans-serif',tableLayout:'fixed'}}>
                         <thead>
                           <tr style={{background:'#1a1a2e'}}>
-                            <th style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'left',color:'#fff',width:'100px'}}>Period</th>
+                            <th style={{border:'1px solid #ccc',padding:'4px 6px',textAlign:'left',color:'#fff',width:'90px'}}>Period</th>
                             {(cfg.days||[]).map(d=>(
-                              <th key={d} style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'center',color:'#fff',background:['Saturday','Sunday'].includes(d)?'#2a0a0a':'#1a1a2e'}}>{d.slice(0,3).toUpperCase()}</th>
+                              <th key={d} style={{border:'1px solid #ccc',padding:'4px 6px',textAlign:'center',color:'#fff',background:['Saturday','Sunday'].includes(d)?'#2a0a0a':'#1a1a2e',wordBreak:'break-word'}}>{d.slice(0,3).toUpperCase()}</th>
                             ))}
                           </tr>
                         </thead>
@@ -931,30 +933,30 @@ export default function CalendarTimetablePage() {
                             // Break → divider row (always, trust config)
                             if (p.isBreak) return (
                               <tr key={'pbrk-'+pi} style={{background:'#fffbeb'}}>
-                                <td colSpan={(cfg.days||[]).length+1} style={{border:'1px solid #e5e7eb',padding:'3px 10px',textAlign:'center',color:'#92400e',fontSize:'7pt',fontStyle:'italic',letterSpacing:'0.05em'}}>
-                                  ── {p.label.toUpperCase()}{p.start ? '  ' + _pRange(p.start,p.end) : ''} ──
+                                <td colSpan={(cfg.days||[]).length+1} style={{border:'1px solid #e5e7eb',padding:'2px 8px',textAlign:'center',color:'#92400e',fontSize:'6.5pt',fontStyle:'italic',letterSpacing:'0.04em',whiteSpace:'nowrap'}}>
+                                  — {p.label.toUpperCase()}{p.start ? '  ' + _pRange(p.start,p.end) : ''} —
                                 </td>
                               </tr>
                             );
                             // Non-break → class row
                             return (
                             <tr key={`print-${pNo}`} style={{background:pi%2===0?'#f9f9f9':'#fff'}}>
-                              <td style={{border:'1px solid #ddd',padding:'5px 8px',fontWeight:700,fontSize:'8pt',color:'#333',whiteSpace:'nowrap'}}>
+                              <td style={{border:'1px solid #ddd',padding:'3px 5px',fontWeight:700,fontSize:'7.5pt',color:'#333',width:'90px',wordBreak:'break-word'}}>
                                 <div>{p.label}</div>
-                                {p.start && <div style={{fontWeight:400,color:'#888',fontSize:'7pt'}}>{_pRange(p.start,p.end)}</div>}
+                                {p.start && <div style={{fontWeight:400,color:'#888',fontSize:'6.5pt',marginTop:'1px'}}>{_pRange(p.start,p.end)}</div>}
                               </td>
                               {(cfg.days||[]).map(day=>{
                                 const row = printData.rows.find(r=>r.day===day && String(r.period)===pNo);
                                 return (
-                                  <td key={day} style={{border:'1px solid #ddd',padding:'5px 8px',verticalAlign:'top',minWidth:'100px'}}>
+                                  <td key={day} style={{border:'1px solid #ddd',padding:'3px 4px',verticalAlign:'top',wordBreak:'break-word'}}>
                                     {row ? (
                                       <>
-                                        <div style={{fontWeight:700,color:'#111',fontSize:'9pt'}}>{row.subject}</div>
-                                        <div style={{fontSize:'8pt',color:'#555',marginTop:'2px'}}>G{row.grade}{row.section?'/'+row.section:''}</div>
-                                        {row.room && <div style={{fontSize:'7pt',color:'#888'}}>Room: {row.room}</div>}
-                                        {row.isAsst && <div style={{fontSize:'7pt',color:'#aaa',fontStyle:'italic'}}>(Asst.)</div>}
+                                        <div style={{fontWeight:700,color:'#111',fontSize:'7.5pt',lineHeight:1.3}}>{row.subject}</div>
+                                        <div style={{fontSize:'6.5pt',color:'#555',marginTop:'1px'}}>G{row.grade}{row.section?'/'+row.section:''}</div>
+                                        {row.room && <div style={{fontSize:'6pt',color:'#888'}}>🚪{row.room}</div>}
+                                        {row.isAsst && <div style={{fontSize:'6pt',color:'#aaa',fontStyle:'italic'}}>(Asst)</div>}
                                       </>
-                                    ) : <span style={{color:'#ddd',fontSize:'8pt'}}>—</span>}
+                                    ) : <span style={{color:'#ddd',fontSize:'7pt'}}>—</span>}
                                   </td>
                                 );
                               })}
