@@ -878,49 +878,79 @@ export default function CalendarTimetablePage() {
                     </div>
                   </div>
                   {/* Personal timetable print table */}
-                  {printData && (
+                  {printData && (() => {
+                    // ── Print: 12hr converter ──
+                    const _pto12 = (t) => {
+                      if (!t) return '';
+                      const [hh,mm] = t.split(':').map(Number);
+                      if (isNaN(hh)||isNaN(mm)) return t;
+                      const ap = hh < 12 ? 'AM' : 'PM';
+                      const h = hh % 12 || 12;
+                      return h + ':' + String(mm).padStart(2,'0') + ' ' + ap;
+                    };
+                    const _pRange = (s,e) => s ? _pto12(s) + ' – ' + _pto12(e) : '';
+
+                    // ── Print: merge all grade configs (same as screen view) ──
+                    const _pfixBrk = (arr) => (arr||[]).map((p,i2) => {
+                      const lbl = String(p.label||'').toLowerCase();
+                      const auto = ['break','lunch','recess','duty','assembly','prayer','chapel','နားချိန်','အနားယူ'].some(kw=>lbl.includes(kw));
+                      return { ...p, no: String(p.no ?? (i2+1)), isBreak: p.isBreak===true||p.isBreak==='true'||auto };
+                    });
+                    const _pGrades = [...new Set(printData.rows.map(r=>String(r.grade)))];
+                    const _pMap = new Map();
+                    [
+                      cfg.periods_by_grade?.default || cfg.periods || [],
+                      ..._pGrades.map(g => {
+                        const pbg = cfg.periods_by_grade || {};
+                        return pbg['Grade '+g] || pbg[g] || pbg['default'] || cfg.periods || [];
+                      }),
+                      ...Object.values(cfg.periods_by_grade || {}),
+                    ].forEach(arr => {
+                      _pfixBrk(arr).forEach(p => {
+                        const ex = _pMap.get(p.no);
+                        if (!ex || (!ex.start && p.start)) _pMap.set(p.no, p);
+                      });
+                    });
+                    const _pAllP = [..._pMap.values()].sort((a,b)=>Number(a.no)-Number(b.no));
+                    const _pTaughtNos = new Set(printData.rows.map(r=>String(r.period)));
+
+                    return (
                     <div id="tt-personal-print" style={{display:'none'}}>
                       <table style={{width:'100%',borderCollapse:'collapse',fontSize:'9pt',fontFamily:'Arial,sans-serif'}}>
                         <thead>
                           <tr style={{background:'#1a1a2e'}}>
-                            <th style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'left',color:'#fff',width:'80px'}}>Period</th>
+                            <th style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'left',color:'#fff',width:'100px'}}>Period</th>
                             {(cfg.days||[]).map(d=>(
                               <th key={d} style={{border:'1px solid #ccc',padding:'5px 8px',textAlign:'center',color:'#fff',background:['Saturday','Sunday'].includes(d)?'#2a0a0a':'#1a1a2e'}}>{d.slice(0,3).toUpperCase()}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
-                          {(() => {
-                              const allPNos = [...new Set(printData.rows.map(r=>r.period))];
-                              return allPNos.filter(pNo => {
-                                const rowsWP = printData.rows.filter(r=>r.period===pNo);
-                                return rowsWP.some(r => {
-                                  const gP = getGradePeriods(cfg, String(r.grade), r.section);
-                                  const pC = gP.find(p=>String(p.no)===String(pNo));
-                                  if (!pC) return true; // not in config → keep
-                                  return pC.isBreak !== true && pC.isBreak !== 'true';
-                                });
-                              }).sort((a,b)=>Number(a)-Number(b));
-                            })().map((pNo,pi)=>(
+                          {_pAllP.map((p,pi)=>{
+                            const pNo = p.no;
+                            // Break → divider row (always, trust config)
+                            if (p.isBreak) return (
+                              <tr key={'pbrk-'+pi} style={{background:'#fffbeb'}}>
+                                <td colSpan={(cfg.days||[]).length+1} style={{border:'1px solid #e5e7eb',padding:'3px 10px',textAlign:'center',color:'#92400e',fontSize:'7pt',fontStyle:'italic',letterSpacing:'0.05em'}}>
+                                  ── {p.label.toUpperCase()}{p.start ? '  ' + _pRange(p.start,p.end) : ''} ──
+                                </td>
+                              </tr>
+                            );
+                            // Non-break → class row
+                            return (
                             <tr key={`print-${pNo}`} style={{background:pi%2===0?'#f9f9f9':'#fff'}}>
-                              <td style={{border:'1px solid #ddd',padding:'5px 8px',fontWeight:700,fontSize:'8pt',color:'#333'}}>
-                                {(() => {
-                                  const sampleRow = printData.rows.find(r=>r.period===pNo);
-                                  const pCfg = sampleRow ? getGradePeriods(cfg,String(sampleRow.grade),sampleRow.section).find(p=>String(p.no)===String(pNo)) : null;
-                                  return <>
-                                    <div>{pCfg?.label||'Period '+pNo}</div>
-                                    {pCfg?.start && <div style={{fontWeight:400,color:'#888',fontSize:'7pt'}}>{pCfg.start}–{pCfg.end}</div>}
-                                  </>;
-                                })()}
+                              <td style={{border:'1px solid #ddd',padding:'5px 8px',fontWeight:700,fontSize:'8pt',color:'#333',whiteSpace:'nowrap'}}>
+                                <div>{p.label}</div>
+                                {p.start && <div style={{fontWeight:400,color:'#888',fontSize:'7pt'}}>{_pRange(p.start,p.end)}</div>}
                               </td>
                               {(cfg.days||[]).map(day=>{
-                                const row = printData.rows.find(r=>r.day===day && r.period===pNo);
+                                const row = printData.rows.find(r=>r.day===day && String(r.period)===pNo);
                                 return (
                                   <td key={day} style={{border:'1px solid #ddd',padding:'5px 8px',verticalAlign:'top',minWidth:'100px'}}>
                                     {row ? (
                                       <>
                                         <div style={{fontWeight:700,color:'#111',fontSize:'9pt'}}>{row.subject}</div>
-                                        <div style={{fontSize:'8pt',color:'#555',marginTop:'2px'}}>G{row.grade}{row.section?`/`+row.section:''}</div>
+                                        <div style={{fontSize:'8pt',color:'#555',marginTop:'2px'}}>G{row.grade}{row.section?'/'+row.section:''}</div>
                                         {row.room && <div style={{fontSize:'7pt',color:'#888'}}>Room: {row.room}</div>}
                                         {row.isAsst && <div style={{fontSize:'7pt',color:'#aaa',fontStyle:'italic'}}>(Asst.)</div>}
                                       </>
@@ -929,11 +959,12 @@ export default function CalendarTimetablePage() {
                                 );
                               })}
                             </tr>
-                          ))}
+                          )})}
                         </tbody>
                       </table>
                     </div>
-                  )}
+                    );
+                  })()}
                   <table id="tt-main-grid" style={{width:'100%',borderCollapse:'collapse',minWidth:'600px'}}>
                     <thead>
                       <tr>
