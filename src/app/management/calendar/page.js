@@ -385,11 +385,17 @@ export default function CalendarTimetablePage() {
       window.document.title = `Timetable Grade ${selGrade} Section ${selSection}`;
       setPrintData(null);
       setTimeout(() => {
-        const personal = document.getElementById('tt-personal-print');
-        const mainGrid = document.getElementById('tt-main-grid');
-        if (personal) personal.style.display = 'none';
-        if (mainGrid) mainGrid.style.display = '';
+        const personal  = document.getElementById('tt-personal-print');
+        const mainGrid  = document.getElementById('tt-main-grid');
+        const classPrint = document.getElementById('tt-class-print');
+        if (personal)   personal.style.display   = 'none';
+        if (mainGrid)   mainGrid.style.display    = 'none';
+        if (classPrint) classPrint.style.display  = 'block';
         window.print();
+        setTimeout(() => {
+          if (mainGrid)   mainGrid.style.display   = '';
+          if (classPrint) classPrint.style.display = 'none';
+        }, 500);
       }, 100);
       return;
     }
@@ -489,6 +495,8 @@ export default function CalendarTimetablePage() {
     setTimeout(() => {
       if (mainGrid) mainGrid.style.display = '';
       if (personal) personal.style.display = 'none';
+      const cp = document.getElementById('tt-class-print');
+      if (cp) cp.style.display = 'none';
     }, 500);
   }, [printData, printPending]);
 
@@ -553,6 +561,9 @@ export default function CalendarTimetablePage() {
           #tt-personal-print table { page-break-inside: avoid; width: 100% !important; table-layout: fixed !important; }
           #tt-personal-print th, #tt-personal-print td { word-wrap: break-word !important; overflow-wrap: break-word !important; }
           #tt-personal-print .no-print { display: none !important; }
+          #tt-class-print { display: block !important; }
+          #tt-class-print table { width: 100% !important; table-layout: fixed !important; page-break-inside: avoid; }
+          #tt-class-print th, #tt-class-print td { word-wrap: break-word !important; overflow-wrap: break-word !important; }
         }
       `}</style>
 
@@ -873,7 +884,7 @@ export default function CalendarTimetablePage() {
                       {printData ? printData.teacher : `Grade ${selGrade} — Section ${selSection}`}
                     </div>
                     <div style={{fontSize:'9pt',color:'#444',marginTop:'2px'}}>
-                      Personal Timetable
+                      {printData ? 'Personal Timetable' : `Grade ${selGrade} — Section ${selSection} · Class Timetable`}
                     </div>
                     <div style={{fontSize:'8pt',color:'#888',marginTop:'6px',fontStyle:'italic'}}>
                       Printed at: {new Date().toLocaleDateString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}
@@ -965,6 +976,71 @@ export default function CalendarTimetablePage() {
                         </tbody>
                       </table>
                     </div>
+                    );
+                  })()}
+                  {/* ── Class Timetable — dedicated clean print table ── */}
+                  {!printData && (() => {
+                    const _cto12 = (t) => {
+                      if (!t) return '';
+                      const [hh,mm] = t.split(':').map(Number);
+                      if (isNaN(hh)||isNaN(mm)) return t;
+                      const ap = hh < 12 ? 'AM' : 'PM';
+                      const h = hh % 12 || 12;
+                      return h+':'+String(mm).padStart(2,'0')+' '+ap;
+                    };
+                    const _cRange = (s,e) => s ? _cto12(s)+' – '+_cto12(e) : '';
+                    const gPeriods = getGradePeriods(cfg, selGrade, selSection);
+                    const printDays = (cfg.days||[]);
+                    return (
+                      <div id="tt-class-print" style={{display:'none'}}>
+                        <table style={{width:'100%',borderCollapse:'collapse',fontSize:'7.5pt',fontFamily:'Arial,sans-serif',tableLayout:'fixed'}}>
+                          <thead>
+                            <tr style={{background:'#1a1a2e'}}>
+                              <th style={{border:'1px solid #999',padding:'4px 5px',textAlign:'left',color:'#fff',width:'85px'}}>Period</th>
+                              {printDays.map(d=>(
+                                <th key={d} style={{border:'1px solid #999',padding:'4px 5px',textAlign:'center',color:'#fff',background:['Saturday','Sunday'].includes(d)?'#3a1a1a':'#1a1a2e',wordBreak:'break-word'}}>
+                                  {d.slice(0,3).toUpperCase()}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {gPeriods.map((p,pi)=>{
+                              const pKey = String(p.no ?? (pi+1));
+                              if (p.isBreak) return (
+                                <tr key={'cbrk-'+pi} style={{background:'#fffbeb'}}>
+                                  <td colSpan={printDays.length+1} style={{border:'1px solid #e5e7eb',padding:'2px 8px',textAlign:'center',color:'#92400e',fontSize:'6.5pt',fontStyle:'italic',letterSpacing:'0.04em'}}>
+                                    — {p.label.toUpperCase()}{p.start ? '  '+_cRange(p.start,p.end) : ''} —
+                                  </td>
+                                </tr>
+                              );
+                              return (
+                                <tr key={'crow-'+pi} style={{background:pi%2===0?'#f9f9f9':'#fff'}}>
+                                  <td style={{border:'1px solid #ddd',padding:'3px 5px',fontWeight:700,fontSize:'7pt',color:'#333',wordBreak:'break-word'}}>
+                                    <div>{p.label}</div>
+                                    {p.start && <div style={{fontWeight:400,color:'#888',fontSize:'6pt',marginTop:'1px'}}>{_cRange(p.start,p.end)}</div>}
+                                  </td>
+                                  {printDays.map(day=>{
+                                    const cell = ttCells[`${day}_${pKey}`] || {};
+                                    return (
+                                      <td key={day} style={{border:'1px solid #ddd',padding:'3px 4px',verticalAlign:'top',wordBreak:'break-word'}}>
+                                        {cell.subject ? (
+                                          <>
+                                            <div style={{fontWeight:700,color:'#111',fontSize:'7.5pt',lineHeight:1.3}}>{cell.subject}</div>
+                                            {cell.teacher && <div style={{fontSize:'6.5pt',color:'#444',marginTop:'1px'}}>👤 {cell.teacher}</div>}
+                                            {cell.asst_teacher && <div style={{fontSize:'6pt',color:'#666',marginTop:'1px'}}>👤 {cell.asst_teacher} <span style={{fontStyle:'italic'}}>(Asst)</span></div>}
+                                            {cell.room && <div style={{fontSize:'6pt',color:'#888',marginTop:'1px'}}>🚪 {cell.room}</div>}
+                                          </>
+                                        ) : <span style={{color:'#ddd',fontSize:'7pt'}}>—</span>}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     );
                   })()}
                   <table id="tt-main-grid" style={{width:'100%',borderCollapse:'collapse',minWidth:'600px'}}>
