@@ -13,6 +13,8 @@ const S = {
 };
 
 const pctColor = (p) => p >= 80 ? '#34d399' : p >= 60 ? '#60a5fa' : p >= 40 ? '#fbbf24' : '#f87171';
+// NaN-safe number — handles #VALUE!, #N/A, empty string, undefined
+const safeNum = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
 const RANK_ICON = ['🥇','🥈','🥉'];
 
 export default function MgtPerformanceHub() {
@@ -54,7 +56,7 @@ export default function MgtPerformanceHub() {
         gradeScores.forEach(sc => {
           const id = sc.Student_ID;
           if (!totals[id]) totals[id] = { name:sc.Name, total:0, count:0 };
-          totals[id].total += Number(sc['Percentage (%)'] || sc.Percentage || 0);
+          totals[id].total += safeNum(sc['Percentage (%)'] || sc.Percentage);
           totals[id].count++;
         });
         rankings[g] = Object.values(totals)
@@ -145,7 +147,7 @@ export default function MgtPerformanceHub() {
                 {filteredPoints.length === 0 ? (
                   <div style={{ textAlign:'center', padding:'50px 0', color:'rgba(255,255,255,0.2)' }}>House points records မရှိသေးပါ</div>
                 ) : filteredPoints.slice(0, 30).map((p, i) => {
-                  const pts = Number(p.Points || 0);
+                  const pts = safeNum(p.Points);
                   const pos = pts >= 0;
                   return (
                     <div key={i} style={{ ...S.card, padding:'12px 16px', display:'flex', justifyContent:'space-between', alignItems:'center',

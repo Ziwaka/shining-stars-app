@@ -9,7 +9,7 @@ export default function MgtUniversalLayout({ children }) {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || "null");
+    const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
     if (!auth || auth.userRole !== 'management') {
       router.push('/login');
     } else {
@@ -18,11 +18,11 @@ export default function MgtUniversalLayout({ children }) {
   }, [router]);
 
   const navItems = [
-    { name: 'Dashboard',   path: '/management/mgt-dashboard', icon: '📊' },
-    { name: 'Leave Hub',   path: '/management/leave',         icon: '📄' },
-    { name: 'Calendar',    path: '/management/calendar',      icon: '📅' },
-    { name: 'Performance', path: '/management/performance',   icon: '🏆' },
-    { name: 'Analytics',   path: '/management/analytic',      icon: '📈' },
+    { name:'Dashboard',   path:'/management/mgt-dashboard', icon:'📊' },
+    { name:'Leave Hub',   path:'/management/leave',         icon:'📄' },
+    { name:'Calendar',    path:'/management/calendar',      icon:'📅' },
+    { name:'Performance', path:'/management/performance',   icon:'🏆' },
+    { name:'Analytics',   path:'/management/analytic',      icon:'📈' },
   ];
 
   const handleLogout = () => {
@@ -33,45 +33,114 @@ export default function MgtUniversalLayout({ children }) {
 
   if (!user) return null;
 
-  return (
-    <div style={{height:'100dvh',display:'flex',flexDirection:'column',overflow:'hidden',background:'#020617',color:'#fff',fontFamily:'system-ui,sans-serif',fontWeight:900}}>
+  const displayName = user?.Name || user?.name || user?.username
+                   || user?.['Name (ALL CAPITAL)'] || 'Admin';
 
-      {/* TOP HEADER — flex-shrink:0, always visible, no position needed */}
-      <header style={{flexShrink:0,zIndex:100,background:'#020617',borderBottom:'6px solid #fbbf24',padding:'10px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',boxShadow:'0 4px 24px rgba(0,0,0,0.4)'}}>
-        <Link href="/management/mgt-dashboard" style={{display:'flex',alignItems:'center',gap:'10px',textDecoration:'none'}}>
-          <div style={{width:'36px',height:'36px',background:'#fbbf24',borderRadius:'10px',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'20px',flexShrink:0}}>🌟</div>
-          <div style={{lineHeight:1}}>
-            <p style={{color:'#fff',fontSize:'13px',fontWeight:900,margin:0,textTransform:'uppercase',letterSpacing:'0.05em',fontStyle:'italic'}}>Shining Stars</p>
-            <p style={{color:'#fbbf24',fontSize:'8px',margin:'2px 0 0',textTransform:'uppercase',letterSpacing:'0.3em',fontWeight:900}}>Management Hub</p>
+  return (
+    <div style={{
+      height:'100dvh', display:'flex', flexDirection:'column',
+      overflow:'hidden',
+      /* ── Dark navy — clearly distinct from student lavender ── */
+      background:'#0F0E1A',
+      color:'#E2E2F0', fontFamily:'system-ui,sans-serif',
+    }}>
+
+      {/* ── Header: deep navy + lavender accent stripe ── */}
+      <header style={{
+        flexShrink:0, zIndex:100,
+        background:'#1A1830',
+        borderBottom:'3px solid #9E9ECA',
+        padding:'10px 16px',
+        display:'flex', alignItems:'center', justifyContent:'space-between',
+        boxShadow:'0 3px 20px rgba(0,0,0,0.40)',
+      }}>
+        <Link href="/management/mgt-dashboard"
+          style={{ display:'flex', alignItems:'center', gap:'10px', textDecoration:'none' }}>
+          <div style={{
+            width:'36px', height:'36px',
+            background:'linear-gradient(135deg,#9E9ECA,#6B6BA8)',
+            borderRadius:'10px', display:'flex', alignItems:'center',
+            justifyContent:'center', fontSize:'20px', flexShrink:0,
+            boxShadow:'0 2px 10px rgba(158,158,202,0.40)',
+          }}>🌟</div>
+          <div style={{ lineHeight:1 }}>
+            <p style={{ color:'#E2E2F0', fontSize:'13px', fontWeight:800, margin:0,
+                        letterSpacing:'0.04em' }}>
+              SSMT
+            </p>
+            <p style={{ color:'#9E9ECA', fontSize:'8px', margin:'2px 0 0',
+                        textTransform:'uppercase', letterSpacing:'0.25em', fontWeight:700 }}>
+              Management Hub
+            </p>
           </div>
         </Link>
-        <div style={{display:'flex',alignItems:'center',gap:'12px'}}>
-          <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',lineHeight:1}}>
-            <span style={{fontSize:'8px',color:'rgba(255,255,255,0.4)',textTransform:'uppercase',letterSpacing:'0.1em'}}>Logged in as</span>
-            <span style={{fontSize:'11px',color:'#fbbf24',fontWeight:900,fontStyle:'italic',marginTop:'2px'}}>
-              {user?.Name||user?.name||user?.username||user?.['Name (ALL CAPITAL)']||'Admin'}
+
+        <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', lineHeight:1 }}>
+            <span style={{ fontSize:'8px', color:'rgba(226,226,240,0.35)',
+                           textTransform:'uppercase', letterSpacing:'0.1em' }}>
+              Logged in
+            </span>
+            <span style={{ fontSize:'11px', color:'#9E9ECA', fontWeight:800, marginTop:'2px' }}>
+              {displayName}
             </span>
           </div>
-          <button onClick={handleLogout} style={{padding:'7px 14px',background:'#dc2626',color:'#fff',fontSize:'9px',fontWeight:900,textTransform:'uppercase',letterSpacing:'0.08em',border:'none',borderRadius:'10px',borderBottom:'3px solid #991b1b',cursor:'pointer'}}>
+          <button onClick={handleLogout} style={{
+            padding:'7px 13px',
+            background:'rgba(158,158,202,0.12)',
+            border:'1px solid rgba(158,158,202,0.30)',
+            color:'#9E9ECA', fontSize:'9px', fontWeight:700,
+            textTransform:'uppercase', letterSpacing:'0.06em',
+            borderRadius:'10px', cursor:'pointer',
+            transition:'background 0.15s',
+          }}>
             Logout ⏻
           </button>
         </div>
       </header>
 
-      {/* MAIN — flex:1, children fill this, overflow:hidden so sub-pages control their own scroll */}
-      <main style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+      {/* ── Main ── */}
+      <main style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
         {children}
       </main>
 
-      {/* BOTTOM NAV — flex-shrink:0, always visible, no position needed */}
-      <nav style={{flexShrink:0,background:'#020617',borderTop:'6px solid #fbbf24',display:'flex',justifyContent:'space-around',alignItems:'center',padding:'6px 0 8px',zIndex:110,boxShadow:'0 -8px 32px rgba(0,0,0,0.4)'}}>
-        {navItems.map((item) => {
-          const isActive = pathname===item.path || (item.path!=='/management/mgt-dashboard' && pathname.startsWith(item.path));
+      {/* ── Bottom Nav: dark with lavender accents ── */}
+      <nav style={{
+        flexShrink:0,
+        background:'#1A1830',
+        borderTop:'3px solid #9E9ECA',
+        display:'flex', justifyContent:'space-around', alignItems:'center',
+        padding:'6px 0 10px', zIndex:110,
+        boxShadow:'0 -4px 24px rgba(0,0,0,0.35)',
+      }}>
+        {navItems.map(item => {
+          const isActive = pathname === item.path
+            || (item.path !== '/management/mgt-dashboard' && pathname.startsWith(item.path));
           return (
-            <Link key={item.path} href={item.path} style={{textDecoration:'none',display:'flex',flexDirection:'column',alignItems:'center',gap:'3px',padding:'4px 10px',opacity:isActive?1:0.4,transition:'opacity 0.15s',transform:isActive?'scale(1.1)':'scale(1)'}}>
-              <span style={{fontSize:'22px',filter:isActive?'drop-shadow(0 0 8px #fbbf24)':'grayscale(1)'}}>{item.icon}</span>
-              <span style={{fontSize:'8px',textTransform:'uppercase',letterSpacing:'0.08em',fontWeight:900,color:isActive?'#fbbf24':'#fff'}}>{item.name}</span>
-              {isActive&&<div style={{width:'16px',height:'2px',background:'#fbbf24',borderRadius:'99px'}}/>}
+            <Link key={item.path} href={item.path} style={{
+              textDecoration:'none', display:'flex', flexDirection:'column',
+              alignItems:'center', gap:'3px', padding:'4px 10px',
+              opacity: isActive ? 1 : 0.40,
+              transform: isActive ? 'translateY(-2px)' : 'none',
+              transition:'all 0.15s',
+            }}>
+              <span style={{ fontSize:'22px',
+                filter: isActive ? 'drop-shadow(0 0 6px rgba(158,158,202,0.6))' : 'grayscale(0.6)' }}>
+                {item.icon}
+              </span>
+              <span style={{
+                fontSize:'8px', textTransform:'uppercase', letterSpacing:'0.08em',
+                fontWeight:800, color: isActive ? '#9E9ECA' : '#6B6BA8',
+              }}>
+                {item.name}
+              </span>
+              {isActive && (
+                <div style={{
+                  width:'20px', height:'2.5px',
+                  background:'#9E9ECA', borderRadius:'99px',
+                  boxShadow:'0 0 8px rgba(158,158,202,0.5)',
+                }}/>
+              )}
             </Link>
           );
         })}

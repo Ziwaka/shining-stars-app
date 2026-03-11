@@ -1,274 +1,490 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 
-const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const DAYS       = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-const S = {
-  page: { display:'flex', flexDirection:'column', height:'100%', overflow:'hidden', background:'#0f0a1e', color:'#fff', fontFamily:'system-ui,sans-serif' },
-  header: {flexShrink:0, zIndex:40, background:'rgba(15,10,30,0.97)', backdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.07)', padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between'},
-  card:   { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'16px', padding:'16px' },
+// ── Lavender palette ─────────────────────────────────────────────────────────
+const C = {
+  bgLight  : '#CBCBE5',   // app background
+  bgMid    : '#9E9ECA',   // header, accents
+  bgDark   : '#6B6BA8',   // selected day, NOW badge
+  cardBg   : '#FFFFFF',
+  textDark : '#1E1B4B',   // deep indigo text
+  textMid  : '#4C4A8E',
+  textSoft : '#8886BA',
+  textFaint: '#B8B6D9',
+  border   : 'rgba(158,158,202,0.35)',
+};
+
+// ── Subject colour palette (vivid chip, dark text) ───────────────────────────
+const PALETTE = [
+  '#FCD34D','#6EE7B7','#93C5FD','#F9A8D4','#A5B4FC',
+  '#FCA5A5','#86EFAC','#67E8F9','#FDE68A','#C4B5FD',
+  '#FDA4AF','#BAE6FD','#BBF7D0','#FECACA','#DDD6FE',
+];
+const subjectColor = (() => {
+  const cache = {};
+  return (s) => {
+    if (!s) return '#E2E8F0';
+    if (cache[s]) return cache[s];
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    cache[s] = PALETTE[h % PALETTE.length];
+    return cache[s];
+  };
+})();
+
+// ── Time helpers ─────────────────────────────────────────────────────────────
+const toMins  = (t) => { if (!t) return 9999; const [h,m]=String(t).split(':').map(Number); return h*60+(m||0); };
+const to12    = (t) => { if (!t) return ''; const [hh,mm]=String(t).split(':').map(Number); if(isNaN(hh)) return t; return `${hh%12||12}:${String(mm).padStart(2,'0')} ${hh<12?'AM':'PM'}`; };
+const toRange = (s,e) => s ? `${to12(s)} – ${to12(e)}` : '';
+
+// ── Break keyword detection ──────────────────────────────────────────────────
+const fixBreak = (arr) => (arr||[]).map((p,i) => {
+  const lbl  = String(p.label||'').toLowerCase();
+  const auto = ['break','lunch','recess','duty','assembly','prayer','chapel','နားချိန်','အနားယူ'].some(kw=>lbl.includes(kw));
+  return { ...p, no:p.no??(i+1), isBreak:p.isBreak===true||p.isBreak==='true'||auto };
+});
+
+// ── Grade-specific period config ─────────────────────────────────────────────
+const getGradeCfg = (cfg, grade, section) => {
+  if (!cfg) return [];
+  const pbg = cfg.periods_by_grade||{};
+  const raw = pbg[`Grade ${grade}${section||''}`]||pbg[`Grade ${grade}`]
+           || pbg[String(grade)]||pbg['default']||cfg.periods||[];
+  return fixBreak(raw);
 };
 
 export default function StudentTimetablePage() {
   const router = useRouter();
-  const [user, setUser]       = useState(null);
-  const [cfg, setCfg]         = useState(null);
-  const [cells, setCells]     = useState({});
-  const [selDay, setSelDay]   = useState('');
+  const [user,    setUser]    = useState(null);
+  const [cfg,     setCfg]     = useState(null);
+  const [rawRows, setRawRows] = useState([]);
+  const [grade,   setGrade]   = useState('');
+  const [section, setSection] = useState('');
+  const [selDay,  setSelDay]  = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const saved = localStorage.getItem('user') || sessionStorage.getItem('user');
+    const saved = localStorage.getItem('user')||sessionStorage.getItem('user');
     if (!saved) { router.push('/login'); return; }
     const u = JSON.parse(saved);
     if (u.userRole !== 'student') { router.push('/login'); return; }
     setUser(u);
-
-    // Default to today's day
-    const todayDay = DAYS[new Date().getDay()];
-    setSelDay(todayDay);
+    setSelDay(DAYS[new Date().getDay()]);
     fetchAll(u);
   }, []);
 
+  const extractGradeSection = (u) => {
+    let g='', sec='';
+    const rawGrade=u.Grade||u.grade||'', rawClass=u.Class||u.class||'';
+    const rawSec=u.Section||u.section||'', rawID=u.Student_ID||u.student_id||'';
+    if (rawGrade) {
+      g = rawGrade.toString().replace(/^grade\s*/i,'').trim();
+      sec = rawSec||(rawClass.match(/[A-Za-z]+$/)?.[0]||'');
+    } else if (rawClass) {
+      const m = rawClass.toString().replace(/^grade\s*/i,'').trim().match(/^(\d+)\s*([A-Za-z]?)$/);
+      if (m) { g=m[1]; sec=m[2]||rawSec; } else { g=rawClass; }
+    } else if (rawID) {
+      const m = rawID.toString().match(/G(\d+)([A-Za-z]?)/);
+      if (m) { g=m[1]; sec=m[2]||rawSec; }
+    }
+    return { g, sec };
+  };
+
   const fetchAll = async (u) => {
     try {
-      // Extract grade+section from ALL possible field formats
-      let grade = '', section = '';
-      const rawGrade   = u.Grade   || u.grade   || '';
-      const rawClass   = u.Class   || u.class   || '';
-      const rawSection = u.Section || u.section || '';
-      const rawID      = u.Student_ID || u.student_id || '';
-
-      if (rawGrade) {
-        // Grade field: "12" or "Grade 12"
-        grade   = rawGrade.toString().replace(/^grade\s*/i,'').trim();
-        section = rawSection || (rawClass.match(/[A-Za-z]+$/)?.[0] || '');
-      } else if (rawClass) {
-        // Class: "12A" or "12 A" or "Grade 12A"
-        const m = rawClass.toString().replace(/^grade\s*/i,'').trim().match(/^(\d+)\s*([A-Za-z]?)$/);
-        if (m) { grade = m[1]; section = m[2] || rawSection; }
-        else { grade = rawClass; }
-      } else if (rawID) {
-        // Last resort: extract from Student_ID e.g. "26/G12/001" or "26/G12A/001"
-        const m = rawID.toString().match(/G(\d+)([A-Za-z]?)/);
-        if (m) { grade = m[1]; section = m[2] || rawSection; }
-      }
-      console.log('[Student TT] grade='+grade+' section='+section, u);
+      const { g, sec } = extractGradeSection(u);
+      setGrade(g); setSection(sec);
       const [cfgRes, ttRes] = await Promise.all([
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetableConfig' }) }),
-        // ★ FIX: Pass both grade AND section to GAS (GAS now filters by section)
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetable', grade, section }) }),
+        fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getTimetableConfig'})}),
+        fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getTimetable',grade:g,section:sec})}),
       ]);
-      const cfgData = await cfgRes.json();
-      const ttData  = await ttRes.json();
-      console.log('[Student TT] rows from GAS:', ttData.data?.length, ttData.data?.slice(0,2));
-      if (cfgData.success) {
-        const raw = cfgData.config;
-        if (raw.periods) raw.periods = raw.periods.map((p,i) => ({...p, no: p.no??(i+1), isBreak: p.isBreak===true||p.isBreak==='true'||String(p.label).toLowerCase().includes('break')||String(p.label).toLowerCase().includes('lunch')}));
-        setCfg(raw);
-      }
+      const cfgData=await cfgRes.json(), ttData=await ttRes.json();
+      if (cfgData.success) setCfg(cfgData.config);
       if (ttData.success) {
-        const VDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-        const map = {};
-        // ★ FIX: Client-side section filter as safety net (in case GAS returns mixed sections)
-        const secUpper = section ? section.toString().trim().toUpperCase() : '';
-        (ttData.data || [])
-          .filter(r => {
-            // Keep row if: no section filter needed, OR stored section is blank, OR section matches
-            if (!secUpper) return true;
-            const rSec = String(r.Section || '').trim().toUpperCase();
-            return rSec === '' || rSec === secUpper;
-          })
-          .forEach(r => {
-            let day = String(r.Day||'');
-            if (!VDAYS.includes(day)) {
-              const parts = day.split('_');
-              day = parts.find(x => VDAYS.includes(x)) || day;
-            }
-            const k = `${day}_${String(r.Period_No)}`;
-            console.log('[Student TT] cell:', k, r.Subject, 'sec:', r.Section);
-            map[k] = r;
-          });
-        setCells(map);
+        const secUp = sec ? sec.toUpperCase() : '';
+        setRawRows((ttData.data||[]).filter(r => {
+          if (!secUp) return true;
+          const rSec=String(r.Section||'').trim().toUpperCase();
+          return rSec===''||rSec===secUp;
+        }));
       }
-    } catch {}
+    } catch(e) { console.error(e); }
     setLoading(false);
   };
 
-  const todayDay = DAYS[new Date().getDay()];
-  const activeDays = cfg?.days || DAYS.slice(0,5);
-  // Use periods_by_grade: try 'default', then first available key, then cfg.periods
-  const _pbg = cfg?.periods_by_grade || {};
-  const _pbgDefault = _pbg['default'] || _pbg[Object.keys(_pbg)[0]] || [];
-  const _rawPeriods = (cfg?.periods?.length ? cfg.periods : null) || (_pbgDefault.length ? _pbgDefault : []);
-  const periods = _rawPeriods.map((p,i) => ({
-    ...p,
-    no: p.no ?? (i+1),
-    isBreak: p.isBreak===true||p.isBreak==='true'||
-             String(p.label).toLowerCase().includes('break')||
-             String(p.label).toLowerCase().includes('lunch')||
-             String(p.label).toLowerCase().includes('recess')
-  }));
-  const dayPeriods = periods.filter(p => !p.isBreak);
+  // ── Derived ──────────────────────────────────────────────────────────────
+  const todayDay   = DAYS[new Date().getDay()];
+  const activeDays = cfg?.days || DAYS.slice(1,6);
+  const periods    = getGradeCfg(cfg, grade, section);
 
-  // Today's schedule
-  const todaySchedule = periods.map(p => ({
-    ...p,
-    isBreak: p.isBreak===true||p.isBreak==='true'||String(p.label).toLowerCase().includes('break')||String(p.label).toLowerCase().includes('lunch'),
-    cell: cells[`${selDay}_${String(p.no)}`] || null,
-  }));
+  // Start-time based cell map
+  const cellMap = useMemo(() => {
+    const map={};
+    rawRows.forEach(r => {
+      let day=String(r.Day||'');
+      if (!DAYS.includes(day)) day=day.split('_').find(x=>DAYS.includes(x))||day;
+      const pNo=String(r.Period_No??'');
+      const cfgSlot=periods.find(p=>String(p.no)===pNo);
+      if (cfgSlot?.start) map[`${day}__${cfgSlot.start}`]=r;
+      else                map[`${day}__pno${pNo}`]=r;
+    });
+    return map;
+  }, [rawRows, periods]);
 
-  const currentHour = new Date().getHours();
-  const currentMin  = new Date().getMinutes();
-  const nowMins = currentHour * 60 + currentMin;
-  const timeToMins = (t) => { if (!t) return 0; const [h,m] = t.split(':').map(Number); return h*60+(m||0); };
+  const getCell = (day, p) =>
+    p.start ? (cellMap[`${day}__${p.start}`]||null)
+            : (cellMap[`${day}__pno${String(p.no)}`]||null);
 
-  const getCurrentPeriod = () => {
+  const nowMins = new Date().getHours()*60+new Date().getMinutes();
+  const currentPeriod = selDay===todayDay
+    ? (periods.find(p=>p.start&&p.end&&nowMins>=toMins(p.start)&&nowMins<toMins(p.end))||null)
+    : null;
+
+  // Full frame schedule — breaks always shown, empty class periods HIDDEN
+  const schedule = useMemo(() => {
+    const result = [];
     for (const p of periods) {
-      if (p.start && p.end) {
-        if (nowMins >= timeToMins(p.start) && nowMins < timeToMins(p.end)) return p.no;
+      const cell = getCell(selDay, p);
+      const isCurrent = !p.isBreak && currentPeriod?.start === p.start;
+      if (p.isBreak) {
+        result.push({ ...p, cell:null, isCurrent:false });
+      } else if (cell || isCurrent) {
+        // Only show class period if it has data OR it's the current live period
+        result.push({ ...p, cell, isCurrent });
       }
+      // else: skip empty periods silently
     }
-    return null;
-  };
-  const currentPeriod = selDay === todayDay ? getCurrentPeriod() : null;
+    return result;
+  }, [periods, selDay, rawRows, currentPeriod]);
+
+  const allSubjects = useMemo(() => {
+    const s=new Set();
+    rawRows.forEach(r=>{ if(r.Subject) s.add(r.Subject); });
+    return [...s].sort();
+  }, [rawRows]);
+
+  const gradeLabel = grade
+    ? `Grade ${grade}${section?' '+section.toUpperCase():''}`
+    : (user?.Grade?`Grade ${user.Grade}`:'');
 
   return (
-    <div style={S.page}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box}`}</style>
+    <div style={{ display:'flex', flexDirection:'column', height:'100%', overflow:'hidden',
+                  background:C.bgLight, color:C.textDark, fontFamily:'system-ui,sans-serif' }}>
+      <style>{`
+        @keyframes spin { to { transform:rotate(360deg) } }
+        * { box-sizing:border-box }
+        .day-btn { transition:transform 0.12s, box-shadow 0.12s }
+        .day-btn:hover { transform:translateY(-1px) }
+        .p-card { transition:box-shadow 0.15s, transform 0.15s }
+        .p-card:hover { box-shadow:0 6px 24px rgba(107,107,168,0.18); transform:translateY(-1px) }
+      `}</style>
 
-      <div style={S.header}>
-        <button onClick={() => router.push('/student')} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.4)', cursor:'pointer', fontSize:'14px' }}>← Home</button>
+      {/* ── Header ── */}
+      <div style={{ flexShrink:0, background:C.bgMid, padding:'14px 16px',
+                    display:'flex', alignItems:'center', justifyContent:'space-between',
+                    boxShadow:'0 2px 12px rgba(107,107,168,0.25)' }}>
+        <button onClick={()=>router.push('/student')}
+          style={{ background:'rgba(255,255,255,0.18)', border:'none', color:'#fff',
+                   cursor:'pointer', fontSize:'16px', width:'34px', height:'34px',
+                   borderRadius:'50%', display:'flex', alignItems:'center',
+                   justifyContent:'center', fontWeight:700 }}>←</button>
         <div style={{ textAlign:'center' }}>
-          <p style={{ fontWeight:900, fontSize:'13px', textTransform:'uppercase', letterSpacing:'0.1em', margin:0 }}>Timetable</p>
-          <p style={{ fontSize:'9px', color:'rgba(255,255,255,0.25)', margin:0 }}>{user?.Grade ? `Grade ${user.Grade} ${user?.Class||user?.Section||user?.section||''}`.trim() : ''}</p>
+          <p style={{ fontWeight:800, fontSize:'14px', color:'#fff',
+                      letterSpacing:'0.06em', margin:0, textTransform:'uppercase' }}>
+            Timetable
+          </p>
+          <p style={{ fontSize:'10px', color:'rgba(255,255,255,0.75)', margin:0, fontWeight:600 }}>
+            {gradeLabel}
+          </p>
         </div>
-        <div style={{ width:'40px' }}/>
+        <div style={{ width:'34px' }}/>
       </div>
-      <div style={{flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', paddingBottom:'80px'}}>
 
-      <div style={{ padding:'16px', maxWidth:'480px', margin:'0 auto', display:'flex', flexDirection:'column', gap:'12px' }}>
-        {loading ? (
-          <div style={{ display:'flex', justifyContent:'center', padding:'60px 0' }}>
-            <div style={{ width:'32px', height:'32px', border:'3px solid rgba(255,255,255,0.1)', borderTop:'3px solid #fbbf24', borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
-          </div>
-        ) : (
-          <>
-            {/* Day selector */}
-            <div style={{ display:'flex', gap:'6px', overflowX:'auto', paddingBottom:'4px' }}>
-              {activeDays.map(day => {
-                const isToday = day === todayDay;
-                const isSel   = day === selDay;
-                const idx     = DAYS.indexOf(day);
-                return (
-                  <button key={day} onClick={() => setSelDay(day)}
-                    style={{ flexShrink:0, padding:'8px 14px', borderRadius:'12px', border:'none', cursor:'pointer', fontWeight:900, fontSize:'10px', textAlign:'center',
-                      background: isSel ? '#fbbf24' : isToday ? 'rgba(251,191,36,0.1)' : 'rgba(255,255,255,0.05)',
-                      color: isSel ? '#0f172a' : isToday ? '#fbbf24' : 'rgba(255,255,255,0.4)',
-                      outline: isToday && !isSel ? '1px solid rgba(251,191,36,0.3)' : 'none' }}>
-                    {DAYS_SHORT[idx] || day.slice(0,3)}
-                    {isToday && <div style={{ fontSize:'7px', marginTop:'2px', opacity:0.7 }}>TODAY</div>}
-                  </button>
-                );
-              })}
+      <div style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch',
+                    paddingBottom:'80px' }}>
+        <div style={{ padding:'16px', maxWidth:'480px', margin:'0 auto',
+                      display:'flex', flexDirection:'column', gap:'14px' }}>
+
+          {loading ? (
+            <div style={{ display:'flex', justifyContent:'center', padding:'80px 0' }}>
+              <div style={{ width:'32px', height:'32px',
+                            border:`3px solid ${C.border}`,
+                            borderTop:`3px solid ${C.bgDark}`,
+                            borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
             </div>
-
-            {/* Schedule list */}
-            <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-              {todaySchedule.length === 0 ? (
-                <div style={{ textAlign:'center', padding:'50px 0', color:'rgba(255,255,255,0.2)' }}>Timetable မသတ်မှတ်ရသေးပါ</div>
-              ) : todaySchedule.map((p, i) => {
-                const isCurrent = currentPeriod === p.no;
-                const isPast    = selDay === todayDay && p.end && nowMins > timeToMins(p.end);
-                const isBreak   = p.isBreak;
-                const c         = p.cell;
-
-                if (isBreak) return (
-                  <div key={i} style={{ display:'flex', alignItems:'center', gap:'12px', padding:'6px 8px' }}>
-                    <div style={{ fontSize:'9px', color:'rgba(255,255,255,0.15)', minWidth:'80px', textAlign:'right' }}>{p.start}–{p.end}</div>
-                    <div style={{ flex:1, height:'1px', background:'rgba(255,255,255,0.05)' }}/>
-                    <div style={{ fontSize:'9px', color:'rgba(255,255,255,0.15)', fontStyle:'italic' }}>{p.label}</div>
-                    <div style={{ flex:1, height:'1px', background:'rgba(255,255,255,0.05)' }}/>
-                  </div>
-                );
-
-                return (
-                  <div key={i} style={{
-                    background: isCurrent ? 'rgba(251,191,36,0.1)' : isPast ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.05)',
-                    border: `1px solid ${isCurrent ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                    borderLeft: `4px solid ${isCurrent ? '#fbbf24' : c ? '#60a5fa' : 'rgba(255,255,255,0.08)'}`,
-                    borderRadius:'12px', padding:'12px 14px',
-                    display:'flex', alignItems:'center', gap:'12px',
-                    opacity: isPast ? 0.5 : 1,
-                  }}>
-                    <div style={{ flexShrink:0, textAlign:'center', minWidth:'52px' }}>
-                      <div style={{ fontSize:'9px', color:'rgba(255,255,255,0.25)', marginBottom:'2px' }}>{p.start}</div>
-                      <div style={{ fontSize:'9px', color: isCurrent ? '#fbbf24' : 'rgba(255,255,255,0.2)', fontWeight:900 }}>{p.label}</div>
-                      <div style={{ fontSize:'9px', color:'rgba(255,255,255,0.25)' }}>{p.end}</div>
-                    </div>
-                    <div style={{ flex:1 }}>
-                      {c ? (
-                        <>
-                          <p style={{ fontWeight:900, fontSize:'13px', color: isCurrent ? '#fbbf24' : '#fff', margin:'0 0 3px' }}>{c.Subject}</p>
-                          <div style={{ display:'flex', gap:'10px', flexWrap:'wrap' }}>
-                            {c.Teacher && <span style={{ fontSize:'9px', color:'rgba(255,255,255,0.3)' }}>👤 {c.Teacher}</span>}
-                            {c.Room    && <span style={{ fontSize:'9px', color:'rgba(255,255,255,0.3)' }}>🚪 {c.Room}</span>}
-                          </div>
-                        </>
-                      ) : (
-                        <p style={{ fontSize:'11px', color:'rgba(255,255,255,0.2)', fontStyle:'italic', margin:0 }}>— သတ်မှတ်မထားပါ —</p>
+          ) : (
+            <>
+              {/* ── Day Selector ── */}
+              <div style={{ display:'flex', gap:'8px', overflowX:'auto', paddingBottom:'4px' }}>
+                {activeDays.map(day => {
+                  const isToday=day===todayDay, isSel=day===selDay;
+                  const idx=DAYS.indexOf(day);
+                  return (
+                    <button key={day} onClick={()=>setSelDay(day)} className="day-btn"
+                      style={{ flexShrink:0, padding:'9px 15px', borderRadius:'14px', border:'none',
+                               cursor:'pointer', fontWeight:800, fontSize:'11px', textAlign:'center',
+                               background: isSel   ? C.bgDark
+                                         : isToday ? 'rgba(158,158,202,0.35)'
+                                                   : 'rgba(255,255,255,0.55)',
+                               color: isSel   ? '#fff'
+                                    : isToday ? C.bgDark
+                                              : C.textMid,
+                               boxShadow: isSel
+                                 ? '0 3px 12px rgba(107,107,168,0.35)'
+                                 : '0 1px 3px rgba(107,107,168,0.10)',
+                               outline: isToday && !isSel
+                                 ? `2px solid ${C.bgMid}` : 'none' }}>
+                      {DAYS_SHORT[idx]||day.slice(0,3)}
+                      {isToday && (
+                        <div style={{ fontSize:'6px', marginTop:'2px', fontWeight:700,
+                                      letterSpacing:'0.05em',
+                                      color: isSel ? 'rgba(255,255,255,0.8)' : C.bgDark }}>
+                          TODAY
+                        </div>
                       )}
-                    </div>
-                    {isCurrent && (
-                      <div style={{ flexShrink:0, background:'#fbbf24', color:'#0f172a', fontSize:'8px', fontWeight:900, padding:'3px 8px', borderRadius:'99px', textTransform:'uppercase' }}>Now</div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Full week grid (compact) */}
-            <div style={S.card}>
-              <p style={{ fontSize:'9px', color:'rgba(255,255,255,0.25)', textTransform:'uppercase', letterSpacing:'0.15em', fontWeight:900, margin:'0 0 12px' }}>Weekly Overview</p>
-              <div style={{ overflowX:'auto' }}>
-                <table style={{ width:'100%', borderCollapse:'collapse', minWidth:'420px' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ padding:'4px 6px', fontSize:'8px', color:'rgba(255,255,255,0.25)', textAlign:'left', fontWeight:900, letterSpacing:'0.1em', textTransform:'uppercase' }}>Period</th>
-                      {activeDays.map(d => (
-                        <th key={d} style={{ padding:'4px 6px', fontSize:'8px', color: d===todayDay?'#fbbf24':'rgba(255,255,255,0.25)', textAlign:'center', fontWeight:900, textTransform:'uppercase' }}>
-                          {DAYS_SHORT[DAYS.indexOf(d)] || d.slice(0,3)}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {periods.filter(p=>!p.isBreak).map((p,i) => (
-                      <tr key={i}>
-                        <td style={{ padding:'4px 6px', fontSize:'8px', color:'rgba(255,255,255,0.3)', whiteSpace:'nowrap' }}>{p.label}</td>
-                        {activeDays.map(day => {
-                          const c = cells[`${day}_${String(p.no)}`];
-                          const isNow = day===todayDay && currentPeriod===p.no;
-                          return (
-                            <td key={day} style={{ padding:'4px 6px', textAlign:'center' }}>
-                              <div style={{ fontSize:'9px', fontWeight:900, color: isNow ? '#fbbf24' : c ? '#60a5fa' : 'rgba(255,255,255,0.1)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'60px' }}>
-                                {c?.Subject?.split(' ')[0] || '—'}
-                              </div>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </button>
+                  );
+                })}
               </div>
-            </div>
-          </>
-        )}
-      </div>
+
+              {/* ── Subject Legend ── */}
+              {allSubjects.length > 0 && (
+                <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
+                  {allSubjects.map(subj => (
+                    <div key={subj}
+                      style={{ display:'flex', alignItems:'center', gap:'5px',
+                               background:'rgba(255,255,255,0.65)', borderRadius:'99px',
+                               padding:'3px 10px', border:`1px solid ${C.border}` }}>
+                      <div style={{ width:'8px', height:'8px', borderRadius:'50%',
+                                    background:subjectColor(subj), flexShrink:0 }}/>
+                      <span style={{ fontSize:'9px', fontWeight:700, color:C.textMid,
+                                     letterSpacing:'0.02em' }}>
+                        {subj}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ── Schedule List ── */}
+              <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+                {schedule.length === 0 ? (
+                  <div style={{ textAlign:'center', padding:'60px 0',
+                                color:C.textFaint, fontWeight:600, fontSize:'13px' }}>
+                    Timetable မသတ်မှတ်ရသေးပါ
+                  </div>
+                ) : schedule.map((p, i) => {
+                  const c       = p.cell;
+                  const isCur   = p.isCurrent;
+                  const isPast  = selDay===todayDay && p.end && nowMins>toMins(p.end) && !isCur;
+                  const chipBg  = c ? subjectColor(c.Subject) : null;
+
+                  // ── Break divider ───────────────────────────────────────
+                  if (p.isBreak) return (
+                    <div key={i} style={{ display:'flex', alignItems:'center', gap:'10px',
+                                          padding:'2px 4px' }}>
+                      <div style={{ fontSize:'8px', color:C.textFaint, minWidth:'68px',
+                                    textAlign:'right', flexShrink:0, fontWeight:600 }}>
+                        {p.start ? to12(p.start) : ''}
+                      </div>
+                      <div style={{ flex:1, height:'1px', background:C.border }}/>
+                      <div style={{ fontSize:'8px', color:C.textSoft, fontWeight:700,
+                                    flexShrink:0, textTransform:'uppercase',
+                                    letterSpacing:'0.08em' }}>
+                        {p.label}
+                      </div>
+                      <div style={{ flex:1, height:'1px', background:C.border }}/>
+                    </div>
+                  );
+
+                  // ── Class period card ───────────────────────────────────
+                  return (
+                    <div key={i} className="p-card"
+                      style={{ display:'flex', alignItems:'stretch', borderRadius:'18px',
+                               overflow:'hidden', opacity:isPast?0.45:1,
+                               background:C.cardBg,
+                               boxShadow: isCur
+                                 ? `0 0 0 2.5px ${C.bgDark}, 0 4px 20px rgba(107,107,168,0.20)`
+                                 : '0 2px 8px rgba(107,107,168,0.12)' }}>
+
+                      {/* Time strip */}
+                      <div style={{ width:'68px', flexShrink:0, padding:'14px 8px',
+                                    display:'flex', flexDirection:'column',
+                                    alignItems:'center', justifyContent:'center',
+                                    background: isCur ? C.bgDark : C.bgLight,
+                                    borderRight:`1px solid ${C.border}` }}>
+                        {p.start ? (
+                          <>
+                            <div style={{ fontSize:'9px', fontWeight:800, lineHeight:1.5,
+                                          color: isCur ? '#fff' : C.textDark }}>
+                              {to12(p.start)}
+                            </div>
+                            <div style={{ width:'18px', height:'1.5px',
+                                          background: isCur ? 'rgba(255,255,255,0.3)' : C.border,
+                                          margin:'3px 0' }}/>
+                            <div style={{ fontSize:'8px', fontWeight:600, lineHeight:1.5,
+                                          color: isCur ? 'rgba(255,255,255,0.6)' : C.textSoft }}>
+                              {to12(p.end)}
+                            </div>
+                          </>
+                        ) : (
+                          <div style={{ fontSize:'8px', fontWeight:700, textAlign:'center',
+                                        color: isCur ? '#fff' : C.textSoft }}>
+                            {p.label}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Content */}
+                      <div style={{ flex:1, minWidth:0, padding:'13px 14px',
+                                    display:'flex', alignItems:'center', gap:'11px' }}>
+                        {/* Color bar */}
+                        <div style={{ width:'5px', flexShrink:0, alignSelf:'stretch',
+                                      borderRadius:'99px',
+                                      background: chipBg || C.bgLight }}/>
+
+                        <div style={{ flex:1, minWidth:0 }}>
+                          {/* Subject badge */}
+                          <div style={{ display:'inline-flex', alignItems:'center',
+                                        background:chipBg, borderRadius:'9px',
+                                        padding:'3px 11px', marginBottom:'5px' }}>
+                            <span style={{ fontSize:'12px', fontWeight:800,
+                                           color:'#1E293B', letterSpacing:'0.01em' }}>
+                              {c.Subject}
+                            </span>
+                          </div>
+                          {/* Teacher & Room */}
+                          <div style={{ display:'flex', gap:'12px', flexWrap:'wrap' }}>
+                            {c.Teacher && (
+                              <span style={{ fontSize:'9px', fontWeight:600,
+                                             color:C.textSoft, display:'flex',
+                                             alignItems:'center', gap:'3px' }}>
+                                {'👤'} {c.Teacher}
+                              </span>
+                            )}
+                            {c.Room && (
+                              <span style={{ fontSize:'9px', fontWeight:600,
+                                             color:C.textSoft, display:'flex',
+                                             alignItems:'center', gap:'3px' }}>
+                                {'🚪'} {c.Room}
+                              </span>
+                            )}
+                            {p.start && (
+                              <span style={{ fontSize:'8px', color:C.textFaint }}>
+                                {toRange(p.start, p.end)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* NOW badge */}
+                        {isCur && (
+                          <div style={{ flexShrink:0, background:C.bgDark, color:'#fff',
+                                        fontSize:'8px', fontWeight:800, padding:'4px 10px',
+                                        borderRadius:'99px', letterSpacing:'0.08em' }}>
+                            NOW
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* ── Weekly Overview Grid ── */}
+              <div style={{ background:'rgba(255,255,255,0.70)', border:`1px solid ${C.border}`,
+                            borderRadius:'18px', padding:'16px',
+                            boxShadow:'0 2px 8px rgba(107,107,168,0.10)' }}>
+                <p style={{ fontSize:'9px', color:C.textSoft, textTransform:'uppercase',
+                            letterSpacing:'0.15em', fontWeight:800, margin:'0 0 12px' }}>
+                  Weekly Overview
+                </p>
+                <div style={{ overflowX:'auto' }}>
+                  <table style={{ width:'100%', borderCollapse:'separate',
+                                  borderSpacing:'3px', minWidth:'360px' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ padding:'4px 6px', fontSize:'8px', color:C.textSoft,
+                                     textAlign:'left', fontWeight:800, textTransform:'uppercase',
+                                     letterSpacing:'0.08em', minWidth:'68px' }}>
+                          Time
+                        </th>
+                        {activeDays.map(d => (
+                          <th key={d}
+                            style={{ padding:'4px 6px', fontSize:'8px',
+                                     color: d===todayDay ? C.bgDark : C.textSoft,
+                                     textAlign:'center', fontWeight:800,
+                                     textTransform:'uppercase',
+                                     background: d===todayDay ? C.bgLight : 'transparent',
+                                     borderRadius:'6px' }}>
+                            {DAYS_SHORT[DAYS.indexOf(d)]||d.slice(0,3)}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {periods.map((p, pi) => {
+                        if (p.isBreak) return (
+                          <tr key={'brk-'+pi}>
+                            <td colSpan={activeDays.length+1}
+                              style={{ padding:'3px 6px', fontSize:'7px', color:C.textFaint,
+                                       fontWeight:700, textAlign:'center',
+                                       textTransform:'uppercase', letterSpacing:'0.06em',
+                                       borderTop:`1px dashed ${C.border}`,
+                                       borderBottom:`1px dashed ${C.border}` }}>
+                              {p.label}{p.start ? ` · ${toRange(p.start,p.end)}` : ''}
+                            </td>
+                          </tr>
+                        );
+
+                        const isNowRow = currentPeriod?.start===p.start;
+                        return (
+                          <tr key={'row-'+pi}
+                            style={{ background: isNowRow
+                                       ? 'rgba(158,158,202,0.12)' : 'transparent' }}>
+                            <td style={{ padding:'4px 6px', fontSize:'8px', fontWeight:700,
+                                         whiteSpace:'nowrap',
+                                         color: isNowRow ? C.bgDark : C.textSoft }}>
+                              {p.start ? to12(p.start) : p.label}
+                            </td>
+                            {activeDays.map(day => {
+                              const c    = getCell(day, p);
+                              const isNw = day===todayDay && isNowRow;
+                              const bg   = c ? subjectColor(c.Subject) : null;
+                              return (
+                                <td key={day} style={{ padding:'3px', textAlign:'center' }}>
+                                  {c ? (
+                                    <div style={{ background:bg, borderRadius:'8px',
+                                                  padding:'4px 3px', fontSize:'8px',
+                                                  fontWeight:800, color:'#1E293B',
+                                                  whiteSpace:'nowrap', overflow:'hidden',
+                                                  textOverflow:'ellipsis', maxWidth:'58px',
+                                                  boxShadow: isNw
+                                                    ? `0 0 0 2px ${C.bgDark}` : 'none' }}>
+                                      {c.Subject?.split(' ')[0]}
+                                    </div>
+                                  ) : (
+                                    <div style={{ color:C.textFaint, fontSize:'8px',
+                                                  fontWeight:600 }}>—</div>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

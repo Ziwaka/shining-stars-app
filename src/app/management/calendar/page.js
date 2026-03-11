@@ -22,16 +22,16 @@ const DAYS_SHORT   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const WEEKEND_DAYS = new Set(['Saturday','Sunday']);
 
 const SUBJECT_COLORS = [
-  {bg:'rgba(96,165,250,0.15)',  border:'rgba(96,165,250,0.4)',  text:'#93c5fd'},
-  {bg:'rgba(167,139,250,0.15)', border:'rgba(167,139,250,0.4)', text:'#c4b5fd'},
-  {bg:'rgba(52,211,153,0.15)',  border:'rgba(52,211,153,0.4)',  text:'#6ee7b7'},
-  {bg:'rgba(251,146,60,0.15)',  border:'rgba(251,146,60,0.4)',  text:'#fdba74'},
-  {bg:'rgba(244,114,182,0.15)', border:'rgba(244,114,182,0.4)', text:'#f9a8d4'},
-  {bg:'rgba(34,211,238,0.15)',  border:'rgba(34,211,238,0.4)',  text:'#67e8f9'},
-  {bg:'rgba(163,230,53,0.15)',  border:'rgba(163,230,53,0.4)',  text:'#bef264'},
-  {bg:'rgba(251,191,36,0.15)',  border:'rgba(251,191,36,0.4)',  text:'#fbbf24'},
-  {bg:'rgba(248,113,113,0.15)', border:'rgba(248,113,113,0.4)', text:'#fca5a5'},
-  {bg:'rgba(45,212,191,0.15)',  border:'rgba(45,212,191,0.4)',  text:'#5eead4'},
+  {bg:'#bfdbfe', border:'#3b82f6', text:'#1e3a5f'},  // blue
+  {bg:'#ddd6fe', border:'#7c3aed', text:'#2e1065'},  // purple
+  {bg:'#bbf7d0', border:'#16a34a', text:'#14532d'},  // green
+  {bg:'#fed7aa', border:'#ea580c', text:'#431407'},  // orange
+  {bg:'#fbcfe8', border:'#db2777', text:'#500724'},  // pink
+  {bg:'#a5f3fc', border:'#0891b2', text:'#0c4a6e'},  // cyan
+  {bg:'#d9f99d', border:'#65a30d', text:'#1a2e05'},  // lime
+  {bg:'#fef08a', border:'#ca8a04', text:'#422006'},  // yellow
+  {bg:'#fecaca', border:'#dc2626', text:'#450a0a'},  // red
+  {bg:'#99f6e4', border:'#0d9488', text:'#042f2e'},  // teal
 ];
 
 // ── FIX #2: Print subject color map — built fresh per render from cfg.subjects ──
@@ -1120,14 +1120,17 @@ export default function CalendarTimetablePage() {
                                         const cellBg      = highlight ? 'rgba(251,191,36,0.12)' : sc ? sc.bg : cell.subject ? 'rgba(255,255,255,0.04)' : 'transparent';
                                         const cellBorder  = highlight ? '1px solid rgba(251,191,36,0.3)' : sc ? `1px solid ${sc.border}` : 'none';
                                         const subjectColor = highlight ? '#fbbf24' : sc ? sc.text : 'rgba(255,255,255,0.8)';
+                                        // Dark text on pastel bg, light text on transparent bg
+                                        const metaColor   = sc ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.35)';
+                                        const metaColor2  = sc ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.25)';
                                         return (
                                           <div style={{background:cellBg,borderRadius:'8px',padding:cell.subject?'6px 8px':'4px',border:cellBorder,minHeight:'36px'}}>
                                             {cell.subject ? (
                                               <>
                                                 <div style={{fontSize:'10px',fontWeight:900,color:subjectColor,lineHeight:1.2}}>{cell.subject}</div>
-                                                {cell.teacher && <div style={{fontSize:'8px',color:'rgba(255,255,255,0.35)',marginTop:'2px'}}>👤 {cell.teacher}</div>}
-                                                {cell.asst_teacher && <div style={{fontSize:'8px',color:'rgba(255,255,255,0.25)',marginTop:'1px'}}>👤 {cell.asst_teacher} <span style={{fontSize:'7px',opacity:0.6}}>(Asst)</span></div>}
-                                                {cell.room    && <div style={{fontSize:'8px',color:'rgba(255,255,255,0.25)'}}>🚪 {cell.room}</div>}
+                                                {cell.teacher && <div style={{fontSize:'8px',color:metaColor,marginTop:'2px'}}>👤 {cell.teacher}</div>}
+                                                {cell.asst_teacher && <div style={{fontSize:'8px',color:metaColor2,marginTop:'1px'}}>👤 {cell.asst_teacher} <span style={{fontSize:'7px',opacity:0.6}}>(Asst)</span></div>}
+                                                {cell.room    && <div style={{fontSize:'8px',color:metaColor2}}>🚪 {cell.room}</div>}
                                               </>
                                             ) : (
                                               <div style={{fontSize:'9px',color:'rgba(255,255,255,0.1)',textAlign:'center',paddingTop:'6px'}}>—</div>

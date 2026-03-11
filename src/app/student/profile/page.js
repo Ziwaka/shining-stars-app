@@ -185,17 +185,15 @@ export default function UltimateMaThweProfile() {
               ]} />
 
               <DataGroupBlock title="Guardian & Family" icon="👪" borderColor="#F59E0B" items={[
-                { label: "Father Name", value: selectedStudent["Father's Name"] },
-                { label: "Father Job", value: selectedStudent["Father's Occupation"] },
-                { label: "Mother Name", value: selectedStudent["Mother's Name"] },
-                { label: "Mother Job", value: selectedStudent["Mother's Occupation"] },
-                { label: "Guardian Name", value: selectedStudent["Guardian's Name"] },
-                { label: "Father Phone", value: selectedStudent["Father's Phone"] },
-                { label: "Mother Phone", value: selectedStudent["Mother's Phone"] },
-                { label: "Guardian Phone", value: selectedStudent["Guardian's Phone"] },
-                { label: "Student Phone", value: selectedStudent["Student's Phone"] },
-                { label: "Guardian Name", value: selectedStudent["Guardian's Name"] },
-                { label: "Relationship", value: selectedStudent["Parent Guardian"] }
+                { label: "Father's Name",       value: selectedStudent["Father's Name"] },
+                { label: "Father's Occupation",  value: selectedStudent["Father's Occupation"] },
+                { label: "Father's Phone",       value: selectedStudent["Father's Phone"] },
+                { label: "Mother's Name",        value: selectedStudent["Mother's Name"] },
+                { label: "Mother's Occupation",  value: selectedStudent["Mother's Occupation"] },
+                { label: "Mother's Phone",       value: selectedStudent["Mother's Phone"] },
+                { label: "Guardian's Name",      value: selectedStudent["Guardian's Name"] },
+                { label: "Guardian's Phone",     value: selectedStudent["Guardian's Phone"] },
+                { label: "Student's Phone",      value: selectedStudent["Student's Phone"] },
               ]} />
 
               <DataGroupBlock title="Residence & Welfare" icon="🌍" borderColor="#10B981" items={[
@@ -215,7 +213,7 @@ export default function UltimateMaThweProfile() {
             {/* WATERMARK FOOTER */}
             <div className="text-center py-20 opacity-30 italic font-black text-slate-500">
                <div className="text-5xl mb-4">🌟</div>
-               <p className="text-3xl md:text-5xl uppercase tracking-widest font-black leading-none">SHINING STARS</p>
+               <p className="text-3xl md:text-5xl uppercase tracking-widest font-black leading-none">SHINING STARS - MA THWE</p>
                <p className="text-[10px] uppercase mt-4 tracking-[1em] font-black">VERSION 68.0 • MASTER LEDGER SYNCED</p>
             </div>
           </div>
