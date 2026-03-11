@@ -42,13 +42,13 @@ export default function StaffTimetablePage() {
     try {
       const [cfgRes, ttRes] = await Promise.all([
         fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetableConfig' }) }),
+        // ★ FIX: GAS now does case-insensitive match, but we send the best name we have
         fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetable', teacher: name }) }),
       ]);
       const cfgData = await cfgRes.json();
       const ttData  = await ttRes.json();
       if (cfgData.success) {
         const raw = cfgData.config;
-        // Use periods_by_grade default if periods is empty
         if (!raw.periods?.length) {
           const pbg = raw.periods_by_grade || {};
           raw.periods = pbg['default'] || pbg[Object.keys(pbg)[0]] || [];
@@ -56,7 +56,22 @@ export default function StaffTimetablePage() {
         if (raw.periods) raw.periods = raw.periods.map((p,i) => ({ ...p, no: p.no ?? (i+1), isBreak: fixBreak(p) }));
         setCfg(raw);
       }
-      if (ttData.success) setRows(ttData.data || []);
+      if (ttData.success) {
+        let rows = ttData.data || [];
+        // ★ FIX: Client-side case-insensitive safety filter — handles any remaining mismatches
+        // (e.g. if GAS returned extra rows due to partial match)
+        if (name && rows.length > 0) {
+          const nameLower = name.trim().toLowerCase();
+          const filtered = rows.filter(r => {
+            const main = String(r.Teacher      || '').trim().toLowerCase();
+            const asst = String(r.Asst_Teacher || '').trim().toLowerCase();
+            return main === nameLower || asst === nameLower;
+          });
+          // Only use filter result if it found something; otherwise keep all (avoid empty screen)
+          if (filtered.length > 0) rows = filtered;
+        }
+        setRows(rows);
+      }
     } catch {}
     setLoading(false);
   };

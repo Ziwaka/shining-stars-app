@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 
@@ -50,6 +50,8 @@ export default function CalendarTimetablePage() {
   const [isMgt, setIsMgt]       = useState(false);
   const [tab, setTab]           = useState('calendar');
   const [cfg, setCfg]           = useState(null);
+  const cfgRef = useRef(null);
+  const [cfgLoaded, setCfgLoaded] = useState(false); // fires once when cfg first loads
   const [events, setEvents]     = useState([]);
   const [timetable, setTimetable] = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -118,7 +120,7 @@ export default function CalendarTimetablePage() {
         const normPeriods = (arr) => (arr||[]).map((p,i) => ({...p, no: p.no ?? (i+1), isBreak: p.isBreak===true||p.isBreak==='true'||String(p.label).toLowerCase().includes('break')||String(p.label).toLowerCase().includes('lunch')}));
         rawCfg.periods = normPeriods(rawCfg.periods);
         Object.keys(rawCfg.periods_by_grade).forEach(k => { rawCfg.periods_by_grade[k] = normPeriods(rawCfg.periods_by_grade[k]); });
-        setCfg(rawCfg);
+        setCfg(rawCfg); cfgRef.current = rawCfg; setCfgLoaded(true);
         setEditCfg(JSON.parse(JSON.stringify(rawCfg)));
         // Restore last selected grade/section from session, fallback to first grade
         const savedGrade = sessionStorage.getItem('tt_grade');
@@ -145,15 +147,16 @@ export default function CalendarTimetablePage() {
 
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        // ★ grade ပဲ GAS ပို့မည် — section filter ကို frontend မှာ လုပ်မည်
-        const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetable', grade }) });
+        // FIX1: grade+section GAS ကိုပို့
+        const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetable', grade, section }) });
         const r = await res.json();
         if (r.success) {
           const rows = (r.data || []).filter(row => {
-            // ★ Frontend section filter — blank stored = any section
-            const stored = String(row.Section || '').trim();
-            return !section || stored === '' || stored === String(section).trim();
-          });
+            // FIX1b: client double-check
+            const secUp = section ? String(section).trim().toUpperCase() : '';
+            const stored = String(row.Section || '').trim().toUpperCase();
+            return !secUp || stored === '' || stored === secUp;
+            });
           const cells = {};
           rows.forEach(row => {
             let day = String(row.Day || '');
@@ -178,31 +181,62 @@ export default function CalendarTimetablePage() {
 
   // When teacher is selected, fetch ALL grades to build personal schedule
   useEffect(() => {
-    if (!teacherView || !cfg || tab !== 'timetable') { setTeacherAllRows([]); setTeacherLoading(false); return; }
+    if (!teacherView || tab !== 'timetable') { setTeacherAllRows([]); setTeacherLoading(false); return; }
     const VDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
     setTeacherLoading(true);
-    const grades = Object.keys(cfg.grades || {});
     const allRows = [];
-    let cancelled = false; // stale-fetch guard
-    Promise.all(grades.map(async g => {
-      try {
-        const res = await fetch(WEB_APP_URL, {method:'POST', body:JSON.stringify({action:'getTimetable', grade:g})});
-        const r = await res.json();
-        if (r.success && !cancelled) {
-          (r.data||[]).forEach(row => {
-            if (row.Teacher===teacherView || row.Asst_Teacher===teacherView) {
+    let cancelled = false;
+    const runFetch = async () => {
+      // Wait for cfg if not ready yet (max 5s)
+      let waitMs = 0;
+      while (!cfgRef.current && waitMs < 5000) {
+        await new Promise(r => setTimeout(r, 200));
+        waitMs += 200;
+      }
+      if (cancelled || !cfgRef.current) { setTeacherLoading(false); return; }
+      const grades = Object.keys(cfgRef.current.grades || {});
+      const fetchGrade = async (g) => {
+        for (let i=0; i<2; i++) {
+          try {
+            // FIX2: teacher ကိုပါပို့
+            const res = await fetch(WEB_APP_URL, {method:'POST', body:JSON.stringify({action:'getTimetable', grade:g, teacher:teacherView})});
+            const r = await res.json();
+            if (r.success) return r.data || [];
+          } catch {}
+          if (i===0) await new Promise(r=>setTimeout(r, 800));
+        }
+        return [];
+      };
+      const BATCH = 3;
+      for (let i = 0; i < grades.length; i += BATCH) {
+        if (cancelled) break;
+        const batch = grades.slice(i, i + BATCH);
+        await Promise.all(batch.map(async g => {
+          const rows = await fetchGrade(g);
+          if (cancelled) return;
+          // FIX2b: case-insensitive
+          const _tvL = teacherView.trim().toLowerCase();
+          rows.forEach(row => {
+            const _mT = String(row.Teacher||'').trim().toLowerCase();
+            const _aT = String(row.Asst_Teacher||'').trim().toLowerCase();
+            if (_mT===_tvL || _aT===_tvL) {
               let day = String(row.Day||'');
               if (!VDAYS.includes(day)) { const p=day.split('_'); day=p.find(x=>VDAYS.includes(x))||day; }
-              allRows.push({ day, period: String(row.Period_No), subject: row.Subject, grade: row.Grade, section: row.Section||'', room: row.Room||'', isAsst: row.Teacher!==teacherView });
+              allRows.push({ day, period: String(row.Period_No), subject: row.Subject, grade: row.Grade, section: row.Section||'', room: row.Room||'', isAsst: _mT!==_tvL });
             }
           });
-        }
-      } catch {}
-    })).then(() => {
-      if (!cancelled) { setTeacherAllRows([...allRows]); setTeacherLoading(false); }
-    });
+        }));
+        if (!cancelled) setTeacherAllRows([...allRows]);
+      }
+      if (!cancelled) {
+
+        setTeacherAllRows([...allRows]);
+        setTeacherLoading(false);
+      }
+    };
+    runFetch();
     return () => { cancelled = true; setTeacherLoading(false); }; // cancel on teacherView change
-  }, [teacherView, tab]); // cfg intentionally excluded — avoids re-fetch on every config save
+  }, [teacherView, tab]); // cfg read via ref inside effect — no cancel-on-cfg-load
 
   const showMsg = (text, type='success') => {
     // Direct DOM toast — bypasses all overflow:hidden / stacking context issues
@@ -273,7 +307,6 @@ export default function CalendarTimetablePage() {
   // ── TIMETABLE HELPERS ──
   const handleCellChange = (day, periodNo, field, value) => {
     const key = `${day}_${String(periodNo)}`;
-    console.log('[TT] cellChange key='+key+' field='+field+' val='+value);
     setTtCells(prev => ({ ...prev, [key]: { ...(prev[key]||{}), [field]:value } }));
   };
 
@@ -334,7 +367,7 @@ export default function CalendarTimetablePage() {
       if (!silent) setCfgSaving('ok');
       // delay setCfg so React re-render happens AFTER 'ok' state renders to screen
       setTimeout(() => {
-        setCfg(snapshotCfg);
+        setCfg(snapshotCfg); cfgRef.current = snapshotCfg; setCfgLoaded(true);
         if (!silent) setCfgSaving('idle');
       }, 2500);
     } catch(e) {
@@ -344,6 +377,7 @@ export default function CalendarTimetablePage() {
 
   // ── Conflict detection ──
   const [printData, setPrintData] = useState(null); // {teacher, rows:[{day,period,subject,grade,section,room}]}
+  const [printPending, setPrintPending] = useState(false); // wait for DOM re-render before calling window.print()
 
   const handlePrint = async () => {
     if (!teacherView) {
@@ -368,37 +402,39 @@ export default function CalendarTimetablePage() {
       await Promise.all(grades.map(async g => {
         if (fetched[g]) return;
         fetched[g] = true;
-        const res = await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getTimetable',grade:g})});
-        const r = await res.json();
-        if (r.success) {
-          (r.data||[]).forEach(row => {
-            if (row.Teacher===teacherView || row.Asst_Teacher===teacherView) {
-              allRows.push({
-                day: row.Day,
-                period: String(row.Period_No),
-                subject: row.Subject,
-                grade: row.Grade,
-                section: row.Section||'',
-                room: row.Room||'',
-                isAsst: row.Teacher!==teacherView,
-              });
-            }
-          });
+        // Retry up to 2x
+        let rdata = [];
+        for (let attempt=0; attempt<2; attempt++) {
+          try {
+            const res = await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getTimetable',grade:g})});
+            const r = await res.json();
+            if (r.success) { rdata = r.data||[]; break; }
+          } catch { if (attempt===0) await new Promise(res=>setTimeout(res,800)); }
         }
+        const PVDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+        // FIX4: print case-insensitive
+        const _tvPrt = teacherView.trim().toLowerCase();
+        rdata.forEach(row => {
+          const _mPrt = String(row.Teacher||'').trim().toLowerCase();
+          const _aPrt = String(row.Asst_Teacher||'').trim().toLowerCase();
+          if (_mPrt===_tvPrt || _aPrt===_tvPrt) {
+            let day = String(row.Day||'');
+            if (!PVDAYS.includes(day)) { const p=day.split('_'); day=p.find(x=>PVDAYS.includes(x))||day; }
+            allRows.push({
+              day,
+              period: String(row.Period_No),
+              subject: row.Subject,
+              grade: row.Grade,
+              section: row.Section||'',
+              room: row.Room||'',
+              isAsst: _mPrt!==_tvPrt,
+            });
+          }
+        });
       }));
       setPrintData({ teacher: teacherView, rows: allRows });
       window.document.title = `Personal Timetable — ${teacherView}`;
-      setTimeout(() => {
-        // Hide main grid, show personal print div only
-        const mainGrid = document.getElementById('tt-main-grid');
-        const personal = document.getElementById('tt-personal-print');
-        if (mainGrid) mainGrid.style.display = 'none';
-        if (personal) personal.style.display = 'block';
-        window.print();
-        // Restore after print
-        if (mainGrid) mainGrid.style.display = '';
-        if (personal) personal.style.display = 'none';
-      }, 200);
+      setPrintPending(true); // useEffect will trigger print after DOM re-renders
     } catch { showMsg('Error','error'); }
   };
 
@@ -439,6 +475,23 @@ export default function CalendarTimetablePage() {
     } catch(e){ showMsg('Error: '+e.message,'error'); }
   };
 
+  // Print after DOM re-renders with new printData
+  useEffect(() => {
+    if (!printPending || !printData) return;
+    setPrintPending(false);
+    // DOM has re-rendered with printData — now safe to print
+    const mainGrid = document.getElementById('tt-main-grid');
+    const personal = document.getElementById('tt-personal-print');
+    if (mainGrid) mainGrid.style.display = 'none';
+    if (personal) personal.style.display = 'block';
+    window.print();
+    // Restore after print dialog closes
+    setTimeout(() => {
+      if (mainGrid) mainGrid.style.display = '';
+      if (personal) personal.style.display = 'none';
+    }, 500);
+  }, [printData, printPending]);
+
   // ── Helper: get periods for a grade+section (fallback chain: Grade12A → Grade12 → default) ──
   // Always normalize isBreak at render time — covers old data + GAS string issues
   const fixBreak = (arr) => (arr||[]).map((p,i) => {
@@ -450,17 +503,26 @@ export default function CalendarTimetablePage() {
   const getGradePeriods = (config, grade, section) => {
     if (!config) return [];
     const byGrade = config.periods_by_grade || {};
-    const gLabel = grade === 'KG' ? 'KG' : grade ? `Grade ${grade}` : 'default';
-    // 1. Try grade+section key e.g. "Grade 12A"
-    if (section && byGrade[`${gLabel}${section}`]) return fixBreak(byGrade[`${gLabel}${section}`]);
-    // 2. Try grade-only key e.g. "Grade 12"
-    if (byGrade[gLabel]) return fixBreak(byGrade[gLabel]);
-    // 3. Fallback to default
+    const g = String(grade||'').replace(/^Grade\s*/i,'').trim(); // strip "Grade " prefix if present
+    // Config keys are always "Grade 12A", "Grade 12", "KG", "default"
+    const keys = g === 'KG'
+      ? ['KG']
+      : [
+          section ? `Grade ${g}${section}` : null,
+          `Grade ${g}`,
+        ].filter(Boolean);
+    for (const k of keys) {
+      if (byGrade[k]) return fixBreak(byGrade[k]);
+    }
     return fixBreak(byGrade['default'] || config.periods || []);
   };
 
-  // Teacher view — filter timetable by teacher
-  const teacherSchedule = timetable.filter(r => !teacherView || r.Teacher === teacherView);
+  // FIX5: case-insensitive
+  const teacherSchedule = timetable.filter(r => {
+    if (!teacherView) return true;
+    const _tvF = teacherView.trim().toLowerCase();
+    return String(r.Teacher||'').trim().toLowerCase() === _tvF;
+  });
   // Only show valid staff names — filter against staffList to exclude bad data (numbers, subjects, etc)
   const validStaffNames = new Set(staffList.map(s => (s['Name (ALL CAPITAL)']||s.Name||'').trim()).filter(Boolean));
   const allTeachersRaw = [...new Set([...timetable.map(r=>r.Teacher), ...timetable.map(r=>r.Asst_Teacher)].filter(Boolean))];
@@ -673,19 +735,30 @@ export default function CalendarTimetablePage() {
                       <div style={{fontSize:'11px',color:'rgba(255,255,255,0.25)',textAlign:'center',padding:'16px 0'}}>သင်ကြားချိန်မရှိသေးပါ</div>
                     )}
                     {!teacherLoading && teacherAllRows.length > 0 && (() => {
+                      // FIX3: Default periods ကို timeline structure အဖြစ်သုံး
+                      // Break row = teacher class မရှိ + config says break → thin divider သာပြ
                       const activeDays = (cfg.days||[]).filter(day => teacherAllRows.some(r=>r.day===day));
-                      // Use default periods — covers all grades' period slots, not just selGrade's
-                      const _defaultPeriods = ((cfg.periods_by_grade||{})['default'] || cfg.periods || []);
-                      const activePeriods = _defaultPeriods.filter(p => {
+                      const _fixBrk = (arr) => (arr||[]).map((p,idx2) => {
                         const lbl = String(p.label||'').toLowerCase();
-                        return !(p.isBreak===true || ['break','lunch','recess','duty','assembly','prayer','chapel'].some(k=>lbl.includes(k)));
+                        const auto = ['break','lunch','recess','duty','assembly','prayer','chapel','နားချိန်','အနားယူ'].some(kw=>lbl.includes(kw));
+                        return { ...p, no: String(p.no ?? (idx2+1)), isBreak: p.isBreak===true||p.isBreak==='true'||auto };
                       });
+                      const _defP = _fixBrk(
+                        cfg.periods_by_grade?.default || cfg.periods ||
+                        Object.values(cfg.periods_by_grade||{})[0] || []
+                      );
+                      const _taughtNos = new Set(teacherAllRows.map(r=>String(r.period)));
+                      const _defNos = new Set(_defP.map(p=>p.no));
+                      const _extraP = [..._taughtNos].filter(n=>!_defNos.has(n))
+                        .sort((a,b)=>Number(a)-Number(b))
+                        .map(n=>({ no:n, label:'Period '+n, start:'', end:'', isBreak:false }));
+                      const _allP = [..._defP, ..._extraP];
                       return (
                         <div style={{overflowX:'auto'}}>
                           <table style={{width:'100%',borderCollapse:'collapse',minWidth:'400px'}}>
                             <thead>
                               <tr>
-                                <th style={{padding:'6px 8px',fontSize:'9px',color:'rgba(255,255,255,0.3)',textAlign:'left',borderBottom:'1px solid rgba(255,255,255,0.08)',minWidth:'70px'}}>Period</th>
+                                <th style={{padding:'6px 8px',fontSize:'9px',color:'rgba(255,255,255,0.3)',textAlign:'left',borderBottom:'1px solid rgba(255,255,255,0.08)',minWidth:'60px'}}>Period</th>
                                 {activeDays.map(d=>(
                                   <th key={d} style={{padding:'6px 8px',fontSize:'9px',color:WEEKEND_DAYS.has(d)?'rgba(251,191,36,0.6)':'rgba(255,255,255,0.5)',textAlign:'center',borderBottom:'1px solid rgba(255,255,255,0.08)',fontWeight:900}}>
                                     {DAYS_SHORT[['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].indexOf(d)]||d.slice(0,3)}
@@ -694,29 +767,44 @@ export default function CalendarTimetablePage() {
                               </tr>
                             </thead>
                             <tbody>
-                              {activePeriods.map((p,pi)=>(
-                                <tr key={pi} style={{background:pi%2===0?'rgba(255,255,255,0.02)':'transparent'}}>
-                                  <td style={{padding:'6px 8px',borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'middle'}}>
-                                    <div style={{fontSize:'9px',fontWeight:900,color:'rgba(255,255,255,0.5)'}}>{p.label}</div>
-                                    <div style={{fontSize:'7px',color:'rgba(255,255,255,0.2)'}}>{p.start}–{p.end}</div>
-                                  </td>
-                                  {activeDays.map(day=>{
-                                    const row = teacherAllRows.find(r=>r.day===day && r.period===String(p.no));
-                                    return (
-                                      <td key={day} style={{padding:'4px',borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'top',textAlign:'center'}}>
-                                        {row ? (
-                                          <div style={{background:'rgba(251,191,36,0.1)',border:'1px solid rgba(251,191,36,0.25)',borderRadius:'8px',padding:'5px 6px'}}>
-                                            <div style={{fontSize:'10px',fontWeight:900,color:'#fbbf24',lineHeight:1.2}}>{row.subject}</div>
-                                            <div style={{fontSize:'8px',color:'rgba(255,255,255,0.5)',marginTop:'2px'}}>G{row.grade}{row.section?'/'+row.section:''}</div>
-                                            {row.room && <div style={{fontSize:'7px',color:'rgba(255,255,255,0.3)'}}>🚪{row.room}</div>}
-                                            {row.isAsst && <div style={{fontSize:'7px',color:'rgba(255,255,255,0.25)',fontStyle:'italic'}}>(Asst)</div>}
-                                          </div>
-                                        ) : <span style={{fontSize:'9px',color:'rgba(255,255,255,0.08)'}}>—</span>}
-                                      </td>
-                                    );
-                                  })}
-                                </tr>
-                              ))}
+                              {_allP.map((p,pi)=>{
+                                const pNo = p.no;
+                                const hasCls = _taughtNos.has(pNo);
+                                if (p.isBreak && !hasCls) return (
+                                  <tr key={'brk-'+pi}>
+                                    <td colSpan={activeDays.length+1} style={{padding:'3px 8px'}}>
+                                      <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
+                                        <div style={{flex:1,height:'1px',background:'rgba(255,255,255,0.05)'}}/>
+                                        <span style={{fontSize:'8px',color:'rgba(255,255,255,0.15)',fontStyle:'italic'}}>{p.label}{p.start?' '+p.start+'–'+p.end:''}</span>
+                                        <div style={{flex:1,height:'1px',background:'rgba(255,255,255,0.05)'}}/>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                                return (
+                                  <tr key={pNo+'-'+pi} style={{background:pi%2===0?'rgba(255,255,255,0.02)':'transparent'}}>
+                                    <td style={{padding:'6px 8px',borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'middle'}}>
+                                      <div style={{fontSize:'9px',fontWeight:900,color:'rgba(255,255,255,0.5)'}}>{p.isBreak?'P'+pNo:p.label}</div>
+                                      {p.start && <div style={{fontSize:'7px',color:'rgba(255,255,255,0.2)'}}>{p.start}–{p.end}</div>}
+                                    </td>
+                                    {activeDays.map(day=>{
+                                      const row = teacherAllRows.find(r=>r.day===day && String(r.period)===pNo);
+                                      return (
+                                        <td key={day} style={{padding:'4px',borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'top',textAlign:'center'}}>
+                                          {row ? (
+                                            <div style={{background:'rgba(251,191,36,0.1)',border:'1px solid rgba(251,191,36,0.25)',borderRadius:'8px',padding:'5px 6px'}}>
+                                              <div style={{fontSize:'10px',fontWeight:900,color:'#fbbf24',lineHeight:1.2}}>{row.subject}</div>
+                                              <div style={{fontSize:'8px',color:'rgba(255,255,255,0.5)',marginTop:'2px'}}>G{row.grade}{row.section?'/'+row.section:''}</div>
+                                              {row.room && <div style={{fontSize:'7px',color:'rgba(255,255,255,0.3)'}}>🚪{row.room}</div>}
+                                              {row.isAsst && <div style={{fontSize:'7px',color:'rgba(255,255,255,0.25)',fontStyle:'italic'}}>(Asst)</div>}
+                                            </div>
+                                          ) : <span style={{fontSize:'9px',color:'rgba(255,255,255,0.08)'}}>—</span>}
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
@@ -760,14 +848,31 @@ export default function CalendarTimetablePage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {getGradePeriods(cfg, selGrade, selSection).filter(p=>!p.isBreak).map((p,pi)=>(
-                            <tr key={`print-${pi}`} style={{background:pi%2===0?'#f9f9f9':'#fff'}}>
+                          {(() => {
+                              const allPNos = [...new Set(printData.rows.map(r=>r.period))];
+                              return allPNos.filter(pNo => {
+                                const rowsWP = printData.rows.filter(r=>r.period===pNo);
+                                return rowsWP.some(r => {
+                                  const gP = getGradePeriods(cfg, String(r.grade), r.section);
+                                  const pC = gP.find(p=>String(p.no)===String(pNo));
+                                  if (!pC) return true; // not in config → keep
+                                  return pC.isBreak !== true && pC.isBreak !== 'true';
+                                });
+                              }).sort((a,b)=>Number(a)-Number(b));
+                            })().map((pNo,pi)=>(
+                            <tr key={`print-${pNo}`} style={{background:pi%2===0?'#f9f9f9':'#fff'}}>
                               <td style={{border:'1px solid #ddd',padding:'5px 8px',fontWeight:700,fontSize:'8pt',color:'#333'}}>
-                                <div>{p.label}</div>
-                                <div style={{fontWeight:400,color:'#888',fontSize:'7pt'}}>{p.start}–{p.end}</div>
+                                {(() => {
+                                  const sampleRow = printData.rows.find(r=>r.period===pNo);
+                                  const pCfg = sampleRow ? getGradePeriods(cfg,String(sampleRow.grade),sampleRow.section).find(p=>String(p.no)===String(pNo)) : null;
+                                  return <>
+                                    <div>{pCfg?.label||'Period '+pNo}</div>
+                                    {pCfg?.start && <div style={{fontWeight:400,color:'#888',fontSize:'7pt'}}>{pCfg.start}–{pCfg.end}</div>}
+                                  </>;
+                                })()}
                               </td>
                               {(cfg.days||[]).map(day=>{
-                                const row = printData.rows.find(r=>r.day===day && r.period===String(p.no));
+                                const row = printData.rows.find(r=>r.day===day && r.period===pNo);
                                 return (
                                   <td key={day} style={{border:'1px solid #ddd',padding:'5px 8px',verticalAlign:'top',minWidth:'100px'}}>
                                     {row ? (

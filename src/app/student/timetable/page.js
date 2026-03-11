@@ -59,6 +59,7 @@ export default function StudentTimetablePage() {
       console.log('[Student TT] grade='+grade+' section='+section, u);
       const [cfgRes, ttRes] = await Promise.all([
         fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetableConfig' }) }),
+        // ★ FIX: Pass both grade AND section to GAS (GAS now filters by section)
         fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetable', grade, section }) }),
       ]);
       const cfgData = await cfgRes.json();
@@ -72,16 +73,25 @@ export default function StudentTimetablePage() {
       if (ttData.success) {
         const VDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
         const map = {};
-        (ttData.data || []).forEach(r => {
-          let day = String(r.Day||'');
-          if (!VDAYS.includes(day)) {
-            const parts = day.split('_');
-            day = parts.find(x => VDAYS.includes(x)) || day;
-          }
-          const k = `${day}_${String(r.Period_No)}`;
-          console.log('[Student TT] cell:', k, r.Subject);
-          map[k] = r;
-        });
+        // ★ FIX: Client-side section filter as safety net (in case GAS returns mixed sections)
+        const secUpper = section ? section.toString().trim().toUpperCase() : '';
+        (ttData.data || [])
+          .filter(r => {
+            // Keep row if: no section filter needed, OR stored section is blank, OR section matches
+            if (!secUpper) return true;
+            const rSec = String(r.Section || '').trim().toUpperCase();
+            return rSec === '' || rSec === secUpper;
+          })
+          .forEach(r => {
+            let day = String(r.Day||'');
+            if (!VDAYS.includes(day)) {
+              const parts = day.split('_');
+              day = parts.find(x => VDAYS.includes(x)) || day;
+            }
+            const k = `${day}_${String(r.Period_No)}`;
+            console.log('[Student TT] cell:', k, r.Subject, 'sec:', r.Section);
+            map[k] = r;
+          });
         setCells(map);
       }
     } catch {}

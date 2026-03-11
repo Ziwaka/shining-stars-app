@@ -3,21 +3,22 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 const S = {
-  page: { display:'flex', flexDirection:'column', height:'100dvh', overflow:'hidden', background:'#0f0a1e', color:'#fff', fontFamily:'system-ui,sans-serif' },
-  header: { zIndex:40, background:'rgba(15,10,30,0.97)', backdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.07)', padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' },
+  page: { display:'flex', flexDirection:'column', height:'100%', overflow:'hidden', background:'#0f0a1e', color:'#fff', fontFamily:'system-ui,sans-serif' },
+  header: {flexShrink:0, zIndex:40, background:'rgba(15,10,30,0.97)', backdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.07)', padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between'},
   card:   { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'16px', padding:'16px' },
 };
 
-export default function StudentCalendarPage() {
+export default function StudentTimetablePage() {
   const router = useRouter();
-  const today  = new Date();
   const [user, setUser]       = useState(null);
-  const [events, setEvents]   = useState([]);
+  const [cfg, setCfg]         = useState(null);
+  const [cells, setCells]     = useState({});
+  const [selDay, setSelDay]   = useState('');
   const [loading, setLoading] = useState(true);
-  const [viewDate, setViewDate] = useState({ year: today.getFullYear(), month: today.getMonth() });
 
   useEffect(() => {
     const saved = localStorage.getItem('user') || sessionStorage.getItem('user');
@@ -25,22 +26,114 @@ export default function StudentCalendarPage() {
     const u = JSON.parse(saved);
     if (u.userRole !== 'student') { router.push('/login'); return; }
     setUser(u);
-    fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getEvents' }) })
-      .then(r => r.json()).then(d => { if (d.success) setEvents(d.data || []); })
-      .catch(() => {}).finally(() => setLoading(false));
+
+    // Default to today's day
+    const todayDay = DAYS[new Date().getDay()];
+    setSelDay(todayDay);
+    fetchAll(u);
   }, []);
 
-  const monthKey     = `${viewDate.year}-${String(viewDate.month+1).padStart(2,'0')}`;
-  const monthEvents  = events.filter(e => (e.Date||'').startsWith(monthKey) && (e.Target==='All'||e.Target==='Student'||!e.Target));
-  const upcomingAll  = events.filter(e => e.Date >= today.toISOString().split('T')[0] && (e.Target==='All'||e.Target==='Student'||!e.Target)).sort((a,b)=>a.Date>b.Date?1:-1).slice(0,8);
+  const fetchAll = async (u) => {
+    try {
+      // Extract grade+section from ALL possible field formats
+      let grade = '', section = '';
+      const rawGrade   = u.Grade   || u.grade   || '';
+      const rawClass   = u.Class   || u.class   || '';
+      const rawSection = u.Section || u.section || '';
+      const rawID      = u.Student_ID || u.student_id || '';
 
-  const daysInMonth  = new Date(viewDate.year, viewDate.month+1, 0).getDate();
-  const firstDow     = (new Date(viewDate.year, viewDate.month, 1).getDay()+6)%7;
-  const eventsByDay  = {};
-  monthEvents.forEach(e => { const d=parseInt((e.Date||'').split('-')[2]); if(!eventsByDay[d])eventsByDay[d]=[]; eventsByDay[d].push(e); });
+      if (rawGrade) {
+        // Grade field: "12" or "Grade 12"
+        grade   = rawGrade.toString().replace(/^grade\s*/i,'').trim();
+        section = rawSection || (rawClass.match(/[A-Za-z]+$/)?.[0] || '');
+      } else if (rawClass) {
+        // Class: "12A" or "12 A" or "Grade 12A"
+        const m = rawClass.toString().replace(/^grade\s*/i,'').trim().match(/^(\d+)\s*([A-Za-z]?)$/);
+        if (m) { grade = m[1]; section = m[2] || rawSection; }
+        else { grade = rawClass; }
+      } else if (rawID) {
+        // Last resort: extract from Student_ID e.g. "26/G12/001" or "26/G12A/001"
+        const m = rawID.toString().match(/G(\d+)([A-Za-z]?)/);
+        if (m) { grade = m[1]; section = m[2] || rawSection; }
+      }
+      console.log('[Student TT] grade='+grade+' section='+section, u);
+      const [cfgRes, ttRes] = await Promise.all([
+        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetableConfig' }) }),
+        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetable', grade, section }) }),
+      ]);
+      const cfgData = await cfgRes.json();
+      const ttData  = await ttRes.json();
+      console.log('[Student TT] rows from GAS:', ttData.data?.length, ttData.data?.slice(0,2));
+      if (cfgData.success) {
+        const raw = cfgData.config;
+        if (raw.periods) raw.periods = raw.periods.map((p,i) => ({...p, no: p.no??(i+1), isBreak: p.isBreak===true||p.isBreak==='true'||String(p.label).toLowerCase().includes('break')||String(p.label).toLowerCase().includes('lunch')}));
+        setCfg(raw);
+      }
+      if (ttData.success) {
+        const VDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+        const map = {};
+        // Filter by section — GAS returns all sections of a grade, we only want ours
+        const secFilter = section ? String(section).trim().toUpperCase() : '';
+        let rows = ttData.data || [];
+        if (secFilter) {
+          // Empty Section rows = shared (show for all sections). Exact match = this section only.
+          rows = rows.filter(r => {
+            const rowSec = String(r.Section||'').trim().toUpperCase();
+            return rowSec === '' || rowSec === secFilter;
+          });
+        }
+        rows.forEach(r => {
+          let day = String(r.Day||'');
+          if (!VDAYS.includes(day)) {
+            const parts = day.split('_');
+            day = parts.find(x => VDAYS.includes(x)) || day;
+          }
+          const k = `${day}_${String(r.Period_No)}`;
+          map[k] = r;
+        });
+        setCells(map);
+      }
+    } catch {}
+    setLoading(false);
+  };
 
-  const prevMonth = () => setViewDate(v => { const d=new Date(v.year,v.month-1); return {year:d.getFullYear(),month:d.getMonth()}; });
-  const nextMonth = () => setViewDate(v => { const d=new Date(v.year,v.month+1); return {year:d.getFullYear(),month:d.getMonth()}; });
+  const todayDay = DAYS[new Date().getDay()];
+  const activeDays = cfg?.days || DAYS.slice(0,5);
+  // Use periods_by_grade: try 'default', then first available key, then cfg.periods
+  const _pbg = cfg?.periods_by_grade || {};
+  const _pbgDefault = _pbg['default'] || _pbg[Object.keys(_pbg)[0]] || [];
+  const _rawPeriods = (cfg?.periods?.length ? cfg.periods : null) || (_pbgDefault.length ? _pbgDefault : []);
+  const periods = _rawPeriods.map((p,i) => ({
+    ...p,
+    no: p.no ?? (i+1),
+    isBreak: p.isBreak===true||p.isBreak==='true'||
+             String(p.label).toLowerCase().includes('break')||
+             String(p.label).toLowerCase().includes('lunch')||
+             String(p.label).toLowerCase().includes('recess')
+  }));
+  const dayPeriods = periods.filter(p => !p.isBreak);
+
+  // Today's schedule
+  const todaySchedule = periods.map(p => ({
+    ...p,
+    isBreak: p.isBreak===true||p.isBreak==='true'||String(p.label).toLowerCase().includes('break')||String(p.label).toLowerCase().includes('lunch'),
+    cell: cells[`${selDay}_${String(p.no)}`] || null,
+  }));
+
+  const currentHour = new Date().getHours();
+  const currentMin  = new Date().getMinutes();
+  const nowMins = currentHour * 60 + currentMin;
+  const timeToMins = (t) => { if (!t) return 0; const [h,m] = t.split(':').map(Number); return h*60+(m||0); };
+
+  const getCurrentPeriod = () => {
+    for (const p of periods) {
+      if (p.start && p.end) {
+        if (nowMins >= timeToMins(p.start) && nowMins < timeToMins(p.end)) return p.no;
+      }
+    }
+    return null;
+  };
+  const currentPeriod = selDay === todayDay ? getCurrentPeriod() : null;
 
   return (
     <div style={S.page}>
@@ -48,7 +141,10 @@ export default function StudentCalendarPage() {
 
       <div style={S.header}>
         <button onClick={() => router.push('/student')} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.4)', cursor:'pointer', fontSize:'14px' }}>← Home</button>
-        <p style={{ fontWeight:900, fontSize:'13px', textTransform:'uppercase', letterSpacing:'0.1em', margin:0 }}>📅 Events Calendar</p>
+        <div style={{ textAlign:'center' }}>
+          <p style={{ fontWeight:900, fontSize:'13px', textTransform:'uppercase', letterSpacing:'0.1em', margin:0 }}>Timetable</p>
+          <p style={{ fontSize:'9px', color:'rgba(255,255,255,0.25)', margin:0 }}>{user?.Grade ? `Grade ${user.Grade} ${user?.Class||user?.Section||user?.section||''}`.trim() : ''}</p>
+        </div>
         <div style={{ width:'40px' }}/>
       </div>
       <div style={{flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch', paddingBottom:'80px'}}>
@@ -60,83 +156,116 @@ export default function StudentCalendarPage() {
           </div>
         ) : (
           <>
-            {/* Calendar grid */}
-            <div style={S.card}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'12px' }}>
-                <button onClick={prevMonth} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.4)', cursor:'pointer', fontSize:'20px', padding:'0 8px' }}>‹</button>
-                <p style={{ fontWeight:900, fontSize:'15px', color:'#fff', margin:0 }}>{MONTHS[viewDate.month]} {viewDate.year}</p>
-                <button onClick={nextMonth} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.4)', cursor:'pointer', fontSize:'20px', padding:'0 8px' }}>›</button>
-              </div>
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:'2px', marginBottom:'4px' }}>
-                {['M','T','W','T','F','S','S'].map((d,i) => (
-                  <div key={i} style={{ textAlign:'center', fontSize:'9px', color:'rgba(255,255,255,0.25)', fontWeight:900, padding:'4px 0' }}>{d}</div>
-                ))}
-              </div>
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:'2px' }}>
-                {Array(firstDow).fill(null).map((_,i) => <div key={`e${i}`}/>)}
-                {Array(daysInMonth).fill(null).map((_,i) => {
-                  const day = i+1;
-                  const isToday = day===today.getDate() && viewDate.month===today.getMonth() && viewDate.year===today.getFullYear();
-                  const dayEvts = eventsByDay[day] || [];
-                  return (
-                    <div key={day} style={{ borderRadius:'8px', padding:'4px 2px', minHeight:'36px', display:'flex', flexDirection:'column', alignItems:'center', gap:'2px',
-                      background: isToday ? 'rgba(251,191,36,0.15)' : dayEvts.length ? 'rgba(255,255,255,0.04)' : 'transparent',
-                      outline: isToday ? '1px solid rgba(251,191,36,0.4)' : 'none' }}>
-                      <span style={{ fontSize:'11px', fontWeight:900, color: isToday ? '#fbbf24' : 'rgba(255,255,255,0.6)' }}>{day}</span>
-                      <div style={{ display:'flex', flexWrap:'wrap', gap:'1px', justifyContent:'center' }}>
-                        {dayEvts.slice(0,3).map((e,j) => <div key={j} style={{ width:'5px', height:'5px', borderRadius:'50%', background:e.Color||'#fbbf24' }}/>)}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+            {/* Day selector */}
+            <div style={{ display:'flex', gap:'6px', overflowX:'auto', paddingBottom:'4px' }}>
+              {activeDays.map(day => {
+                const isToday = day === todayDay;
+                const isSel   = day === selDay;
+                const idx     = DAYS.indexOf(day);
+                return (
+                  <button key={day} onClick={() => setSelDay(day)}
+                    style={{ flexShrink:0, padding:'8px 14px', borderRadius:'12px', border:'none', cursor:'pointer', fontWeight:900, fontSize:'10px', textAlign:'center',
+                      background: isSel ? '#fbbf24' : isToday ? 'rgba(251,191,36,0.1)' : 'rgba(255,255,255,0.05)',
+                      color: isSel ? '#0f172a' : isToday ? '#fbbf24' : 'rgba(255,255,255,0.4)',
+                      outline: isToday && !isSel ? '1px solid rgba(251,191,36,0.3)' : 'none' }}>
+                    {DAYS_SHORT[idx] || day.slice(0,3)}
+                    {isToday && <div style={{ fontSize:'7px', marginTop:'2px', opacity:0.7 }}>TODAY</div>}
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Upcoming events */}
-            <div>
-              <p style={{ fontSize:'9px', color:'rgba(255,255,255,0.25)', textTransform:'uppercase', letterSpacing:'0.15em', fontWeight:900, margin:'0 0 10px' }}>Upcoming Events</p>
-              {upcomingAll.length === 0 ? (
-                <div style={{ textAlign:'center', padding:'30px 0', color:'rgba(255,255,255,0.2)' }}>Upcoming events မရှိသေးပါ</div>
-              ) : upcomingAll.map((e,i) => {
-                const urgent = e.Is_Priority === true || e.Is_Priority === 'TRUE';
+            {/* Schedule list */}
+            <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
+              {console.log('[Student TT] render selDay='+selDay+' schedule='+todaySchedule.length+' cells='+JSON.stringify(Object.keys(cells).slice(0,5)))||null}
+              {todaySchedule.length === 0 ? (
+                <div style={{ textAlign:'center', padding:'50px 0', color:'rgba(255,255,255,0.2)' }}>Timetable မသတ်မှတ်ရသေးပါ</div>
+              ) : todaySchedule.map((p, i) => {
+                const isCurrent = currentPeriod === p.no;
+                const isPast    = selDay === todayDay && p.end && nowMins > timeToMins(p.end);
+                const isBreak   = p.isBreak;
+                const c         = p.cell;
+
+                if (isBreak) return (
+                  <div key={i} style={{ display:'flex', alignItems:'center', gap:'12px', padding:'6px 8px' }}>
+                    <div style={{ fontSize:'9px', color:'rgba(255,255,255,0.15)', minWidth:'80px', textAlign:'right' }}>{p.start}–{p.end}</div>
+                    <div style={{ flex:1, height:'1px', background:'rgba(255,255,255,0.05)' }}/>
+                    <div style={{ fontSize:'9px', color:'rgba(255,255,255,0.15)', fontStyle:'italic' }}>{p.label}</div>
+                    <div style={{ flex:1, height:'1px', background:'rgba(255,255,255,0.05)' }}/>
+                  </div>
+                );
+
                 return (
-                  <div key={i} style={{ ...S.card, padding:'12px 16px', marginBottom:'8px', borderLeft:`4px solid ${e.Color||'#fbbf24'}`, background: urgent?'rgba(239,68,68,0.07)':'rgba(255,255,255,0.04)' }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'8px' }}>
-                      <div>
-                        <div style={{ display:'flex', alignItems:'center', gap:'6px', marginBottom:'4px', flexWrap:'wrap' }}>
-                          {urgent && <span style={{ background:'#dc2626', color:'#fff', fontSize:'8px', fontWeight:900, padding:'1px 8px', borderRadius:'99px' }}>URGENT</span>}
-                          <span style={{ background:'rgba(255,255,255,0.08)', color:'rgba(255,255,255,0.4)', fontSize:'8px', fontWeight:900, padding:'1px 8px', borderRadius:'99px' }}>{e.Type||'Event'}</span>
-                        </div>
-                        <p style={{ fontWeight:900, fontSize:'13px', color:'#fff', margin:'0 0 3px' }}>{e.Title}</p>
-                        {e.Description && <p style={{ fontSize:'11px', color:'rgba(255,255,255,0.4)', margin:0 }}>{e.Description}</p>}
-                      </div>
-                      <div style={{ flexShrink:0, textAlign:'right' }}>
-                        <p style={{ fontWeight:900, fontSize:'11px', color: e.Color||'#fbbf24', margin:0 }}>{e.Date}</p>
-                        {e.End_Date && e.End_Date!==e.Date && <p style={{ fontSize:'9px', color:'rgba(255,255,255,0.25)', margin:'2px 0 0' }}>→ {e.End_Date}</p>}
-                      </div>
+                  <div key={i} style={{
+                    background: isCurrent ? 'rgba(251,191,36,0.1)' : isPast ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${isCurrent ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                    borderLeft: `4px solid ${isCurrent ? '#fbbf24' : c ? '#60a5fa' : 'rgba(255,255,255,0.08)'}`,
+                    borderRadius:'12px', padding:'12px 14px',
+                    display:'flex', alignItems:'center', gap:'12px',
+                    opacity: isPast ? 0.5 : 1,
+                  }}>
+                    <div style={{ flexShrink:0, textAlign:'center', minWidth:'52px' }}>
+                      <div style={{ fontSize:'9px', color:'rgba(255,255,255,0.25)', marginBottom:'2px' }}>{p.start}</div>
+                      <div style={{ fontSize:'9px', color: isCurrent ? '#fbbf24' : 'rgba(255,255,255,0.2)', fontWeight:900 }}>{p.label}</div>
+                      <div style={{ fontSize:'9px', color:'rgba(255,255,255,0.25)' }}>{p.end}</div>
                     </div>
+                    <div style={{ flex:1 }}>
+                      {c ? (
+                        <>
+                          <p style={{ fontWeight:900, fontSize:'13px', color: isCurrent ? '#fbbf24' : '#fff', margin:'0 0 3px' }}>{c.Subject}</p>
+                          <div style={{ display:'flex', gap:'10px', flexWrap:'wrap' }}>
+                            {c.Teacher && <span style={{ fontSize:'9px', color:'rgba(255,255,255,0.3)' }}>👤 {c.Teacher}</span>}
+                            {c.Room    && <span style={{ fontSize:'9px', color:'rgba(255,255,255,0.3)' }}>🚪 {c.Room}</span>}
+                          </div>
+                        </>
+                      ) : (
+                        <p style={{ fontSize:'11px', color:'rgba(255,255,255,0.2)', fontStyle:'italic', margin:0 }}>— သတ်မှတ်မထားပါ —</p>
+                      )}
+                    </div>
+                    {isCurrent && (
+                      <div style={{ flexShrink:0, background:'#fbbf24', color:'#0f172a', fontSize:'8px', fontWeight:900, padding:'3px 8px', borderRadius:'99px', textTransform:'uppercase' }}>Now</div>
+                    )}
                   </div>
                 );
               })}
             </div>
 
-            {/* This month events */}
-            {monthEvents.length > 0 && (
-              <div>
-                <p style={{ fontSize:'9px', color:'rgba(255,255,255,0.25)', textTransform:'uppercase', letterSpacing:'0.15em', fontWeight:900, margin:'0 0 10px' }}>This Month — {MONTHS[viewDate.month]}</p>
-                {monthEvents.sort((a,b)=>a.Date>b.Date?1:-1).map((e,i) => (
-                  <div key={i} style={{ display:'flex', gap:'12px', alignItems:'flex-start', padding:'8px 0', borderBottom:'1px solid rgba(255,255,255,0.05)' }}>
-                    <div style={{ width:'36px', height:'36px', borderRadius:'10px', background:`${e.Color||'#fbbf24'}22`, border:`1px solid ${e.Color||'#fbbf24'}44`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                      <span style={{ fontSize:'9px', fontWeight:900, color:e.Color||'#fbbf24' }}>{(e.Date||'').split('-')[2]}</span>
-                    </div>
-                    <div>
-                      <p style={{ fontWeight:900, fontSize:'12px', color:'#fff', margin:'0 0 2px' }}>{e.Title}</p>
-                      <p style={{ fontSize:'9px', color:'rgba(255,255,255,0.3)', margin:0 }}>{e.Type||'Event'}{e.Description?' · '+e.Description:''}</p>
-                    </div>
-                  </div>
-                ))}
+            {/* Full week grid (compact) */}
+            <div style={S.card}>
+              <p style={{ fontSize:'9px', color:'rgba(255,255,255,0.25)', textTransform:'uppercase', letterSpacing:'0.15em', fontWeight:900, margin:'0 0 12px' }}>Weekly Overview</p>
+              <div style={{ overflowX:'auto' }}>
+                <table style={{ width:'100%', borderCollapse:'collapse', minWidth:'420px' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding:'4px 6px', fontSize:'8px', color:'rgba(255,255,255,0.25)', textAlign:'left', fontWeight:900, letterSpacing:'0.1em', textTransform:'uppercase' }}>Period</th>
+                      {activeDays.map(d => (
+                        <th key={d} style={{ padding:'4px 6px', fontSize:'8px', color: d===todayDay?'#fbbf24':'rgba(255,255,255,0.25)', textAlign:'center', fontWeight:900, textTransform:'uppercase' }}>
+                          {DAYS_SHORT[DAYS.indexOf(d)] || d.slice(0,3)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {periods.filter(p=>!p.isBreak).map((p,i) => (
+                      <tr key={i}>
+                        <td style={{ padding:'4px 6px', fontSize:'8px', color:'rgba(255,255,255,0.3)', whiteSpace:'nowrap' }}>{p.label}</td>
+                        {activeDays.map(day => {
+                          const c = cells[`${day}_${String(p.no)}`];
+                          const isNow = day===todayDay && currentPeriod===p.no;
+                          return (
+                            <td key={day} style={{ padding:'4px 6px', textAlign:'center' }}>
+                              <div style={{ fontSize:'9px', fontWeight:900, color: isNow ? '#fbbf24' : c ? '#60a5fa' : 'rgba(255,255,255,0.1)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'60px' }}>
+                                {c?.Subject?.split(' ')[0] || '—'}
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            )}
+            </div>
           </>
         )}
       </div>
