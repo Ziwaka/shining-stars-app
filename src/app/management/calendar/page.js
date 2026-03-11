@@ -750,61 +750,80 @@ export default function CalendarTimetablePage() {
                     {!teacherLoading && teacherAllRows.length > 0 && (() => {
                       const activeDays = (cfg.days||[]).filter(day => teacherAllRows.some(r=>r.day===day));
 
-                      // ── 12hr AM/PM converter ──
+                      // ── 12hr converter ──
                       const to12 = (t) => {
                         if (!t) return '';
                         const [hh,mm] = t.split(':').map(Number);
                         if (isNaN(hh)||isNaN(mm)) return t;
                         const ampm = hh < 12 ? 'AM' : 'PM';
                         const h = hh % 12 || 12;
-                        return h + ':' + String(mm).padStart(2,'0') + ' ' + ampm;
+                        return h+':'+String(mm).padStart(2,'0')+' '+ampm;
                       };
-                      const toRange = (s,e) => s ? to12(s) + ' – ' + to12(e) : '';
+                      const toRange = (s,e) => s ? to12(s)+' – '+to12(e) : '';
+                      const toMins = (t) => { if(!t) return 9999; const [h,m]=t.split(':').map(Number); return h*60+(m||0); };
 
-                      // ── FIX: ဆရာ ကြုံတဲ့ grade အားလုံးရဲ့ period config ကို merge ──
-                      // Default ပဲ ဆွဲရင် afternoon/other-grade periods ကို time မရ
-                      const _fixBrk = (arr) => (arr||[]).map((p,idx2) => {
+                      const _fixBrk = (arr) => (arr||[]).map((p,i2) => {
                         const lbl = String(p.label||'').toLowerCase();
                         const auto = ['break','lunch','recess','duty','assembly','prayer','chapel','နားချိန်','အနားယူ'].some(kw=>lbl.includes(kw));
-                        return { ...p, no: String(p.no ?? (idx2+1)), isBreak: p.isBreak===true||p.isBreak==='true'||auto };
+                        return { ...p, no: String(p.no??(i2+1)), isBreak: p.isBreak===true||p.isBreak==='true'||auto };
                       });
 
-                      // ဆရာ ကြုံတဲ့ grade unique list
-                      const _taughtGrades = [...new Set(teacherAllRows.map(r=>String(r.grade)))];
+                      const _getGradeCfg = (g, sec) => {
+                        const pbg = cfg.periods_by_grade || {};
+                        return _fixBrk(pbg['Grade '+g+(sec||'')] || pbg['Grade '+g] || pbg[g] || pbg['default'] || cfg.periods || []);
+                      };
 
-                      // Grade တစ်ခုချင်းစီ + default ကနေ period list ဆောက် → Map by period no
-                      const _periodMap = new Map(); // no → period obj (best data wins)
-                      const _allConfigs = [
-                        cfg.periods_by_grade?.default || cfg.periods || [],
-                        ..._taughtGrades.map(g => {
-                          const pbg = cfg.periods_by_grade || {};
-                          // Try Grade 12A, Grade 12, then default
-                          return pbg['Grade '+g] || pbg[g] || pbg['default'] || cfg.periods || [];
-                        }),
-                        ...Object.values(cfg.periods_by_grade || {}),
-                      ];
+                      // ── TIME-BASED TIMELINE ──
+                      // Grade တစ်ခုချင်းစီ မတူတဲ့ period time ရှိနိုင် → period number မဟုတ်ဘဲ
+                      // actual start time ကို key အဖြစ်သုံး
 
-                      _allConfigs.forEach(arr => {
-                        _fixBrk(arr).forEach(p => {
-                          const existing = _periodMap.get(p.no);
-                          // Keep entry with more info (has start time) or first seen
-                          if (!existing || (!existing.start && p.start)) {
-                            _periodMap.set(p.no, p);
+                      // Step 1: teacherAllRows တစ်ခုချင်းစီကို grade config ကနေ time attach လုပ်
+                      const rowsWithTime = teacherAllRows.map(r => {
+                        const gCfg = _getGradeCfg(String(r.grade), r.section);
+                        const pCfg = gCfg.find(p=>p.no===String(r.period));
+                        return { ...r, start: pCfg?.start||'', end: pCfg?.end||'', label: pCfg?.label||('Period '+r.period), isBreak: pCfg?.isBreak||false };
+                      });
+
+                      // Step 2: time slots — unique start times from actual class rows
+                      const classSlotMap = new Map(); // startTime → { start, end, label }
+                      rowsWithTime.forEach(r => {
+                        if (r.start && !classSlotMap.has(r.start)) {
+                          classSlotMap.set(r.start, { start: r.start, end: r.end, label: r.label, isBreak: false });
+                        }
+                      });
+
+                      // Step 3: break slots — from ALL taught grades' configs, between class slots
+                      const taughtGrades = [...new Set(teacherAllRows.map(r=>String(r.grade)))];
+                      const breakSlotMap = new Map();
+                      taughtGrades.forEach(g => {
+                        _getGradeCfg(g, '').filter(p=>p.isBreak && p.start).forEach(p => {
+                          if (!classSlotMap.has(p.start) && !breakSlotMap.has(p.start)) {
+                            breakSlotMap.set(p.start, { start: p.start, end: p.end, label: p.label, isBreak: true });
                           }
                         });
                       });
 
-                      // Sort by period number, filter to only periods that exist in any config
-                      const _taughtNos = new Set(teacherAllRows.map(r=>String(r.period)));
-                      // Include ALL periods from any config (for proper ordering + break detection)
-                      const _allP = [..._periodMap.values()].sort((a,b)=>Number(a.no)-Number(b.no));
+                      // Step 4: merge class + break slots, sort by start time
+                      const timeline = [...classSlotMap.values(), ...breakSlotMap.values()]
+                        .sort((a,b) => toMins(a.start) - toMins(b.start));
+
+                      // Remove break slots that are surrounded only by empty class slots
+                      // (keep breaks only if they fall between actual class times)
+                      const classMinTimes = [...classSlotMap.values()].map(s=>toMins(s.start));
+                      const minClass = Math.min(...classMinTimes);
+                      const maxClass = Math.max(...classMinTimes);
+                      const visibleTimeline = timeline.filter(slot => {
+                        if (!slot.isBreak) return true;
+                        const t = toMins(slot.start);
+                        return t >= minClass && t <= maxClass;
+                      });
 
                       return (
                         <div style={{overflowX:'auto'}}>
                           <table style={{width:'100%',borderCollapse:'collapse',minWidth:'400px'}}>
                             <thead>
                               <tr>
-                                <th style={{padding:'6px 8px',fontSize:'9px',color:'rgba(255,255,255,0.3)',textAlign:'left',borderBottom:'1px solid rgba(255,255,255,0.08)',minWidth:'80px'}}>Period</th>
+                                <th style={{padding:'6px 8px',fontSize:'9px',color:'rgba(255,255,255,0.3)',textAlign:'left',borderBottom:'1px solid rgba(255,255,255,0.08)',minWidth:'90px'}}>Time</th>
                                 {activeDays.map(d=>(
                                   <th key={d} style={{padding:'6px 8px',fontSize:'9px',color:WEEKEND_DAYS.has(d)?'rgba(251,191,36,0.6)':'rgba(255,255,255,0.5)',textAlign:'center',borderBottom:'1px solid rgba(255,255,255,0.08)',fontWeight:900}}>
                                     {DAYS_SHORT[['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].indexOf(d)]||d.slice(0,3)}
@@ -813,37 +832,28 @@ export default function CalendarTimetablePage() {
                               </tr>
                             </thead>
                             <tbody>
-                              {_allP.map((p,pi)=>{
-                                const pNo = p.no;
-                                const hasCls = _taughtNos.has(pNo);
-
-                                // ── CONFIG says BREAK → ALWAYS show as break divider ──
-                                // Even if data has a class there (data entry error) — trust config
-                                if (p.isBreak) return (
-                                  <tr key={'brk-'+pi} style={{background:'rgba(251,191,36,0.04)'}}>
+                              {visibleTimeline.map((slot,si)=>{
+                                if (slot.isBreak) return (
+                                  <tr key={'brk-'+si} style={{background:'rgba(251,191,36,0.04)'}}>
                                     <td colSpan={activeDays.length+1} style={{padding:'4px 8px',borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
                                       <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
                                         <div style={{flex:1,height:'1px',background:'rgba(251,191,36,0.15)'}}/>
                                         <span style={{fontSize:'8px',fontWeight:900,color:'rgba(251,191,36,0.45)',letterSpacing:'0.08em'}}>
-                                          {p.label.toUpperCase()}{p.start ? '  ' + toRange(p.start,p.end) : ''}
+                                          {slot.label.toUpperCase()}{'  '}{toRange(slot.start,slot.end)}
                                         </span>
                                         <div style={{flex:1,height:'1px',background:'rgba(251,191,36,0.15)'}}/>
                                       </div>
                                     </td>
                                   </tr>
                                 );
-
-                                // ── Normal period row ──
                                 return (
-                                  <tr key={pNo+'-'+pi} style={{background:pi%2===0?'rgba(255,255,255,0.02)':'transparent'}}>
-                                    <td style={{padding:'6px 8px',borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'middle',minWidth:'80px'}}>
-                                      <div style={{fontSize:'9px',fontWeight:900,color:'rgba(255,255,255,0.55)'}}>{p.label}</div>
-                                      {p.start && (
-                                        <div style={{fontSize:'7px',color:'rgba(255,255,255,0.25)',marginTop:'1px'}}>{toRange(p.start,p.end)}</div>
-                                      )}
+                                  <tr key={'cls-'+si} style={{background:si%2===0?'rgba(255,255,255,0.02)':'transparent'}}>
+                                    <td style={{padding:'6px 8px',borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'middle'}}>
+                                      <div style={{fontSize:'8px',fontWeight:900,color:'rgba(255,255,255,0.55)'}}>{toRange(slot.start,slot.end)}</div>
                                     </td>
                                     {activeDays.map(day=>{
-                                      const row = teacherAllRows.find(r=>r.day===day && String(r.period)===pNo);
+                                      // Find row matching this day AND this exact start time
+                                      const row = rowsWithTime.find(r=>r.day===day && r.start===slot.start);
                                       return (
                                         <td key={day} style={{padding:'4px',borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'top',textAlign:'center'}}>
                                           {row ? (
@@ -903,61 +913,66 @@ export default function CalendarTimetablePage() {
                     };
                     const _pRange = (s,e) => s ? _pto12(s) + ' – ' + _pto12(e) : '';
 
-                    // ── Print: merge all grade configs (same as screen view) ──
+                    // ── Print: TIME-BASED timeline (same logic as screen) ──
                     const _pfixBrk = (arr) => (arr||[]).map((p,i2) => {
                       const lbl = String(p.label||'').toLowerCase();
                       const auto = ['break','lunch','recess','duty','assembly','prayer','chapel','နားချိန်','အနားယူ'].some(kw=>lbl.includes(kw));
-                      return { ...p, no: String(p.no ?? (i2+1)), isBreak: p.isBreak===true||p.isBreak==='true'||auto };
+                      return { ...p, no: String(p.no??(i2+1)), isBreak: p.isBreak===true||p.isBreak==='true'||auto };
                     });
-                    const _pGrades = [...new Set(printData.rows.map(r=>String(r.grade)))];
-                    const _pMap = new Map();
-                    [
-                      cfg.periods_by_grade?.default || cfg.periods || [],
-                      ..._pGrades.map(g => {
-                        const pbg = cfg.periods_by_grade || {};
-                        return pbg['Grade '+g] || pbg[g] || pbg['default'] || cfg.periods || [];
-                      }),
-                      ...Object.values(cfg.periods_by_grade || {}),
-                    ].forEach(arr => {
-                      _pfixBrk(arr).forEach(p => {
-                        const ex = _pMap.get(p.no);
-                        if (!ex || (!ex.start && p.start)) _pMap.set(p.no, p);
+                    const _pToMins = (t) => { if(!t) return 9999; const [h,m]=t.split(':').map(Number); return h*60+(m||0); };
+                    const _pGetGradeCfg = (g,sec) => {
+                      const pbg = cfg.periods_by_grade || {};
+                      return _pfixBrk(pbg['Grade '+g+(sec||'')] || pbg['Grade '+g] || pbg[g] || pbg['default'] || cfg.periods || []);
+                    };
+                    // Attach time to each row
+                    const _pRowsWT = printData.rows.map(r => {
+                      const gCfg = _pGetGradeCfg(String(r.grade), r.section);
+                      const pCfg = gCfg.find(p=>p.no===String(r.period));
+                      return { ...r, start: pCfg?.start||'', end: pCfg?.end||'', isBreak: pCfg?.isBreak||false };
+                    });
+                    // Class slots
+                    const _pClassSlots = new Map();
+                    _pRowsWT.forEach(r => { if(r.start && !_pClassSlots.has(r.start)) _pClassSlots.set(r.start, { start:r.start, end:r.end, isBreak:false }); });
+                    // Break slots
+                    const _pBreakSlots = new Map();
+                    [...new Set(printData.rows.map(r=>String(r.grade)))].forEach(g => {
+                      _pGetGradeCfg(g,'').filter(p=>p.isBreak&&p.start).forEach(p => {
+                        if(!_pClassSlots.has(p.start)&&!_pBreakSlots.has(p.start)) _pBreakSlots.set(p.start,{start:p.start,end:p.end,label:p.label,isBreak:true});
                       });
                     });
-                    const _pAllP = [..._pMap.values()].sort((a,b)=>Number(a.no)-Number(b.no));
-                    const _pTaughtNos = new Set(printData.rows.map(r=>String(r.period)));
+                    const _pMinC = Math.min(...[..._pClassSlots.keys()].map(_pToMins));
+                    const _pMaxC = Math.max(...[..._pClassSlots.keys()].map(_pToMins));
+                    const _pTimeline = [..._pClassSlots.values(), ..._pBreakSlots.values()]
+                      .filter(s => !s.isBreak || (_pToMins(s.start)>=_pMinC && _pToMins(s.start)<=_pMaxC))
+                      .sort((a,b)=>_pToMins(a.start)-_pToMins(b.start));
 
                     return (
                     <div id="tt-personal-print" style={{display:'none'}}>
                       <table style={{width:'100%',borderCollapse:'collapse',fontSize:'8pt',fontFamily:'Arial,sans-serif',tableLayout:'fixed'}}>
                         <thead>
                           <tr style={{background:'#1a1a2e'}}>
-                            <th style={{border:'1px solid #ccc',padding:'4px 6px',textAlign:'left',color:'#fff',width:'90px'}}>Period</th>
+                            <th style={{border:'1px solid #ccc',padding:'4px 6px',textAlign:'left',color:'#fff',width:'90px'}}>Time</th>
                             {(cfg.days||[]).map(d=>(
                               <th key={d} style={{border:'1px solid #ccc',padding:'4px 6px',textAlign:'center',color:'#fff',background:['Saturday','Sunday'].includes(d)?'#2a0a0a':'#1a1a2e',wordBreak:'break-word'}}>{d.slice(0,3).toUpperCase()}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
-                          {_pAllP.map((p,pi)=>{
-                            const pNo = p.no;
-                            // Break → divider row (always, trust config)
-                            if (p.isBreak) return (
-                              <tr key={'pbrk-'+pi} style={{background:'#fffbeb'}}>
+                          {_pTimeline.map((slot,si)=>{
+                            if (slot.isBreak) return (
+                              <tr key={'pbrk-'+si} style={{background:'#fffbeb'}}>
                                 <td colSpan={(cfg.days||[]).length+1} style={{border:'1px solid #e5e7eb',padding:'2px 8px',textAlign:'center',color:'#92400e',fontSize:'6.5pt',fontStyle:'italic',letterSpacing:'0.04em',whiteSpace:'nowrap'}}>
-                                  — {p.label.toUpperCase()}{p.start ? '  ' + _pRange(p.start,p.end) : ''} —
+                                  — {(slot.label||'Break').toUpperCase()}{slot.start ? '  '+_pRange(slot.start,slot.end) : ''} —
                                 </td>
                               </tr>
                             );
-                            // Non-break → class row
                             return (
-                            <tr key={`print-${pNo}`} style={{background:pi%2===0?'#f9f9f9':'#fff'}}>
-                              <td style={{border:'1px solid #ddd',padding:'3px 5px',fontWeight:700,fontSize:'7.5pt',color:'#333',width:'90px',wordBreak:'break-word'}}>
-                                <div>{p.label}</div>
-                                {p.start && <div style={{fontWeight:400,color:'#888',fontSize:'6.5pt',marginTop:'1px'}}>{_pRange(p.start,p.end)}</div>}
+                            <tr key={'prow-'+si} style={{background:si%2===0?'#f9f9f9':'#fff'}}>
+                              <td style={{border:'1px solid #ddd',padding:'3px 5px',fontWeight:700,fontSize:'7pt',color:'#333',width:'90px',wordBreak:'break-word'}}>
+                                <div style={{fontWeight:400,color:'#555',fontSize:'6.5pt'}}>{_pRange(slot.start,slot.end)}</div>
                               </td>
                               {(cfg.days||[]).map(day=>{
-                                const row = printData.rows.find(r=>r.day===day && String(r.period)===pNo);
+                                const row = _pRowsWT.find(r=>r.day===day && r.start===slot.start);
                                 return (
                                   <td key={day} style={{border:'1px solid #ddd',padding:'3px 4px',verticalAlign:'top',wordBreak:'break-word'}}>
                                     {row ? (
