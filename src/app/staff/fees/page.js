@@ -40,9 +40,8 @@ export default function FeesManagementHub() {
     initRef.current = true;
     const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
     if (!auth) { router.push('/login'); return; }
-    const hasPerm = auth.userRole==='management' || auth.Position==='GM'
-      || auth['Can_Manage_Fees']===true || String(auth['Can_Manage_Fees']).toUpperCase()==='TRUE';
-    if (!hasPerm) { router.push('/staff'); return; }
+    const checkPerm = (key) => auth.userRole==='management' || auth[key]===true || String(auth[key]||'').toUpperCase()==='TRUE';
+    if (!checkPerm('Can_Manage_Fees')) { router.push('/staff'); return; }
     setStaff(auth);
     fetchAll();
   }, []);

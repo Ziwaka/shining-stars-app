@@ -52,9 +52,11 @@ export default function CalendarTimetablePage() {
   const [editCfg, setEditCfg]   = useState(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem('user');
+    const saved = localStorage.getItem('user') || sessionStorage.getItem('user');
     if (!saved) { router.push('/login'); return; }
     const u = JSON.parse(saved);
+    const hasPerm = (key) => u.userRole==='management' || u[key]===true || String(u[key]||'').toUpperCase()==='TRUE';
+    if (!hasPerm('Can_Manage_Events')) { router.push('/staff'); return; }
     setUser(u);
     setIsMgt(u.userRole === 'management');
     fetchAll(u);

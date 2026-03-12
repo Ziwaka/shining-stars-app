@@ -1,289 +1,426 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 
-const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const VDAYS      = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const WEEKEND_DAYS = new Set(['Saturday','Sunday']);
 
-const S = {
-  page:   { display:'flex', flexDirection:'column', height:'100dvh', overflow:'hidden', background:'#0f0a1e', color:'#fff', fontFamily:'system-ui,sans-serif' },
-  header: { flexShrink:0, background:'rgba(15,10,30,0.97)', backdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.07)', padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' },
-  card:   { background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'16px', padding:'16px' },
+// Vivid subject colors — high contrast text on colored bg
+const SUBJECT_PALETTES = [
+  {bg:'#1e40af',text:'#bfdbfe',accent:'#93c5fd'},
+  {bg:'#6b21a8',text:'#e9d5ff',accent:'#c084fc'},
+  {bg:'#065f46',text:'#a7f3d0',accent:'#6ee7b7'},
+  {bg:'#92400e',text:'#fde68a',accent:'#fbbf24'},
+  {bg:'#9f1239',text:'#fecdd3',accent:'#fb7185'},
+  {bg:'#164e63',text:'#a5f3fc',accent:'#67e8f9'},
+  {bg:'#3b0764',text:'#e9d5ff',accent:'#d8b4fe'},
+  {bg:'#422006',text:'#fed7aa',accent:'#fdba74'},
+  {bg:'#1a2e05',text:'#d9f99d',accent:'#bef264'},
+  {bg:'#0c4a6e',text:'#bae6fd',accent:'#7dd3fc'},
+];
+const scMap = {};
+const getSC = (subjects, subject) => {
+  if (!subject) return SUBJECT_PALETTES[0];
+  if (!scMap[subject]) {
+    const idx = subjects.indexOf(subject);
+    scMap[subject] = SUBJECT_PALETTES[(idx>=0?idx:Object.keys(scMap).length) % SUBJECT_PALETTES.length];
+  }
+  return scMap[subject];
 };
 
-const fixBreak = (p) =>
-  p.isBreak===true || p.isBreak==='true' ||
-  String(p.label).toLowerCase().includes('break') ||
-  String(p.label).toLowerCase().includes('lunch') ||
-  String(p.label).toLowerCase().includes('recess');
+const normPeriods = (arr) => (arr||[]).map((p,i) => {
+  const lbl = String(p.label||'').toLowerCase();
+  const auto = ['break','lunch','recess','duty','assembly','prayer','chapel','နားချိန်','အနားယူ'].some(kw=>lbl.includes(kw));
+  return { ...p, no: String(p.no??(i+1)), isBreak: p.isBreak===true||p.isBreak==='true'||auto };
+});
+const getWidestPeriods = (cfg) => {
+  if (!cfg) return [];
+  const vals = Object.values(cfg.periods_by_grade||{});
+  if (!vals.length) return normPeriods(cfg.periods||[]);
+  return normPeriods(vals.reduce((a,b)=>(b||[]).length>(a||[]).length?b:a,[]));
+};
+const to12    = (t) => { if(!t)return''; const[hh,mm]=t.split(':').map(Number); if(isNaN(hh))return t; return`${hh%12||12}:${String(mm).padStart(2,'0')}${hh<12?'am':'pm'}`; };
+const toRange = (s,e) => s?`${to12(s)} – ${to12(e)}`:'';
+const toMins  = (t) => { if(!t)return 9999; const[h,m]=t.split(':').map(Number); return h*60+(m||0); };
+const myName  = (u) => (u?.['Name (ALL CAPITAL)']||u?.Name||u?.name||u?.username||'').trim();
 
 export default function StaffTimetablePage() {
-  const router = useRouter();
-  const [user, setUser]       = useState(null);
-  const [cfg, setCfg]         = useState(null);
-  const [rows, setRows]       = useState([]);
-  const [selDay, setSelDay]   = useState('');
-  const [loading, setLoading] = useState(true);
+  const router  = useRouter();
+  const cfgRef  = useRef(null);
+
+  const [user,        setUser]        = useState(null);
+  const [cfg,         setCfg]         = useState(null);
+  const [myRows,      setMyRows]      = useState([]);
+  const [allRows,     setAllRows]     = useState([]);
+  const [allTeachers, setAllTeachers] = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [selDay,      setSelDay]      = useState('');
+  const [cmpTeacher,  setCmpTeacher]  = useState('');
+  const [cmpSearch,   setCmpSearch]   = useState('');
+  const [showOverview,setShowOverview]= useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem('user') || sessionStorage.getItem('user');
+    const saved = localStorage.getItem('user')||sessionStorage.getItem('user');
     if (!saved) { router.push('/login'); return; }
     const u = JSON.parse(saved);
     setUser(u);
-    setSelDay(DAYS[new Date().getDay()]);
-    fetchAll(u);
-  }, []);
+    setSelDay(VDAYS[new Date().getDay()]);
+    fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getTimetableConfig'})})
+      .then(r=>r.json()).then(data=>{
+        if (!data.success) return;
+        let raw = data.config;
+        if (Array.isArray(raw.grades)) { const o={}; raw.grades.forEach(g=>{o[g]=['A'];}); raw.grades=o; }
+        if (!raw.grades||typeof raw.grades!=='object') raw.grades={};
+        if (!raw.periods_by_grade) raw.periods_by_grade={default:raw.periods||[]};
+        raw.periods=normPeriods(raw.periods);
+        Object.keys(raw.periods_by_grade).forEach(k=>{raw.periods_by_grade[k]=normPeriods(raw.periods_by_grade[k]);});
+        cfgRef.current=raw; setCfg(raw);
+      }).catch(()=>{});
+  },[]);
 
-  const teacherName = (u) => u?.['Name (ALL CAPITAL)'] || u?.Name || u?.name || u?.username || '';
-
-  const fetchAll = async (u) => {
-    const name = teacherName(u);
-    try {
-      const [cfgRes, ttRes] = await Promise.all([
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetableConfig' }) }),
-        // ★ FIX: GAS now does case-insensitive match, but we send the best name we have
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetable', teacher: name }) }),
-      ]);
-      const cfgData = await cfgRes.json();
-      const ttData  = await ttRes.json();
-      if (cfgData.success) {
-        const raw = cfgData.config;
-        if (!raw.periods?.length) {
-          const pbg = raw.periods_by_grade || {};
-          raw.periods = pbg['default'] || pbg[Object.keys(pbg)[0]] || [];
-        }
-        if (raw.periods) raw.periods = raw.periods.map((p,i) => ({ ...p, no: p.no ?? (i+1), isBreak: fixBreak(p) }));
-        setCfg(raw);
+  useEffect(()=>{
+    if (!cfg||!user) return;
+    const me = myName(user);
+    if (!me) return;
+    let cancelled=false;
+    setLoading(true);
+    const mine=[], everyone=[];
+    const fetchGrade = async(g)=>{
+      for(let i=0;i<2;i++){
+        try{
+          const r=await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getTimetable',grade:g})});
+          const d=await r.json(); if(d.success) return d.data||[];
+        }catch{}
+        if(i===0) await new Promise(r=>setTimeout(r,800));
       }
-      if (ttData.success) {
-        let rows = ttData.data || [];
-        // ★ FIX: Client-side case-insensitive safety filter — handles any remaining mismatches
-        // (e.g. if GAS returned extra rows due to partial match)
-        if (name && rows.length > 0) {
-          const nameLower = name.trim().toLowerCase();
-          const filtered = rows.filter(r => {
-            const main = String(r.Teacher      || '').trim().toLowerCase();
-            const asst = String(r.Asst_Teacher || '').trim().toLowerCase();
-            return main === nameLower || asst === nameLower;
+      return [];
+    };
+    const run=async()=>{
+      const grades=Object.keys(cfg.grades||{});
+      for(let i=0;i<grades.length;i+=3){
+        if(cancelled) break;
+        await Promise.all(grades.slice(i,i+3).map(async g=>{
+          const rows=await fetchGrade(g);
+          if(cancelled) return;
+          rows.forEach(row=>{
+            let day=String(row.Day||'');
+            if(!VDAYS.includes(day)){const p=day.split('_');day=p.find(x=>VDAYS.includes(x))||day;}
+            const base={day,period:String(row.Period_No),subject:row.Subject||'',grade:String(row.Grade||''),section:String(row.Section||''),room:row.Room||'',teacher:row.Teacher||'',asst:row.Asst_Teacher||''};
+            everyone.push(base);
+            if(row.Teacher===me||row.Asst_Teacher===me) mine.push({...base,isAsst:row.Teacher!==me});
           });
-          // Only use filter result if it found something; otherwise keep all (avoid empty screen)
-          if (filtered.length > 0) rows = filtered;
-        }
-        setRows(rows);
+        }));
+        if(!cancelled){setMyRows([...mine]);setAllRows([...everyone]);}
       }
-    } catch {}
-    setLoading(false);
+      if(!cancelled){
+        // myRows: teacher can't be 2 places same time → day+period unique
+        const dedupMine=(arr)=>{const seen=new Set();return arr.filter(r=>{const k=r.day+'_'+r.period;if(seen.has(k))return false;seen.add(k);return true;});};
+        // allRows: keep all teachers but remove exact duplicates
+        const dedupAll=(arr)=>{const seen=new Set();return arr.filter(r=>{const k=r.day+'_'+r.period+'_'+r.teacher+'_'+r.grade+'_'+r.section;if(seen.has(k))return false;seen.add(k);return true;});};
+        const dm=dedupMine(mine), de=dedupAll(everyone);
+        // Filter out rows that fall on break periods
+        const cfg = cfgRef.current;
+        const fp = cfg ? getWidestPeriods(cfg) : [];
+        const breakNos = new Set(fp.filter(p=>p.isBreak).map(p=>p.no));
+        const dmFiltered = dm.filter(r => !breakNos.has(r.period));
+        setMyRows(dmFiltered); setAllRows(de);
+        const ts=new Set(); de.forEach(r=>{if(r.teacher)ts.add(r.teacher);if(r.asst)ts.add(r.asst);}); ts.delete(me);
+        setAllTeachers([...ts].sort());
+        setLoading(false);
+      }
+    };
+    run();
+    return()=>{cancelled=true;setLoading(false);};
+  },[cfg,user]);
+
+  const now      = new Date();
+  const todayDay = VDAYS[now.getDay()];
+  const nowMins  = now.getHours()*60+now.getMinutes();
+  const me       = myName(user);
+  const subjects = cfg?.subjects||[];
+  const allDays  = cfg?.days||[];
+  const frame    = cfg ? getWidestPeriods(cfg) : [];
+  const curP     = frame.find(p=>!p.isBreak&&p.start&&p.end&&toMins(p.start)<=nowMins&&nowMins<toMins(p.end))||null;
+  const myDays   = new Set(myRows.map(r=>r.day));
+  const getMyRow = (day,no) => myRows.find(r=>r.day===day&&r.period===String(no));
+  const getCmpRow= (day,no) => cmpTeacher?allRows.find(r=>r.day===day&&r.period===String(no)&&(r.teacher===cmpTeacher||r.asst===cmpTeacher)):null;
+  const filtered = allTeachers.filter(t=>!cmpSearch||t.toLowerCase().includes(cmpSearch.toLowerCase()));
+
+  const handlePrint=()=>{
+    let h=`<html><head><title>${me}</title><style>body{font-family:Arial;font-size:11px;padding:20px}h2{margin:0 0 6px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:6px;text-align:center;font-size:10px}th{background:#f0f0f0}.my{background:#fffbeb}.br td{background:#fef9c3;font-style:italic}@media print{@page{margin:1cm}}</style></head><body><h2>${me} — Timetable</h2><table><tr><th>Time</th>${allDays.map(d=>`<th>${DAYS_SHORT[VDAYS.indexOf(d)]||d.slice(0,3)}</th>`).join('')}</tr>`;
+    frame.forEach(p=>{
+      if(p.isBreak){h+=`<tr class="br"><td colspan="${allDays.length+1}">${p.label}${p.start?' · '+toRange(p.start,p.end):''}</td></tr>`;return;}
+      h+=`<tr><td>${p.start?toRange(p.start,p.end):'P'+p.no}</td>`;
+      allDays.forEach(d=>{const r=getMyRow(d,p.no);h+=r?`<td class="my"><b>${r.subject}</b><br>G${r.grade}${r.section}</td>`:`<td>—</td>`;});
+      h+=`</tr>`;
+    });
+    h+=`</table></body></html>`;
+    const w=window.open('','_blank'); w.document.write(h); w.document.close(); setTimeout(()=>w.print(),400);
   };
 
-  const todayDay   = DAYS[new Date().getDay()];
-  const activeDays = cfg?.days || [];
-  const periods    = cfg?.periods || [];
-  const nowMins    = new Date().getHours()*60 + new Date().getMinutes();
-  const toMins     = (t) => { if(!t) return 0; const[h,m]=t.split(':').map(Number); return h*60+(m||0); };
-  const currentPeriod = selDay===todayDay
-    ? (periods.find(p => !fixBreak(p) && p.start && toMins(p.start)<=nowMins && nowMins<toMins(p.end))?.no ?? null)
-    : null;
-  const getCell = (day, periodNo) => rows.find(r => r.Day===day && String(r.Period_No)===String(periodNo)) || null;
-
-  // ── PRINT ──────────────────────────────────────────────────
-  const handlePrint = () => {
-    const name = teacherName(user);
-    let html = `<html><head><title>${name} - Personal Timetable</title><style>
-      body{font-family:Arial,sans-serif;font-size:11px;color:#000;padding:24px;margin:0}
-      h2{margin:0 0 2px;font-size:18px}p.sub{margin:0 0 16px;color:#666;font-size:11px}
-      table{border-collapse:collapse;width:100%}
-      th,td{border:1px solid #ccc;padding:7px 9px;text-align:center;font-size:10px;vertical-align:top}
-      th{background:#f5f5f5;font-weight:bold}td.period{text-align:left;white-space:nowrap;color:#555}
-      .break-row td{background:#fffbea;color:#92400e;font-style:italic;text-align:center}
-      strong{display:block;font-size:11px}.grade{font-size:9px;color:#888}.room{font-size:9px;color:#555}
-      @media print{@page{margin:1cm}}</style></head><body>
-    <h2>📅 ${name}</h2>
-    <p class="sub">Personal Timetable · Shining Stars School · ${new Date().toLocaleDateString()}</p>
-    <table><thead><tr><th>Period</th><th>Time</th>${activeDays.map(d=>`<th>${DAYS_SHORT[DAYS.indexOf(d)]||d.slice(0,3)}</th>`).join('')}</tr></thead><tbody>`;
-    periods.forEach(p => {
-      if (fixBreak(p)) {
-        html += `<tr class="break-row"><td colspan="${activeDays.length+2}">${p.label}&nbsp;&nbsp;${p.start||''}–${p.end||''}</td></tr>`;
-      } else {
-        html += `<tr><td class="period">${p.label}</td><td class="period">${p.start||''}–${p.end||''}</td>`;
-        activeDays.forEach(day => {
-          const r = rows.find(r=>r.Day===day && String(r.Period_No)===String(p.no));
-          html += r
-            ? `<td><strong>${r.Subject}</strong>${r.Grade?`<span class="grade"> G${r.Grade}${r.Section||''}</span>`:''}${r.Room?`<span class="room"> 🚪${r.Room}</span>`:''}</td>`
-            : `<td style="color:#ddd">—</td>`;
-        });
-        html += `</tr>`;
-      }
-    });
-    html += `</tbody></table></body></html>`;
-    const w = window.open('','_blank','width=1000,height=700');
-    w.document.write(html); w.document.close(); w.focus();
-    setTimeout(() => w.print(), 400);
-  };
-
-  // ── CSV EXPORT ─────────────────────────────────────────────
-  const handleExcel = () => {
-    const name = teacherName(user);
-    let csv = `Personal Timetable - ${name}\nShining Stars School · ${new Date().toLocaleDateString()}\n\n`;
-    csv += `Period,Time,${activeDays.map(d=>DAYS_SHORT[DAYS.indexOf(d)]||d.slice(0,3)).join(',')}\n`;
-    periods.forEach(p => {
-      if (fixBreak(p)) {
-        csv += `"${p.label} (Break)","${p.start||''}-${p.end||''}",${activeDays.map(()=>'').join(',')}\n`;
-      } else {
-        const cells = activeDays.map(day => {
-          const r = rows.find(r=>r.Day===day && String(r.Period_No)===String(p.no));
-          return r ? `"${r.Subject}${r.Grade?' G'+r.Grade+(r.Section||''):''}${r.Room?' R:'+r.Room:''}"` : '';
-        });
-        csv += `"${p.label}","${p.start||''}-${p.end||''}",${cells.join(',')}\n`;
-      }
-    });
-    const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'});
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href=url; a.download=`Timetable_${name.replace(/\s+/g,'_')}.csv`;
-    a.click(); URL.revokeObjectURL(url);
+  // ─── STYLES ───────────────────────────────────────────────────────────────
+  const S = {
+    page:    {display:'flex',flexDirection:'column',height:'100dvh',overflow:'hidden',background:'#0a0a0f',color:'#f1f5f9',fontFamily:"'DM Sans',system-ui,sans-serif"},
+    header:  {flexShrink:0,background:'#0a0a0f',borderBottom:'1px solid rgba(255,255,255,0.08)',padding:'14px 16px',display:'flex',alignItems:'center',justifyContent:'space-between'},
+    body:    {flex:1,overflowY:'auto',WebkitOverflowScrolling:'touch',paddingBottom:90},
+    inner:   {padding:'0 16px 16px',maxWidth:680,margin:'0 auto',display:'flex',flexDirection:'column',gap:16},
+    card:    {background:'#13131a',border:'1px solid rgba(255,255,255,0.07)',borderRadius:16,overflow:'hidden'},
+    label:   {fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:'0.1em'},
   };
 
   return (
     <div style={S.page}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box}`}</style>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;900&display=swap');
+        @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+        *{box-sizing:border-box}
+        ::-webkit-scrollbar{width:0;height:0}
+      `}</style>
+
+      {/* ── Header ── */}
       <div style={S.header}>
-        <button onClick={()=>router.back()} style={{background:'none',border:'none',color:'rgba(255,255,255,0.4)',cursor:'pointer',fontSize:'14px'}}>← Back</button>
+        <button onClick={()=>router.back()} style={{background:'rgba(255,255,255,0.06)',border:'none',color:'rgba(255,255,255,0.6)',cursor:'pointer',fontSize:13,padding:'7px 12px',borderRadius:10,fontWeight:700}}>← Back</button>
         <div style={{textAlign:'center'}}>
-          <p style={{fontWeight:900,fontSize:'13px',textTransform:'uppercase',letterSpacing:'0.1em',margin:0}}>My Timetable</p>
-          <p style={{fontSize:'9px',color:'rgba(255,255,255,0.3)',margin:0}}>{user ? teacherName(user) : ''}</p>
+          <p style={{fontWeight:900,fontSize:14,margin:0,letterSpacing:'0.02em'}}>My Timetable</p>
+          {me && <p style={{fontSize:11,color:'rgba(255,255,255,0.4)',margin:0,marginTop:1}}>{me}</p>}
         </div>
-        <div style={{display:'flex',gap:'8px'}}>
-          <button onClick={handleExcel} title="CSV Export"
-            style={{background:'rgba(52,211,153,0.15)',border:'1px solid rgba(52,211,153,0.3)',color:'#6ee7b7',borderRadius:'10px',padding:'6px 12px',cursor:'pointer',fontSize:'13px'}}>
-            📊 CSV
-          </button>
-          <button onClick={handlePrint} title="Print"
-            style={{background:'rgba(96,165,250,0.15)',border:'1px solid rgba(96,165,250,0.3)',color:'#93c5fd',borderRadius:'10px',padding:'6px 12px',cursor:'pointer',fontSize:'13px'}}>
-            🖨️
-          </button>
-        </div>
+        <button onClick={handlePrint} style={{background:'rgba(255,255,255,0.06)',border:'none',color:'rgba(255,255,255,0.6)',borderRadius:10,padding:'7px 12px',cursor:'pointer',fontSize:13,fontWeight:700}}>Print</button>
       </div>
 
-      <div style={{flex:1,overflowY:'auto',WebkitOverflowScrolling:'touch',paddingBottom:'80px'}}>
-        <div style={{padding:'16px',maxWidth:'640px',margin:'0 auto',display:'flex',flexDirection:'column',gap:'12px'}}>
-          {loading ? (
-            <div style={{display:'flex',justifyContent:'center',padding:'60px 0'}}>
-              <div style={{width:'32px',height:'32px',border:'3px solid rgba(255,255,255,0.1)',borderTop:'3px solid #fbbf24',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/>
-            </div>
-          ) : (
-            <>
-              {/* Day tabs */}
-              <div style={{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'4px'}}>
-                {activeDays.map(day => {
-                  const isToday = day===todayDay; const isSel = day===selDay;
-                  const idx = DAYS.indexOf(day);
-                  const hasClass = rows.some(r=>r.Day===day);
-                  return (
-                    <button key={day} onClick={()=>setSelDay(day)}
-                      style={{flexShrink:0,padding:'8px 14px',borderRadius:'12px',border:'none',cursor:'pointer',fontWeight:900,fontSize:'10px',
-                        background:isSel?'#fbbf24':isToday?'rgba(251,191,36,0.1)':'rgba(255,255,255,0.05)',
-                        color:isSel?'#0f172a':isToday?'#fbbf24':hasClass?'rgba(255,255,255,0.7)':'rgba(255,255,255,0.3)',
-                        outline:isToday&&!isSel?'1px solid rgba(251,191,36,0.3)':'none'}}>
-                      {DAYS_SHORT[idx]||day.slice(0,3)}
-                      {isToday && <div style={{fontSize:'7px',marginTop:'2px',opacity:0.7}}>TODAY</div>}
-                    </button>
-                  );
-                })}
-              </div>
+      <div style={S.body}>
+        <div style={S.inner}>
 
-              {/* Day detail */}
-              <div style={{display:'flex',flexDirection:'column',gap:'6px'}}>
-                {periods.length===0 ? (
-                  <div style={{textAlign:'center',padding:'40px 0',color:'rgba(255,255,255,0.2)'}}>Config မသတ်မှတ်ရသေးပါ</div>
-                ) : periods.map((p,i) => {
-                  const isBreak = fixBreak(p);
-                  const cell    = isBreak ? null : getCell(selDay, p.no);
-                  const isCurrent = currentPeriod===p.no;
-                  const isPast  = selDay===todayDay && p.end && nowMins>toMins(p.end);
-                  if (isBreak) return (
-                    <div key={i} style={{display:'flex',alignItems:'center',gap:'12px',padding:'6px 8px'}}>
-                      <div style={{fontSize:'9px',color:'rgba(255,255,255,0.15)',minWidth:'80px',textAlign:'right'}}>{p.start}–{p.end}</div>
-                      <div style={{flex:1,height:'1px',background:'rgba(255,255,255,0.05)'}}/>
-                      <div style={{fontSize:'9px',color:'rgba(255,255,255,0.15)',fontStyle:'italic'}}>{p.label}</div>
-                      <div style={{flex:1,height:'1px',background:'rgba(255,255,255,0.05)'}}/>
-                    </div>
-                  );
-                  return (
-                    <div key={i} style={{
-                      background:isCurrent?'rgba(251,191,36,0.1)':cell?'rgba(96,165,250,0.07)':'rgba(255,255,255,0.03)',
-                      border:`1px solid ${isCurrent?'rgba(251,191,36,0.4)':cell?'rgba(96,165,250,0.2)':'rgba(255,255,255,0.06)'}`,
-                      borderLeft:`4px solid ${isCurrent?'#fbbf24':cell?'#60a5fa':'rgba(255,255,255,0.06)'}`,
-                      borderRadius:'12px',padding:'12px 14px',display:'flex',alignItems:'center',gap:'12px',opacity:isPast?0.5:1}}>
-                      <div style={{flexShrink:0,textAlign:'center',minWidth:'52px'}}>
-                        <div style={{fontSize:'9px',color:'rgba(255,255,255,0.25)',marginBottom:'2px'}}>{p.start}</div>
-                        <div style={{fontSize:'9px',color:isCurrent?'#fbbf24':'rgba(255,255,255,0.3)',fontWeight:900}}>{p.label}</div>
-                        <div style={{fontSize:'9px',color:'rgba(255,255,255,0.25)'}}>{p.end}</div>
-                      </div>
-                      <div style={{flex:1}}>
-                        {cell ? (
-                          <>
-                            <p style={{fontWeight:900,fontSize:'14px',color:isCurrent?'#fbbf24':'#93c5fd',margin:'0 0 4px'}}>{cell.Subject}</p>
-                            <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
-                              {cell.Grade && <span style={{fontSize:'9px',color:'rgba(255,255,255,0.4)',background:'rgba(255,255,255,0.07)',padding:'2px 8px',borderRadius:'6px'}}>Grade {cell.Grade}{cell.Section||''}</span>}
-                              {cell.Room  && <span style={{fontSize:'9px',color:'rgba(255,255,255,0.35)'}}>🚪 {cell.Room}</span>}
-                              {cell.Asst_Teacher && <span style={{fontSize:'9px',color:'rgba(255,255,255,0.3)'}}>👤 {cell.Asst_Teacher} <span style={{opacity:0.5}}>(Asst)</span></span>}
-                            </div>
-                          </>
-                        ) : (
-                          <p style={{fontSize:'11px',color:'rgba(255,255,255,0.15)',fontStyle:'italic',margin:0}}>— အားချိန် —</p>
-                        )}
-                      </div>
-                      {isCurrent && cell && (
-                        <div style={{flexShrink:0,background:'#fbbf24',color:'#0f172a',fontSize:'8px',fontWeight:900,padding:'3px 8px',borderRadius:'99px',textTransform:'uppercase'}}>Now</div>
+          {loading ? (
+            <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:14,padding:'80px 0',animation:'fadeUp 0.4s ease'}}>
+              <div style={{width:36,height:36,border:'3px solid rgba(255,255,255,0.08)',borderTop:'3px solid #fbbf24',borderRadius:'50%',animation:'spin 0.7s linear infinite'}}/>
+              <p style={{fontSize:13,color:'rgba(255,255,255,0.3)',margin:0}}>Grade တွေ ဖတ်နေသည်…</p>
+            </div>
+          ) : (<>
+
+          {/* ── Summary cards ── */}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,paddingTop:16}}>
+            {[
+              {label:'Classes This Week', value:`${myRows.length}`, color:'#fbbf24'},
+              {label:'Active Days',        value:`${myDays.size}`,  color:'#818cf8'},
+            ].map(({label,value,color})=>(
+              <div key={label} style={{...S.card,padding:'14px 16px'}}>
+                <p style={{...S.label,margin:'0 0 6px'}}>{label}</p>
+                <p style={{fontSize:28,fontWeight:900,color,margin:0,lineHeight:1}}>{value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* ── Compare picker ── */}
+          <div style={{...S.card,padding:'14px 16px'}}>
+            <p style={{...S.label,margin:'0 0 10px'}}>🔍 ဆရာ နှိုင်းယှဉ်ကြည့်ရန်</p>
+            <div style={{display:'flex',gap:8}}>
+              <input value={cmpSearch} onChange={e=>setCmpSearch(e.target.value)} placeholder="ဆရာ အမည် ရှာပါ…"
+                style={{flex:1,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,padding:'10px 14px',color:'#f1f5f9',fontSize:14,outline:'none'}}/>
+              {cmpTeacher&&<button onClick={()=>{setCmpTeacher('');setCmpSearch('');}} style={{background:'rgba(239,68,68,0.15)',border:'1px solid rgba(239,68,68,0.25)',color:'#fca5a5',borderRadius:10,padding:'0 14px',fontSize:13,cursor:'pointer',fontWeight:700}}>✕</button>}
+            </div>
+            {cmpTeacher&&(
+              <div style={{marginTop:10,display:'flex',alignItems:'center',gap:8,background:'rgba(129,140,248,0.1)',border:'1px solid rgba(129,140,248,0.25)',borderRadius:10,padding:'8px 12px'}}>
+                <div style={{width:8,height:8,borderRadius:'50%',background:'#818cf8',flexShrink:0}}/>
+                <span style={{fontSize:13,fontWeight:700,color:'#a5b4fc'}}>{cmpTeacher}</span>
+              </div>
+            )}
+            {cmpSearch&&filtered.length>0&&(
+              <div style={{marginTop:8,display:'flex',flexDirection:'column',gap:4,maxHeight:180,overflowY:'auto'}}>
+                {filtered.slice(0,10).map(t=>(
+                  <button key={t} onClick={()=>{setCmpTeacher(t);setCmpSearch('');}} style={{background:t===cmpTeacher?'rgba(129,140,248,0.2)':'rgba(255,255,255,0.04)',border:`1px solid ${t===cmpTeacher?'rgba(129,140,248,0.4)':'rgba(255,255,255,0.07)'}`,color:t===cmpTeacher?'#a5b4fc':'#e2e8f0',borderRadius:10,padding:'10px 14px',cursor:'pointer',fontSize:13,fontWeight:600,textAlign:'left'}}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* Legend */}
+            {cmpTeacher&&(
+              <div style={{marginTop:10,display:'flex',gap:12,flexWrap:'wrap'}}>
+                <div style={{display:'flex',alignItems:'center',gap:6}}><div style={{width:12,height:12,borderRadius:3,background:'#fbbf24'}}/><span style={{fontSize:12,color:'rgba(255,255,255,0.5)'}}>{me.split(' ').slice(-1)[0]}</span></div>
+                <div style={{display:'flex',alignItems:'center',gap:6}}><div style={{width:12,height:12,borderRadius:3,background:'#818cf8'}}/><span style={{fontSize:12,color:'rgba(255,255,255,0.5)'}}>{cmpTeacher.split(' ').slice(-1)[0]}</span></div>
+                <div style={{display:'flex',alignItems:'center',gap:6}}><div style={{width:12,height:12,borderRadius:3,background:'#f87171'}}/><span style={{fontSize:12,color:'rgba(255,255,255,0.5)'}}>နှစ်ဦးလုံး Busy</span></div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Day tabs ── */}
+          <div style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:2,scrollbarWidth:'none'}}>
+            {allDays.map(day=>{
+              const isT=day===todayDay, isS=day===selDay, hasMe=myDays.has(day);
+              return(
+                <button key={day} onClick={()=>setSelDay(day)} style={{
+                  flexShrink:0,padding:'10px 16px',borderRadius:12,border:'none',cursor:'pointer',fontWeight:800,fontSize:13,
+                  background:isS?'#fbbf24':isT?'rgba(251,191,36,0.12)':'rgba(255,255,255,0.05)',
+                  color:isS?'#0a0a0f':isT?'#fbbf24':hasMe?'#e2e8f0':'rgba(255,255,255,0.2)',
+                  outline:isT&&!isS?'2px solid rgba(251,191,36,0.35)':'none', outlineOffset:2,
+                }}>
+                  {DAYS_SHORT[VDAYS.indexOf(day)]||day.slice(0,3)}
+                  {isT&&<div style={{fontSize:8,marginTop:2,fontWeight:900,opacity:0.7}}>TODAY</div>}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ── Period list for selected day ── */}
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            {frame.map((p,pi)=>{
+              if(p.isBreak) return(
+                <div key={pi} style={{display:'flex',alignItems:'center',gap:10,padding:'2px 4px'}}>
+                  <div style={{flex:1,height:1,background:'rgba(255,255,255,0.06)'}}/>
+                  <span style={{fontSize:11,color:'rgba(255,255,255,0.25)',fontWeight:700,whiteSpace:'nowrap',textTransform:'uppercase',letterSpacing:'0.08em'}}>
+                    {p.label}{p.start?` · ${toRange(p.start,p.end)}`:''}
+                  </span>
+                  <div style={{flex:1,height:1,background:'rgba(255,255,255,0.06)'}}/>
+                </div>
+              );
+              const myR  = getMyRow(selDay,p.no);
+              const cmpR = getCmpRow(selDay,p.no);
+              const isCur= !!(curP?.no===p.no&&selDay===todayDay);
+              const isPast= selDay===todayDay&&p.end&&nowMins>toMins(p.end);
+              const both = myR&&cmpR;
+              const sc   = myR?getSC(subjects,myR.subject):null;
+              const scC  = cmpR?getSC(subjects,cmpR.subject):null;
+
+              return(
+                <div key={pi} style={{
+                  background:isCur?'rgba(251,191,36,0.07)':both?'rgba(239,68,68,0.07)':'#13131a',
+                  border:`1px solid ${isCur?'rgba(251,191,36,0.3)':both?'rgba(239,68,68,0.25)':'rgba(255,255,255,0.06)'}`,
+                  borderLeft:`3px solid ${isCur?'#fbbf24':both?'#f87171':myR?(sc?.accent||'#fbbf24'):cmpR?'#818cf8':'rgba(255,255,255,0.08)'}`,
+                  borderRadius:14,padding:'14px',opacity:isPast?0.5:1,animation:'fadeUp 0.3s ease',
+                }}>
+                  {/* Time row */}
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:myR||cmpR?10:0}}>
+                    <div style={{display:'flex',alignItems:'baseline',gap:6}}>
+                      {p.start?(
+                        <>
+                          <span style={{fontSize:15,fontWeight:800,color:isCur?'#fbbf24':'#e2e8f0'}}>{to12(p.start)}</span>
+                          <span style={{fontSize:12,color:'rgba(255,255,255,0.25)'}}>– {to12(p.end)}</span>
+                        </>
+                      ):(
+                        <span style={{fontSize:15,fontWeight:800,color:'rgba(255,255,255,0.5)'}}>Period {p.no}</span>
                       )}
                     </div>
-                  );
-                })}
-              </div>
+                    <div style={{display:'flex',gap:5}}>
+                      {isCur&&myR&&<span style={{background:'#fbbf24',color:'#0a0a0f',fontSize:10,fontWeight:900,padding:'3px 9px',borderRadius:99}}>NOW</span>}
+                      {both&&<span style={{background:'rgba(239,68,68,0.2)',color:'#fca5a5',fontSize:10,fontWeight:800,padding:'3px 9px',borderRadius:99}}>⚠ BUSY</span>}
+                      {cmpTeacher&&myR&&!cmpR&&<span style={{background:'rgba(52,211,153,0.15)',color:'#6ee7b7',fontSize:10,fontWeight:800,padding:'3px 9px',borderRadius:99}}>✓ FREE</span>}
+                    </div>
+                  </div>
 
-              {/* Weekly grid */}
-              <div style={S.card}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}}>
-                  <p style={{fontSize:'9px',color:'rgba(255,255,255,0.25)',textTransform:'uppercase',letterSpacing:'0.15em',fontWeight:900,margin:0}}>Weekly Overview</p>
-                  <span style={{fontSize:'9px',color:'rgba(255,255,255,0.25)'}}>{rows.length} class{rows.length!==1?'es':''}</span>
+                  {/* Class cards */}
+                  {(myR||cmpR) && (
+                    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                      {myR&&(
+                        <div style={{flex:1,minWidth:120,background:sc?.bg||'#1e40af',borderRadius:10,padding:'10px 12px'}}>
+                          <p style={{fontSize:10,fontWeight:700,color:sc?.accent||'#93c5fd',margin:'0 0 4px',textTransform:'uppercase',letterSpacing:'0.08em',opacity:0.8}}>
+                            {me.split(' ').slice(-1)[0]}
+                            {myR.isAsst&&' · Asst'}
+                          </p>
+                          <p style={{fontSize:17,fontWeight:900,color:sc?.text||'#bfdbfe',margin:'0 0 4px',lineHeight:1.2}}>{myR.subject}</p>
+                          <p style={{fontSize:12,color:sc?.accent||'#93c5fd',margin:0,opacity:0.75}}>
+                            Grade {myR.grade}{myR.section?' · '+myR.section:''}{myR.room?' · 🚪'+myR.room:''}
+                          </p>
+                        </div>
+                      )}
+                      {cmpR&&(
+                        <div style={{flex:1,minWidth:120,background:scC?.bg||'#1e1b4b',borderRadius:10,padding:'10px 12px',border:'1px solid rgba(129,140,248,0.2)'}}>
+                          <p style={{fontSize:10,fontWeight:700,color:'#a5b4fc',margin:'0 0 4px',textTransform:'uppercase',letterSpacing:'0.08em',opacity:0.8}}>
+                            {cmpTeacher.split(' ').slice(-1)[0]}
+                          </p>
+                          <p style={{fontSize:17,fontWeight:900,color:scC?.text||'#e0e7ff',margin:'0 0 4px',lineHeight:1.2}}>{cmpR.subject}</p>
+                          <p style={{fontSize:12,color:'#a5b4fc',margin:0,opacity:0.75}}>
+                            Grade {cmpR.grade}{cmpR.section?' · '+cmpR.section:''}{cmpR.room?' · 🚪'+cmpR.room:''}
+                          </p>
+                        </div>
+                      )}
+                      {cmpTeacher&&myR&&!cmpR&&(
+                        <div style={{flex:1,minWidth:120,background:'rgba(52,211,153,0.06)',border:'1px dashed rgba(52,211,153,0.2)',borderRadius:10,padding:'10px 12px',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                          <p style={{fontSize:13,color:'rgba(110,231,183,0.5)',fontWeight:700,margin:0}}>— Free —</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {!myR&&!cmpR&&(
+                    <p style={{fontSize:13,color:'rgba(255,255,255,0.15)',margin:0,fontStyle:'italic'}}>— အားချိန် —</p>
+                  )}
                 </div>
-                <div style={{overflowX:'auto'}}>
-                  <table style={{width:'100%',borderCollapse:'collapse',minWidth:'400px'}}>
-                    <thead>
-                      <tr>
-                        <th style={{padding:'4px 6px',fontSize:'8px',color:'rgba(255,255,255,0.25)',textAlign:'left',fontWeight:900,textTransform:'uppercase'}}>Period</th>
-                        {activeDays.map(d=>(
-                          <th key={d} style={{padding:'4px 6px',fontSize:'8px',color:d===todayDay?'#fbbf24':'rgba(255,255,255,0.25)',textAlign:'center',fontWeight:900,textTransform:'uppercase'}}>
-                            {DAYS_SHORT[DAYS.indexOf(d)]||d.slice(0,3)}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {periods.filter(p=>!fixBreak(p)).map((p,i)=>(
-                        <tr key={i}>
-                          <td style={{padding:'4px 6px',fontSize:'8px',color:'rgba(255,255,255,0.3)',whiteSpace:'nowrap'}}>{p.label}</td>
-                          {activeDays.map(day=>{
-                            const r = rows.find(r=>r.Day===day && String(r.Period_No)===String(p.no));
-                            const isNow = day===todayDay && currentPeriod===p.no;
-                            return (
-                              <td key={day} style={{padding:'4px 6px',textAlign:'center'}}>
-                                <div style={{fontSize:'9px',fontWeight:900,color:isNow?'#fbbf24':r?'#93c5fd':'rgba(255,255,255,0.1)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:'60px'}}>
-                                  {r?(r.Subject?.split(' ')[0]||'—'):'—'}
-                                </div>
-                                {r?.Grade && <div style={{fontSize:'7px',color:'rgba(255,255,255,0.2)'}}>G{r.Grade}{r.Section||''}</div>}
+              );
+            })}
+          </div>
+
+          {/* ── Full week overview (collapsible) ── */}
+          <div style={S.card}>
+            <button onClick={()=>setShowOverview(v=>!v)} style={{width:'100%',background:'none',border:'none',cursor:'pointer',padding:'16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <div style={{display:'flex',alignItems:'center',gap:10}}>
+                <span style={{fontSize:14,fontWeight:800,color:'#e2e8f0'}}>Full Week Overview</span>
+                {cmpTeacher&&<span style={{fontSize:11,color:'rgba(129,140,248,0.7)',fontWeight:700}}>vs {cmpTeacher.split(' ').slice(-1)[0]}</span>}
+              </div>
+              <span style={{color:'rgba(255,255,255,0.3)',fontSize:16,transition:'transform 0.2s',display:'block',transform:showOverview?'rotate(90deg)':'none'}}>›</span>
+            </button>
+            {showOverview&&(
+              <div style={{overflowX:'auto',borderTop:'1px solid rgba(255,255,255,0.06)'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',minWidth:420}}>
+                  <thead>
+                    <tr>
+                      <th style={{padding:'10px 10px',fontSize:11,color:'rgba(255,255,255,0.3)',textAlign:'left',borderBottom:'1px solid rgba(255,255,255,0.06)',minWidth:75,fontWeight:700}}>Time</th>
+                      {allDays.map(d=>(
+                        <th key={d} style={{padding:'10px 6px',fontSize:12,fontWeight:800,textAlign:'center',borderBottom:'1px solid rgba(255,255,255,0.06)',color:d===todayDay?'#fbbf24':WEEKEND_DAYS.has(d)?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.6)'}}>
+                          {DAYS_SHORT[VDAYS.indexOf(d)]||d.slice(0,3)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {frame.map((p,pi)=>{
+                      if(p.isBreak) return(
+                        <tr key={`b${pi}`}>
+                          <td colSpan={allDays.length+1} style={{padding:'6px 10px',background:'rgba(255,255,255,0.02)',borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
+                            <span style={{fontSize:10,color:'rgba(255,255,255,0.2)',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em'}}>{p.label}{p.start?' · '+toRange(p.start,p.end):''}</span>
+                          </td>
+                        </tr>
+                      );
+                      const isNow=!!(todayDay&&curP?.no===p.no);
+                      return(
+                        <tr key={`c${pi}`} style={{background:isNow?'rgba(251,191,36,0.04)':'transparent'}}>
+                          <td style={{padding:'8px 10px',borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'middle'}}>
+                            <span style={{fontSize:11,fontWeight:700,color:isNow?'#fbbf24':'rgba(255,255,255,0.4)',whiteSpace:'nowrap'}}>{p.start?toRange(p.start,p.end):'P'+p.no}</span>
+                          </td>
+                          {allDays.map(day=>{
+                            const myR =getMyRow(day,p.no);
+                            const cmpR=getCmpRow(day,p.no);
+                            const both=myR&&cmpR;
+                            const sc  =myR?getSC(subjects,myR.subject):null;
+                            return(
+                              <td key={day} style={{padding:4,borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'top',textAlign:'center'}}>
+                                {myR&&(
+                                  <div style={{background:sc?.bg||'#1e40af',borderRadius:7,padding:'5px 4px',marginBottom:cmpR?3:0}}>
+                                    <div style={{fontSize:11,fontWeight:800,color:sc?.text||'#bfdbfe',lineHeight:1.2}}>{myR.subject}</div>
+                                    <div style={{fontSize:9,color:sc?.accent||'#93c5fd',opacity:0.8,marginTop:1}}>G{myR.grade}{myR.section}</div>
+                                  </div>
+                                )}
+                                {cmpR&&(
+                                  <div style={{background:both?'rgba(239,68,68,0.25)':'rgba(129,140,248,0.15)',border:`1px solid ${both?'rgba(239,68,68,0.4)':'rgba(129,140,248,0.3)'}`,borderRadius:7,padding:'5px 4px'}}>
+                                    <div style={{fontSize:11,fontWeight:800,color:both?'#fca5a5':'#a5b4fc',lineHeight:1.2}}>{cmpR.subject}</div>
+                                    <div style={{fontSize:9,color:both?'rgba(252,165,165,0.7)':'rgba(165,180,252,0.7)',marginTop:1}}>G{cmpR.grade}{cmpR.section}</div>
+                                  </div>
+                                )}
+                                {!myR&&!cmpR&&<span style={{fontSize:10,color:'rgba(255,255,255,0.07)'}}>—</span>}
                               </td>
                             );
                           })}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            </>
-          )}
+            )}
+          </div>
+
+          </>)}
         </div>
       </div>
     </div>

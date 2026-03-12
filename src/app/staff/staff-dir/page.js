@@ -22,6 +22,14 @@ export default function MasterStaffDirectory() {
     String(s.Status ?? 'TRUE').toUpperCase() === 'TRUE' || s.Status === true;
 
   useEffect(() => {
+    const saved = localStorage.getItem('user') || sessionStorage.getItem('user');
+    if (!saved) { router.push('/login'); return; }
+    const u = JSON.parse(saved);
+    const hasPerm = (key) => u.userRole==='management' || u[key]===true || String(u[key]||'').toUpperCase()==='TRUE';
+    if (!hasPerm('Can_View_Staff')) { router.push('/staff'); return; }
+  }, []);
+
+  useEffect(() => {
     const fetchStaffData = async () => {
       try {
         const res  = await fetch(WEB_APP_URL, { method: 'POST',

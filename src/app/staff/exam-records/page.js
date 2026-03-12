@@ -60,9 +60,11 @@ export default function ExamRecordsPage() {
     const saved = localStorage.getItem('user') || sessionStorage.getItem('user');
     if (!saved) { router.push('/login'); return; }
     const u = JSON.parse(saved);
+    const hasPerm = (key) => u.userRole==='management' || u[key]===true || String(u[key]||'').toUpperCase()==='TRUE';
+    if (!hasPerm('Can_Record_Note')) { router.push('/staff'); return; }
     setUser(u);
     const perm = u['Can_Record_Note'];
-    setCanEdit(perm===true || String(perm).toUpperCase()==='TRUE');
+    setCanEdit(u.userRole==='management' || perm===true || String(perm).toUpperCase()==='TRUE');
     fetchConfig(u);
   }, []);
 

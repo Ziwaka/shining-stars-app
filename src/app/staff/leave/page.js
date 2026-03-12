@@ -33,8 +33,10 @@ export default function StaffLeave() {
   const [form, setForm] = useState({ type:'Sick Leave', start:'', end:'', reason:'', reporter:'', relation:'', phone:'', method:'Phone Call' });
 
   useEffect(() => {
-    const auth = JSON.parse(localStorage.getItem('user') || 'null');
+    const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
     if (!auth) { router.push('/login'); return; }
+    const hasPerm = (key) => auth.userRole==='management' || auth[key]===true || String(auth[key]||'').toUpperCase()==='TRUE';
+    if (!hasPerm('Can_Record_Attendance_&_Leave')) { router.push('/staff'); return; }
     setUser(auth);
     fetchData();
   }, []);

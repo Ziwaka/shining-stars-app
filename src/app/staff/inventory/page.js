@@ -49,8 +49,8 @@ export default function InventoryPage() {
     if (!saved) { router.push('/login'); return; }
     const u = JSON.parse(saved);
     if (u.userRole !== 'staff' && u.userRole !== 'management') { router.push('/login'); return; }
-    if (u.userRole === 'staff' && !u.Can_Manage_Inventory && u.Can_Manage_Inventory !== 'TRUE') {
-      router.push('/staff'); return;
+    const hasPerm = (key) => u.userRole==='management' || u[key]===true || String(u[key]||'').toUpperCase()==='TRUE';
+    if (!hasPerm('Can_Manage_Inventory')) { router.push('/staff'); return;
     }
     setUser(u); fetchAll();
   }, []);

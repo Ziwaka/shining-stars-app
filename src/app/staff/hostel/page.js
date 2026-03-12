@@ -15,6 +15,14 @@ export default function HostelDashboardCombined() {
   const router = useRouter();
 
   useEffect(() => {
+    const saved = localStorage.getItem('user') || sessionStorage.getItem('user');
+    if (!saved) { router.push('/login'); return; }
+    const u = JSON.parse(saved);
+    const hasPerm = (key) => u.userRole==='management' || u[key]===true || String(u[key]||'').toUpperCase()==='TRUE';
+    if (!hasPerm('Can_Manage_Hostel')) { router.push('/staff'); return; }
+  }, []);
+
+  useEffect(() => {
     const fetchDashboardData = async () => {
       try {
         const [sRes, fRes] = await Promise.all([
