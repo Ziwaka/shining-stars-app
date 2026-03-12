@@ -72,6 +72,9 @@ export default function MgtPerformanceHub() {
   const grades = data.grades || [];
   const currentRankings = selectedGrade === 'All' ? [] : (data.rankings[selectedGrade] || []);
   const filteredPoints  = data.points.filter(p => {
+    // Points 0 ဖြစ်တဲ့ rows ဖျောက် + field name fallback
+    const pts = safeNum(p.Points ?? p.points ?? p.Point ?? p.Score);
+    if (pts === 0) return false;
     if (selectedGrade === 'All') return true;
     const s = data.students.find(st => (st['Enrollment No.']||st.Student_ID)?.toString() === p.Student_ID?.toString());
     return s?.Grade?.toString() === selectedGrade;
@@ -147,7 +150,7 @@ export default function MgtPerformanceHub() {
                 {filteredPoints.length === 0 ? (
                   <div style={{ textAlign:'center', padding:'50px 0', color:'rgba(255,255,255,0.2)' }}>House points records မရှိသေးပါ</div>
                 ) : filteredPoints.slice(0, 30).map((p, i) => {
-                  const pts = safeNum(p.Points);
+                  const pts = safeNum(p.Points ?? p.points ?? p.Point ?? p.Score);
                   const pos = pts >= 0;
                   return (
                     <div key={i} style={{ ...S.card, padding:'12px 16px', display:'flex', justifyContent:'space-between', alignItems:'center',

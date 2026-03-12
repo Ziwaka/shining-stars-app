@@ -119,17 +119,17 @@ export default function MgtUniversalLayout({ children }) {
           return (
             <Link key={item.path} href={item.path} style={{
               textDecoration:'none', display:'flex', flexDirection:'column',
-              alignItems:'center', gap:'3px', padding:'4px 10px',
+              alignItems:'center', gap:'3px', padding:'4px 6px',
               opacity: isActive ? 1 : 0.40,
               transform: isActive ? 'translateY(-2px)' : 'none',
               transition:'all 0.15s',
             }}>
-              <span style={{ fontSize:'22px',
+              <span style={{ fontSize:'20px',
                 filter: isActive ? 'drop-shadow(0 0 6px rgba(158,158,202,0.6))' : 'grayscale(0.6)' }}>
                 {item.icon}
               </span>
               <span style={{
-                fontSize:'8px', textTransform:'uppercase', letterSpacing:'0.08em',
+                fontSize:'7px', textTransform:'uppercase', letterSpacing:'0.06em',
                 fontWeight:800, color: isActive ? '#9E9ECA' : '#6B6BA8',
               }}>
                 {item.name}

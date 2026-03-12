@@ -162,12 +162,6 @@ export default function StudentTimetablePage() {
     return result;
   }, [periods, selDay, rawRows, currentPeriod]);
 
-  const allSubjects = useMemo(() => {
-    const s=new Set();
-    rawRows.forEach(r=>{ if(r.Subject) s.add(r.Subject); });
-    return [...s].sort();
-  }, [rawRows]);
-
   const gradeLabel = grade
     ? `Grade ${grade}${section?' '+section.toUpperCase():''}`
     : (user?.Grade?`Grade ${user.Grade}`:'');
@@ -252,24 +246,7 @@ export default function StudentTimetablePage() {
                 })}
               </div>
 
-              {/* ── Subject Legend ── */}
-              {allSubjects.length > 0 && (
-                <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
-                  {allSubjects.map(subj => (
-                    <div key={subj}
-                      style={{ display:'flex', alignItems:'center', gap:'5px',
-                               background:'rgba(255,255,255,0.65)', borderRadius:'99px',
-                               padding:'3px 10px', border:`1px solid ${C.border}` }}>
-                      <div style={{ width:'8px', height:'8px', borderRadius:'50%',
-                                    background:subjectColor(subj), flexShrink:0 }}/>
-                      <span style={{ fontSize:'9px', fontWeight:700, color:C.textMid,
-                                     letterSpacing:'0.02em' }}>
-                        {subj}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
+
 
               {/* ── Schedule List ── */}
               <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
