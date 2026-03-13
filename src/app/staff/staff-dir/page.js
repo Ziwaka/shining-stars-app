@@ -25,8 +25,21 @@ export default function MasterStaffDirectory() {
     const saved = localStorage.getItem('user') || sessionStorage.getItem('user');
     if (!saved) { router.push('/login'); return; }
     const u = JSON.parse(saved);
-    const hasPerm = (key) => u.userRole==='management' || u[key]===true || String(u[key]||'').toUpperCase()==='TRUE';
-    if (!hasPerm('Can_View_Staff')) { router.push('/staff'); return; }
+    const checkPerm = (key) => u.userRole==='management' || u[key]===true || String(u[key]||'').toUpperCase()==='TRUE';
+    if (u.userRole === 'management') return;
+    if (checkPerm('Can_View_Staff')) return;
+    fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getStaffPermissions' }) })
+      .then(r=>r.json()).then(res => {
+        const fresh = res.success && res.data && res.data.find(s =>
+          (s.Staff_ID && s.Staff_ID.toString()===u.Staff_ID?.toString()) ||
+          (s.Name && (s.Name===u['Name (ALL CAPITAL)']||s.Name===u.Name)));
+        if (fresh) {
+          const up={...u,...fresh};
+          localStorage.setItem('user',JSON.stringify(up));
+          if (up['Can_View_Staff']===true||String(up['Can_View_Staff']||'').toUpperCase()==='TRUE') return;
+        }
+        router.push('/staff');
+      }).catch(()=>router.push('/staff'));
   }, []);
 
   useEffect(() => {

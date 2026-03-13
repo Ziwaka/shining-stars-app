@@ -71,7 +71,7 @@ export default function StaffAccessHub() {
         { name: 'Inventory',          path: '/staff/inventory',        icon: '📦', perm: 'Can_Manage_Inventory' },
         { name: 'Lost & Found',       path: '/staff/lost-found',       icon: '🔍', perm: null },
         { name: 'Communication',      path: '/management/communication',icon: '📢', perm: 'Can_Post_Announcement' },
-        { name: 'Exam Records',       path: '/staff/exam-records',     icon: '📝', perm: 'Can_Record_Note' },
+        { name: 'Exam Records',       path: '/staff/exam-records',     icon: '📝', perm: 'Can_Record_Exam' },
         { name: 'Calendar',           path: '/staff/calendar',         icon: '📅', perm: 'Can_Manage_Events' },
         { name: 'My Timetable',       path: '/staff/timetable',        icon: '🗓️', perm: null },
       ]

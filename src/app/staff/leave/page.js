@@ -33,12 +33,25 @@ export default function StaffLeave() {
   const [form, setForm] = useState({ type:'Sick Leave', start:'', end:'', reason:'', reporter:'', relation:'', phone:'', method:'Phone Call' });
 
   useEffect(() => {
-    const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
-    if (!auth) { router.push('/login'); return; }
-    const hasPerm = (key) => auth.userRole==='management' || auth[key]===true || String(auth[key]||'').toUpperCase()==='TRUE';
-    if (!hasPerm('Can_Record_Attendance_&_Leave')) { router.push('/staff'); return; }
-    setUser(auth);
-    fetchData();
+    const u = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
+    if (!u) { router.push('/login'); return; }
+    const checkPerm = (key) => u.userRole==='management' || u[key]===true || String(u[key]||'').toUpperCase()==='TRUE';
+    if (u.userRole === 'management') { setUser(u); fetchData(); return; }
+    if (checkPerm('Can_Record_Attendance_&_Leave')) { setUser(u); fetchData(); return; }
+    fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getStaffPermissions' }) })
+      .then(r=>r.json()).then(res => {
+        const fresh = res.success && res.data && res.data.find(s =>
+          (s.Staff_ID && s.Staff_ID.toString()===u.Staff_ID?.toString()) ||
+          (s.Name && (s.Name===u['Name (ALL CAPITAL)']||s.Name===u.Name)));
+        if (fresh) {
+          const up={...u,...fresh};
+          localStorage.setItem('user',JSON.stringify(up));
+          const k='Can_Record_Attendance_&_Leave';
+          if (!(up[k]===true||String(up[k]||'').toUpperCase()==='TRUE')){router.push('/staff');return;}
+          setUser(up); fetchData(); return;
+        }
+        router.push('/staff');
+      }).catch(()=>router.push('/staff'));
   }, []);
 
   const fetchData = async () => {

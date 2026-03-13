@@ -60,12 +60,45 @@ export default function ExamRecordsPage() {
     const saved = localStorage.getItem('user') || sessionStorage.getItem('user');
     if (!saved) { router.push('/login'); return; }
     const u = JSON.parse(saved);
-    const hasPerm = (key) => u.userRole==='management' || u[key]===true || String(u[key]||'').toUpperCase()==='TRUE';
-    if (!hasPerm('Can_Record_Note')) { router.push('/staff'); return; }
-    setUser(u);
-    const perm = u['Can_Record_Note'];
-    setCanEdit(u.userRole==='management' || perm===true || String(perm).toUpperCase()==='TRUE');
-    fetchConfig(u);
+
+    const checkPerm = (key) => u.userRole==='management' || u[key]===true || String(u[key]||'').toUpperCase()==='TRUE';
+
+    // Management — straight in
+    if (u.userRole === 'management') {
+      setUser(u); setCanEdit(true); fetchConfig(u); return;
+    }
+
+    // Already has perm in localStorage — straight in
+    if (checkPerm('Can_Record_Exam')) {
+      setUser(u);
+      setCanEdit(true);
+      fetchConfig(u);
+      return;
+    }
+
+    // Try fetching fresh permissions from Staff_Permissions sheet
+    fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getStaffPermissions' }) })
+      .then(r => r.json())
+      .then(res => {
+        if (res.success && res.data) {
+          const fresh = res.data.find(s =>
+            (s.Staff_ID && s.Staff_ID.toString() === u.Staff_ID?.toString()) ||
+            (s.Name && (s.Name === u['Name (ALL CAPITAL)'] || s.Name === u.Name))
+          );
+          if (fresh) {
+            const updated = { ...u, ...fresh };
+            localStorage.setItem('user', JSON.stringify(updated));
+            const hasFreshPerm = updated['Can_Record_Exam']===true || String(updated['Can_Record_Exam']||'').toUpperCase()==='TRUE';
+            if (!hasFreshPerm) { router.push('/staff'); return; }
+            setUser(updated);
+            setCanEdit(true);
+            fetchConfig(updated);
+            return;
+          }
+        }
+        router.push('/staff');
+      })
+      .catch(() => router.push('/staff'));
   }, []);
 
   const fetchConfig = async (u) => {

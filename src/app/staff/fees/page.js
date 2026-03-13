@@ -38,12 +38,24 @@ export default function FeesManagementHub() {
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
-    const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
-    if (!auth) { router.push('/login'); return; }
-    const checkPerm = (key) => auth.userRole==='management' || auth[key]===true || String(auth[key]||'').toUpperCase()==='TRUE';
-    if (!checkPerm('Can_Manage_Fees')) { router.push('/staff'); return; }
-    setStaff(auth);
-    fetchAll();
+    const u = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
+    if (!u) { router.push('/login'); return; }
+    const checkPerm = (key) => u.userRole==='management' || u[key]===true || String(u[key]||'').toUpperCase()==='TRUE';
+    if (u.userRole === 'management') { setStaff(u); fetchAll(); return; }
+    if (checkPerm('Can_Manage_Fees')) { setStaff(u); fetchAll(); return; }
+    fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getStaffPermissions' }) })
+      .then(r=>r.json()).then(res => {
+        const fresh = res.success && res.data && res.data.find(s =>
+          (s.Staff_ID && s.Staff_ID.toString()===u.Staff_ID?.toString()) ||
+          (s.Name && (s.Name===u['Name (ALL CAPITAL)']||s.Name===u.Name)));
+        if (fresh) {
+          const up={...u,...fresh};
+          localStorage.setItem('user',JSON.stringify(up));
+          if (!(up['Can_Manage_Fees']===true||String(up['Can_Manage_Fees']||'').toUpperCase()==='TRUE')){router.push('/staff');return;}
+          setStaff(up); fetchAll(); return;
+        }
+        router.push('/staff');
+      }).catch(()=>router.push('/staff'));
   }, []);
 
   const fetchAll = async () => {

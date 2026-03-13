@@ -55,11 +55,22 @@ export default function CalendarTimetablePage() {
     const saved = localStorage.getItem('user') || sessionStorage.getItem('user');
     if (!saved) { router.push('/login'); return; }
     const u = JSON.parse(saved);
-    const hasPerm = (key) => u.userRole==='management' || u[key]===true || String(u[key]||'').toUpperCase()==='TRUE';
-    if (!hasPerm('Can_Manage_Events')) { router.push('/staff'); return; }
-    setUser(u);
-    setIsMgt(u.userRole === 'management');
-    fetchAll(u);
+    const checkPerm = (key) => u.userRole==='management' || u[key]===true || String(u[key]||'').toUpperCase()==='TRUE';
+    if (u.userRole === 'management') { setUser(u); setIsMgt(true); fetchAll(u); return; }
+    if (checkPerm('Can_Manage_Events')) { setUser(u); setIsMgt(false); fetchAll(u); return; }
+    fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getStaffPermissions' }) })
+      .then(r=>r.json()).then(res => {
+        const fresh = res.success && res.data && res.data.find(s =>
+          (s.Staff_ID && s.Staff_ID.toString()===u.Staff_ID?.toString()) ||
+          (s.Name && (s.Name===u['Name (ALL CAPITAL)']||s.Name===u.Name)));
+        if (fresh) {
+          const up={...u,...fresh};
+          localStorage.setItem('user',JSON.stringify(up));
+          if (!(up['Can_Manage_Events']===true||String(up['Can_Manage_Events']||'').toUpperCase()==='TRUE')){router.push('/staff');return;}
+          setUser(up); setIsMgt(false); fetchAll(up); return;
+        }
+        router.push('/staff');
+      }).catch(()=>router.push('/staff'));
   }, []);
 
   const fetchAll = async (u) => {

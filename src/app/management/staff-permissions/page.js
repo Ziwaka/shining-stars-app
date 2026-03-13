@@ -9,7 +9,8 @@ const PERMISSIONS = [
   { key:'Can_Manage_Fees',                 label:'Manage Fees',      icon:'💰',  desc:'Fees မှတ်တမ်းကြည့် / ပြင်ခွင့်' },
   { key:'Can_Manage_Hostel',               label:'Manage Hostel',    icon:'🏠',  desc:'Hostel directory & inventory' },
   { key:'Can_Manage_Inventory',            label:'School Inventory', icon:'📦',  desc:'ကျောင်း inventory စီမံခန့်ခွဲခွင့်' },
-  { key:'Can_Record_Note',                 label:'Notes & Scores',   icon:'📝',  desc:'Student notes / score မှတ်တမ်းတင်ခွင့်' },
+  { key:'Can_Record_Note',                 label:'Registry Notes',   icon:'📒',  desc:'Student notes မှတ်တမ်းတင်ခွင့်' },
+  { key:'Can_Record_Exam',                 label:'Exam Records',     icon:'📝',  desc:'Exam score မှတ်တမ်းတင် / ကြည့်ခွင့်' },
   { key:'Can_Record_Points',               label:'House Points',     icon:'⭐',  desc:'House points ထည့်ခွင့်' },
   { key:'Can_Record_Attendance_&_Leave',   label:'Attendance & Leave',icon:'✅', desc:'Attendance / leave မှတ်ခွင့်' },
   { key:'Can_Post_Announcement',           label:'Announcements',    icon:'📢',  desc:'Announcement တင်ခွင့်' },
@@ -73,7 +74,7 @@ export default function StaffPermissionsPage() {
       })});
       const r = await res.json();
       if (r.success) {
-        showMsg('Permission update ပြီးပါပြီ ✓');
+        showMsg('Saved ✓ — Staff re-login လုပ်မှ အကျိုးသက်ရောက်မည်');
         setStaff(prev => prev.map(s =>
           s.Staff_ID === selected.Staff_ID ? { ...s, ...perms, Status: status } : s
         ));

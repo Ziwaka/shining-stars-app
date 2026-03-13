@@ -34,11 +34,23 @@ export default function CommunicationPage() {
     if (!saved) { router.push('/login'); return; }
     const u = JSON.parse(saved);
     setUser(u);
-    const allowed = u.userRole === 'management' ||
-      u.Can_Post_Announcement === true || String(u.Can_Post_Announcement||'').toUpperCase() === 'TRUE';
-    setCanPost(allowed);
-    if (!allowed) { router.push('/staff'); return; }
-    fetchAnn();
+    const checkPerm = (key) => u.userRole==='management' || u[key]===true || String(u[key]||'').toUpperCase()==='TRUE';
+    if (u.userRole === 'management') { setCanPost(true); fetchAnn(); return; }
+    if (checkPerm('Can_Post_Announcement')) { setCanPost(true); fetchAnn(); return; }
+    fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getStaffPermissions' }) })
+      .then(r=>r.json()).then(res => {
+        const fresh = res.success && res.data && res.data.find(s =>
+          (s.Staff_ID && s.Staff_ID.toString()===u.Staff_ID?.toString()) ||
+          (s.Name && (s.Name===u['Name (ALL CAPITAL)']||s.Name===u.Name)));
+        if (fresh) {
+          const up={...u,...fresh};
+          localStorage.setItem('user',JSON.stringify(up));
+          if (up['Can_Post_Announcement']===true||String(up['Can_Post_Announcement']||'').toUpperCase()==='TRUE'){
+            setCanPost(true); fetchAnn(); return;
+          }
+        }
+        router.push('/staff');
+      }).catch(()=>router.push('/staff'));
   }, []);
 
   const fetchAnn = async () => {
