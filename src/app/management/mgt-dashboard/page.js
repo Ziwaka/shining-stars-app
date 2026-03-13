@@ -27,7 +27,7 @@ const TOOL_SECTIONS = [
     tools: [
       { name:'Leave Hub',        path:'/management/leave',             desc:'Leave approvals',        bg:'linear-gradient(135deg,#FFF1F2,#FECDD3)', icon:'📄' },
       { name:'Calendar',         path:'/management/calendar',          desc:'Events & timetable',     bg:'linear-gradient(135deg,#EEF2FF,#C7D2FE)', icon:'📅' },
-      { name:'Inventory',        path:'/management/inventory',         desc:'Stock & assets',         bg:'linear-gradient(135deg,#FEFCE8,#FEF08A)', icon:'📦' },
+      { name:'Inventory',        path:'/staff/inventory',              desc:'Stock & assets',         bg:'linear-gradient(135deg,#FEFCE8,#FEF08A)', icon:'📦' },
       { name:'Communication',    path:'/management/communication',     desc:'Announcements',          bg:'linear-gradient(135deg,#F0FDF4,#BBF7D0)', icon:'📢' },
       { name:'Permissions',      path:'/management/staff-permissions', desc:'Staff access control',   bg:'linear-gradient(135deg,#FDF4FF,#E9D5FF)', icon:'🔐' },
       { name:'Photo Upload',     path:'/management/photo-upload',      desc:'Student photos',         bg:'linear-gradient(135deg,#F0F9FF,#BAE6FD)', icon:'📸' },
@@ -39,46 +39,35 @@ export default function ManagementDashboard() {
   const router = useRouter();
   const [user,    setUser]   = useState(null);
   const [loading, setLoading]= useState(true);
-  const [dash,    setDash]   = useState(null); // raw GAS response
+  const [dash,    setDash]   = useState(null);
 
   useEffect(() => {
     const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
     if (!auth || auth.userRole !== 'management') { router.push('/login'); return; }
     setUser(auth);
 
-    fetch(WEB_APP_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'getDashboardData' }),
-    })
+    fetch(WEB_APP_URL, { method:'POST', body:JSON.stringify({ action:'getDashboardData' }) })
       .then(r => r.json())
-      .then(res => {
-        console.log('GAS getDashboardData response:', JSON.stringify(res));
-        if (res.success) setDash(res);
-        else console.error('GAS returned success:false —', res.message);
-      })
-      .catch(e => console.error('getDashboardData fetch error:', e))
+      .then(res => { if (res.success) setDash(res); })
+      .catch(e => console.error('getDashboardData error:', e))
       .finally(() => setLoading(false));
   }, []);
 
-  // ── Attendance today ──────────────────────────────────────────
-  const [att, setAtt]           = useState(null);
+  // ── Attendance ────────────────────────────────────────────────
+  const [att,        setAtt]        = useState(null);
   const [attLoading, setAttLoading] = useState(true);
-
-  const todayMM = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Yangon' });
+  const todayMM = new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Yangon' });
 
   const fetchAttendance = useCallback(() => {
     setAttLoading(true);
-    fetch(WEB_APP_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'getAttendance', date: todayMM }),
-    })
+    fetch(WEB_APP_URL, { method:'POST', body:JSON.stringify({ action:'getAttendance', date:todayMM }) })
       .then(r => r.json())
       .then(res => { if (res.success) setAtt(res); })
-      .catch(e => console.error('attendance fetch error:', e))
+      .catch(e => console.error('attendance error:', e))
       .finally(() => setAttLoading(false));
-  }, []);
+  }, [todayMM]);
 
-  useEffect(() => { fetchAttendance(); }, []);
+  useEffect(() => { fetchAttendance(); }, [fetchAttendance]);
 
   const name     = user?.Name || user?.name || user?.['Name (ALL CAPITAL)'] || user?.username || 'Admin';
   const dateStr  = new Date().toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
@@ -100,6 +89,7 @@ export default function ManagementDashboard() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=DM+Sans:wght@400;500;600;700&display=swap');
         @keyframes fadeUp { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:translateY(0) } }
+        @keyframes spin   { to { transform:rotate(360deg) } }
         * { box-sizing:border-box; margin:0; padding:0; }
         .tool-card { transition:transform 0.15s, box-shadow 0.15s; cursor:pointer; }
         .tool-card:hover { transform:translateY(-3px); box-shadow:0 8px 24px rgba(0,0,0,0.13) !important; }
@@ -118,8 +108,6 @@ export default function ManagementDashboard() {
 
         <div style={{ maxWidth:500, margin:'0 auto', position:'relative', zIndex:1,
                       fontFamily:"'DM Sans',system-ui,sans-serif" }}>
-
-          {/* Header row */}
           <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:20 }}>
             <div style={{ width:60, height:60, borderRadius:16,
                           background:'linear-gradient(135deg,#D4AF37,#F0D060)',
@@ -141,7 +129,6 @@ export default function ManagementDashboard() {
             </div>
           </div>
 
-          {/* Student stats */}
           <div style={{ background:'rgba(255,255,255,0.07)', border:'1px solid rgba(212,175,55,0.18)',
                         borderRadius:16, padding:'14px 16px', marginBottom:10,
                         display:'flex', alignItems:'center', animation:'fadeUp 0.35s ease 0.05s both' }}>
@@ -178,7 +165,6 @@ export default function ManagementDashboard() {
             </div>
           </div>
 
-          {/* Events */}
           {!loading && events.length > 0 && (
             <div style={{ background:'rgba(255,255,255,0.07)', border:'1px solid rgba(212,175,55,0.18)',
                           borderRadius:16, padding:'12px 14px', marginBottom:10,
@@ -205,7 +191,6 @@ export default function ManagementDashboard() {
             </div>
           )}
 
-          {/* Leaderboard */}
           {!loading && leaderboard.length > 0 && (
             <div style={{ background:'rgba(255,255,255,0.07)', border:'1px solid rgba(212,175,55,0.18)',
                           borderRadius:16, padding:'12px 14px', animation:'fadeUp 0.35s ease 0.15s both' }}>
@@ -247,11 +232,9 @@ export default function ManagementDashboard() {
                     display:'flex', flexDirection:'column', gap:18,
                     fontFamily:"'DM Sans',system-ui,sans-serif" }}>
 
-        {/* ── TODAY'S ATTENDANCE CARD ── */}
+        {/* ── TODAY'S ATTENDANCE ── */}
         <div style={{ borderRadius:18, overflow:'hidden',
                       boxShadow:'0 4px 16px rgba(0,0,0,0.09)', animation:'fadeUp 0.35s ease 0.1s both' }}>
-
-          {/* Header */}
           <div style={{ background:'linear-gradient(135deg,#1A1845,#2E2C6A)', padding:'11px 16px',
                         display:'flex', alignItems:'center', justifyContent:'space-between' }}>
             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
@@ -263,22 +246,27 @@ export default function ManagementDashboard() {
                 {new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'Asia/Yangon'})}
               </span>
             </div>
-            <button onClick={() => router.push('/management/attendance')}
+            <button onClick={fetchAttendance}
               style={{ background:'none', border:'none', cursor:'pointer', fontSize:9,
                        color:'rgba(212,175,55,0.55)', fontWeight:600,
                        textTransform:'uppercase', letterSpacing:'0.1em' }}>
-              Details →
+              ↻ Refresh
             </button>
           </div>
 
-          {/* Body */}
           {attLoading ? (
-            <div style={{ background:'#fff', padding:'20px', textAlign:'center',
-                          color:'#bbb', fontSize:11, fontWeight:600 }}>Loading…</div>
+            <div style={{ background:'#fff', padding:'24px', display:'flex',
+                          alignItems:'center', justifyContent:'center', gap:10 }}>
+              <div style={{ width:16, height:16, border:'2px solid rgba(0,0,0,0.1)',
+                            borderTop:'2px solid #D4AF37', borderRadius:'50%',
+                            animation:'spin 0.8s linear infinite' }}/>
+              <span style={{ color:'#bbb', fontSize:11, fontWeight:600 }}>Loading…</span>
+            </div>
           ) : att ? (() => {
-            const COLOR = { green:'#16a34a', yellow:'#d97706', red:'#dc2626' };
-            const BG    = { green:'#f0fdf4', yellow:'#fffbeb', red:'#fff1f2' };
+            const COLOR    = { green:'#16a34a', yellow:'#d97706', red:'#dc2626' };
+            const BG       = { green:'#f0fdf4', yellow:'#fffbeb', red:'#fff1f2' };
             const BADGE_BG = { green:'#dcfce7', yellow:'#fef3c7', red:'#fee2e2' };
+            const BADGE_LB = { green:'All Clear', yellow:'On Leave', red:'Absent' };
 
             const rows = [
               { label:'Students', data: att.school, icon:'🎓' },
@@ -288,9 +276,11 @@ export default function ManagementDashboard() {
             return (
               <div style={{ background:'#fff' }}>
                 {rows.map((r, i) => {
-                  const col = COLOR[r.data.color] || COLOR.green;
-                  const bg  = BG[r.data.color]    || BG.green;
+                  if (!r.data) return null;
+                  const col = COLOR[r.data.color]    || COLOR.green;
+                  const bg  = BG[r.data.color]       || BG.green;
                   const bb  = BADGE_BG[r.data.color] || BADGE_BG.green;
+                  const lb  = BADGE_LB[r.data.color] || 'All Clear';
                   return (
                     <div key={i} style={{
                       padding:'12px 16px',
@@ -298,68 +288,64 @@ export default function ManagementDashboard() {
                       display:'flex', alignItems:'center', gap:12,
                       background: r.data.absent > 0 ? bg : '#fff',
                     }}>
-                      {/* Donut mini */}
                       <svg width="44" height="44" viewBox="0 0 36 36"
                         style={{ flexShrink:0, transform:'rotate(-90deg)' }}>
                         <circle cx="18" cy="18" r="14" fill="none"
                           stroke="rgba(0,0,0,0.06)" strokeWidth="4"/>
                         <circle cx="18" cy="18" r="14" fill="none"
                           stroke={col} strokeWidth="4"
-                          strokeDasharray={`${(r.data.pct/100*87.96).toFixed(1)} 87.96`}
+                          strokeDasharray={`${((r.data.pct||100)/100*87.96).toFixed(1)} 87.96`}
                           strokeLinecap="round"/>
                         <text x="18" y="21" textAnchor="middle" fill={col}
                           fontSize="7" fontWeight="900"
-                          transform="rotate(90,18,18)">{r.data.pct}%</text>
+                          transform="rotate(90,18,18)">{r.data.pct||100}%</text>
                       </svg>
-
-                      {/* Info */}
                       <div style={{ flex:1 }}>
                         <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
                           <span style={{ fontSize:12 }}>{r.icon}</span>
                           <span style={{ fontSize:11, fontWeight:700, color:'#1A1A2E' }}>{r.label}</span>
                           <span style={{ fontSize:8, fontWeight:700, padding:'2px 7px',
-                            borderRadius:99, background: bb, color: col,
-                            textTransform:'uppercase', letterSpacing:'0.06em' }}>
-                            {r.data.color === 'green' ? 'All Clear'
-                              : r.data.color === 'yellow' ? 'Pending Leave'
-                              : 'Rejected Leave'}
-                          </span>
+                            borderRadius:99, background:bb, color:col,
+                            textTransform:'uppercase', letterSpacing:'0.06em' }}>{lb}</span>
                         </div>
-                        <div style={{ display:'flex', gap:14 }}>
+                        <div style={{ display:'flex', gap:14, flexWrap:'wrap' }}>
                           <span style={{ fontSize:9, color:'#16a34a', fontWeight:700 }}>
                             ✓ {r.data.present} present
                           </span>
                           {r.data.absent > 0 && (
-                            <span style={{ fontSize:9, color: col, fontWeight:700 }}>
+                            <span style={{ fontSize:9, color:col, fontWeight:700 }}>
                               ✗ {r.data.absent} absent
                             </span>
                           )}
-                          <span style={{ fontSize:9, color:'#A0AEC0' }}>
-                            / {r.data.total} total
-                          </span>
+                          {r.data.pending > 0 && (
+                            <span style={{ fontSize:9, color:'#d97706', fontWeight:700 }}>
+                              ⏳ {r.data.pending} pending
+                            </span>
+                          )}
+                          <span style={{ fontSize:9, color:'#A0AEC0' }}>/ {r.data.total} total</span>
                         </div>
                       </div>
                     </div>
                   );
                 })}
 
-                {/* Absent names preview (top 3) */}
-                {att.classes?.some(c => c.absent > 0) && (
+                {/* Grade breakdown */}
+                {att.classes?.some(c => c.absent > 0 || c.pending > 0) && (
                   <div style={{ padding:'8px 16px 12px', borderTop:'1px solid #F7F2E8',
                                 display:'flex', flexWrap:'wrap', gap:5 }}>
-                    {att.classes.filter(c => c.absent > 0).slice(0,5).map((c,i) => (
+                    {att.classes.filter(c => c.absent > 0 || c.pending > 0).slice(0,6).map((c,i) => (
                       <span key={i} style={{
                         fontSize:8, fontWeight:700, padding:'2px 8px', borderRadius:99,
-                        background: c.color==='red' ? '#fee2e2' : c.color==='yellow' ? '#fef3c7' : '#f0fdf4',
-                        color: c.color==='red' ? '#dc2626' : c.color==='yellow' ? '#d97706' : '#16a34a',
+                        background: c.color==='red'?'#fee2e2':c.color==='yellow'?'#fef3c7':'#f0fdf4',
+                        color:      c.color==='red'?'#dc2626':c.color==='yellow'?'#d97706':'#16a34a',
                         textTransform:'uppercase', letterSpacing:'0.06em'
                       }}>
-                        G{c.grade}{c.section ? ' '+c.section : ''} · {c.absent} absent
+                        {c.grade || '?'} · {c.absent > 0 ? `${c.absent} absent` : `${c.pending} pending`}
                       </span>
                     ))}
-                    {att.classes.filter(c => c.absent > 0).length > 5 && (
+                    {att.classes.filter(c => c.absent > 0 || c.pending > 0).length > 6 && (
                       <span style={{ fontSize:8, color:'#A0AEC0', fontWeight:600, padding:'2px 4px' }}>
-                        +{att.classes.filter(c => c.absent > 0).length - 5} more classes
+                        +{att.classes.filter(c => c.absent > 0 || c.pending > 0).length - 6} more
                       </span>
                     )}
                   </div>
@@ -368,7 +354,9 @@ export default function ManagementDashboard() {
             );
           })() : (
             <div style={{ background:'#fff', padding:'20px', textAlign:'center',
-                          color:'#bbb', fontSize:11, fontWeight:600 }}>No data</div>
+                          color:'#bbb', fontSize:11, fontWeight:600 }}>
+              No attendance data — check GAS connection
+            </div>
           )}
         </div>
 
