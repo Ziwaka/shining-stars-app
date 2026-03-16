@@ -40,7 +40,7 @@ export default function StaffAccessHub() {
   // ── Permission rules ──────────────────────────────────────────────
   // FREE (no permission needed):
   //   Student Directory, House Score Adjustment, Staff Contacts,
-  //   My Leave, Registry Notes, Lost & Found, My Timetable
+  //   Leave Portal, Registry Notes, Lost & Found, My Timetable
   //
   // LOCKED (permission required):
   //   Hostel, Master Registry, Financial Registry, Inventory,
@@ -60,7 +60,8 @@ export default function StaffAccessHub() {
       items: [
         { name: 'Staff Contacts',   path: '/staff/contacts',   icon: '📞', perm: null },
         { name: 'Master Registry',  path: '/staff/staff-dir',  icon: '👔', perm: 'Can_View_Staff' },
-        { name: 'My Leave',         path: '/staff/my-leave',   icon: '📄', perm: null },
+        // ဒီနေရာမှာ /staff/my-leave အစား /staff/leave ကို ပြောင်းပေးထားပါတယ်
+        { name: 'Leave Portal',     path: '/staff/leave',      icon: '📄', perm: null },
       ]
     },
     {

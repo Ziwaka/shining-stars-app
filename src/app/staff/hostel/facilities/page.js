@@ -3,6 +3,19 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 
+
+const fmtDate = (d) => {
+  if (!d) return '-';
+  try {
+    const match = String(d).match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return String(d);
+    const [, yyyy, mm, dd] = match;
+    const dt = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+    const day = dt.toLocaleDateString('en-US', { weekday: 'long' });
+    return `${dd}/${mm}/${yyyy}, ${day}`;
+  } catch { return String(d); }
+};
+
 const CATEGORIES = ['Furniture','Bedding','Electronics','Cleaning','Kitchen','Bathroom','Sports','Other'];
 const UNITS      = ['Pcs','Set','Box','Roll','Bottle','Pack','Kg','Liter'];
 const EMPTY_FORM = {
@@ -455,7 +468,7 @@ export default function HostelInventoryPage() {
                           <span style={{ fontSize:'8px', padding:'1px 8px', borderRadius:'99px', background:'rgba(255,255,255,0.06)', color:'rgba(255,255,255,0.4)', fontWeight:900 }}>{l.Action}</span>
                         </div>
                         <p style={{ fontSize:'9px', color:'rgba(255,255,255,0.3)', margin:0 }}>
-                          🏠{l.Hostel_Name} · {l.Done_By} · {l.Date}
+                          🏠{l.Hostel_Name} · {l.Done_By} · {fmtDate(l.Date)}
                         </p>
                         {l.Note && <p style={{ fontSize:'9px', color:'rgba(255,255,255,0.2)', margin:'2px 0 0', fontStyle:'italic' }}>"{l.Note}"</p>}
                       </div>

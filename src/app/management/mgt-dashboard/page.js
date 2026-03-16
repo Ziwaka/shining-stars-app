@@ -19,33 +19,135 @@ const TOOL_SECTIONS = [
   {
     label: 'Students & Campus',
     tools: [
-      { name:'Student Directory', path:'/staff/student-dir',           desc:'View & manage students', bg:'linear-gradient(135deg,#EEF2FF,#C7D2FE)', icon:'🎓' },
-      { name:'Hostel',            path:'/staff/hostel',                desc:'Hostel management',      bg:'linear-gradient(135deg,#F0FDF4,#BBF7D0)', icon:'🏠' },
-      { name:'House Points',      path:'/staff/points',                desc:'Award & track points',   bg:'linear-gradient(135deg,#FFFBEB,#FDE68A)', icon:'⭐' },
-      { name:'Registry Notes',   path:'/staff/notes',                  desc:'Student notes log',      bg:'linear-gradient(135deg,#F0F9FF,#BAE6FD)', icon:'📒' },
+      { name:'Student Directory', path:'/staff/student-dir',         desc:'View & manage students', bg:'linear-gradient(135deg,#EEF2FF,#C7D2FE)', icon:'🎓' },
+      { name:'Hostel',            path:'/staff/hostel',              desc:'Hostel management',      bg:'linear-gradient(135deg,#F0FDF4,#BBF7D0)', icon:'🏠' },
+      { name:'House Points',      path:'/staff/points',              desc:'Award & track points',   bg:'linear-gradient(135deg,#FFFBEB,#FDE68A)', icon:'⭐' },
+      { name:'Registry Notes',    path:'/staff/notes',               desc:'Student notes log',      bg:'linear-gradient(135deg,#F0F9FF,#BAE6FD)', icon:'📒' },
     ],
   },
   {
     label: 'Staff & Finance',
     tools: [
-      { name:'Staff Directory',  path:'/staff/staff-dir',              desc:'All staff records',      bg:'linear-gradient(135deg,#FDF4FF,#E9D5FF)', icon:'👔' },
-      { name:'Fee Collection',   path:'/staff/fees',                   desc:'Record fee payments',    bg:'linear-gradient(135deg,#F0FDF4,#A7F3D0)', icon:'💰' },
-      { name:'Performance',      path:'/management/performance',       desc:'Exam results & ranks',   bg:'linear-gradient(135deg,#FFFBEB,#FCD34D)', icon:'🏆' },
-      { name:'Analytics',        path:'/management/analytic',          desc:'School-wide data',       bg:'linear-gradient(135deg,#EFF6FF,#BFDBFE)', icon:'📈' },
+      { name:'Staff Directory',  path:'/staff/staff-dir',            desc:'All staff records',      bg:'linear-gradient(135deg,#FDF4FF,#E9D5FF)', icon:'👔' },
+      { name:'Fee Collection',   path:'/staff/fees',                 desc:'Record fee payments',    bg:'linear-gradient(135deg,#F0FDF4,#A7F3D0)', icon:'💰' },
+      { name:'Performance',      path:'/management/performance',     desc:'Exam results & ranks',   bg:'linear-gradient(135deg,#FFFBEB,#FCD34D)', icon:'🏆' },
+      { name:'Analytics',        path:'/management/analytic',        desc:'School-wide data',       bg:'linear-gradient(135deg,#EFF6FF,#BFDBFE)', icon:'📈' },
     ],
   },
   {
     label: 'Operations',
     tools: [
-      { name:'Leave Hub',        path:'/management/leave',             desc:'Leave approvals',        bg:'linear-gradient(135deg,#FFF1F2,#FECDD3)', icon:'📄' },
-      { name:'Calendar',         path:'/management/calendar',          desc:'Events & timetable',     bg:'linear-gradient(135deg,#EEF2FF,#C7D2FE)', icon:'📅' },
-      { name:'Inventory',        path:'/staff/inventory',              desc:'Stock & assets',         bg:'linear-gradient(135deg,#FEFCE8,#FEF08A)', icon:'📦' },
-      { name:'Communication',    path:'/management/communication',     desc:'Announcements',          bg:'linear-gradient(135deg,#F0FDF4,#BBF7D0)', icon:'📢' },
+      { name:'Leave Hub',        path:'/management/leave',           desc:'Leave approvals',        bg:'linear-gradient(135deg,#FFF1F2,#FECDD3)', icon:'📄' },
+      { name:'Calendar',         path:'/management/calendar',        desc:'Events & timetable',     bg:'linear-gradient(135deg,#EEF2FF,#C7D2FE)', icon:'📅' },
+      { name:'Inventory',        path:'/staff/inventory',            desc:'Stock & assets',         bg:'linear-gradient(135deg,#FEFCE8,#FEF08A)', icon:'📦' },
+      { name:'Communication',    path:'/management/communication',   desc:'Announcements',          bg:'linear-gradient(135deg,#F0FDF4,#BBF7D0)', icon:'📢' },
       { name:'Permissions',      path:'/management/staff-permissions', desc:'Staff access control',   bg:'linear-gradient(135deg,#FDF4FF,#E9D5FF)', icon:'🔐' },
-      { name:'Photo Upload',     path:'/management/photo-upload',      desc:'Student photos',         bg:'linear-gradient(135deg,#F0F9FF,#BAE6FD)', icon:'📸' },
+      { name:'Photo Upload',     path:'/management/photo-upload',    desc:'Student photos',         bg:'linear-gradient(135deg,#F0F9FF,#BAE6FD)', icon:'📸' },
     ],
   },
 ];
+
+// ── Absent Detail Modal ───────────────────────────────────────────────────────
+function AbsentModal({ persons, title, onClose }) {
+  if (!persons || persons.length === 0) return null;
+  return (
+    <div style={{
+      position:'fixed', inset:0, zIndex:9999,
+      background:'rgba(0,0,0,0.6)', backdropFilter:'blur(4px)',
+      display:'flex', alignItems:'flex-end', justifyContent:'center',
+    }} onClick={onClose}>
+      <div style={{
+        background:'#fff', borderRadius:'24px 24px 0 0',
+        width:'100%', maxWidth:'520px',
+        maxHeight:'80dvh', overflowY:'auto',
+        padding:'0 0 40px',
+        boxShadow:'0 -8px 40px rgba(0,0,0,0.2)',
+      }} onClick={e => e.stopPropagation()}>
+        {/* Handle */}
+        <div style={{display:'flex',justifyContent:'center',padding:'12px 0 0'}}>
+          <div style={{width:'40px',height:'4px',borderRadius:'99px',background:'#E2E8F0'}}/>
+        </div>
+        {/* Header */}
+        <div style={{
+          padding:'14px 20px 12px',
+          borderBottom:'1px solid #F1F5F9',
+          display:'flex', alignItems:'center', justifyContent:'space-between',
+        }}>
+          <div>
+            <p style={{fontSize:'9px',color:'#94A3B8',textTransform:'uppercase',letterSpacing:'0.15em',fontWeight:900,margin:'0 0 3px'}}>Absent Detail</p>
+            <p style={{fontSize:'15px',fontWeight:900,color:'#1A1A2E',margin:0}}>{title}</p>
+          </div>
+          <button onClick={onClose} style={{
+            background:'#F1F5F9',border:'none',borderRadius:'10px',
+            width:'32px',height:'32px',cursor:'pointer',
+            fontSize:'14px',color:'#64748B',display:'flex',alignItems:'center',justifyContent:'center',
+          }}>✕</button>
+        </div>
+        {/* List */}
+        <div style={{padding:'8px 0'}}>
+          {persons.map((p, i) => (
+            <div key={i} style={{
+              padding:'12px 20px',
+              borderBottom: i < persons.length-1 ? '1px solid #F8FAFC' : 'none',
+            }}>
+              {/* Name + type */}
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'6px'}}>
+                <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                  <div style={{
+                    width:'32px',height:'32px',borderRadius:'10px',
+                    background: p.status === 'Approved' ? '#FFF0F0' : '#FFFBEB',
+                    display:'flex',alignItems:'center',justifyContent:'center',fontSize:'14px',flexShrink:0,
+                  }}>
+                    {p.grade ? '🎓' : '👔'}
+                  </div>
+                  <div>
+                    <p style={{fontSize:'13px',fontWeight:900,color:'#1A1A2E',margin:0}}>{p.name || p.id}</p>
+                    {p.grade && <p style={{fontSize:'8px',color:'#94A3B8',margin:'1px 0 0',fontWeight:700,textTransform:'uppercase'}}>
+                      Grade {p.grade}{p.section ? ` · ${p.section}` : ''}
+                    </p>}
+                  </div>
+                </div>
+                <span style={{
+                  fontSize:'8px',fontWeight:900,padding:'3px 10px',borderRadius:'99px',
+                  background: p.status === 'Approved' ? '#FEE2E2' : '#FEF3C7',
+                  color:      p.status === 'Approved' ? '#DC2626'  : '#D97706',
+                  textTransform:'uppercase', letterSpacing:'0.06em', flexShrink:0,
+                }}>{p.status}</span>
+              </div>
+              {/* Leave details */}
+              <div style={{
+                background:'#F8FAFC', borderRadius:'12px', padding:'10px 12px',
+                display:'flex', flexDirection:'column', gap:'5px',
+              }}>
+                {/* Leave type + dates */}
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'4px'}}>
+                  <span style={{
+                    fontSize:'9px',fontWeight:900,color:'#4338CA',
+                    background:'#EEF2FF',padding:'2px 8px',borderRadius:'6px',textTransform:'uppercase',
+                  }}>{p.leave_type || 'Leave'}</span>
+                  {p.start_date && (
+                    <span style={{fontSize:'9px',color:'#64748B',fontWeight:700}}>
+                      📅 {p.start_date}
+                      {p.end_date && p.end_date !== p.start_date ? ` → ${p.end_date}` : ''}
+                      {p.total_days ? ` (${p.total_days} day${Number(p.total_days)>1?'s':''})` : ''}
+                    </span>
+                  )}
+                </div>
+                {/* Reason */}
+                {p.reason && p.reason !== '-' && p.reason !== '' && (
+                  <p style={{
+                    fontSize:'11px',color:'#475569',margin:0,
+                    fontStyle:'italic', lineHeight:1.4,
+                  }}>"{p.reason}"</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ManagementDashboard() {
   const router = useRouter();
@@ -53,11 +155,13 @@ export default function ManagementDashboard() {
   const [loading, setLoading]= useState(true);
   const [dash,    setDash]   = useState(null);
 
+  // Absent detail modal
+  const [modal, setModal] = useState(null); // { title, persons }
+
   useEffect(() => {
     const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
     if (!auth || auth.userRole !== 'management') { router.push('/login'); return; }
     setUser(auth);
-
     fetch(WEB_APP_URL, { method:'POST', body:JSON.stringify({ action:'getDashboardData' }) })
       .then(r => r.json())
       .then(res => { if (res.success) setDash(res); })
@@ -96,6 +200,35 @@ export default function ManagementDashboard() {
   const femaleW = totalS > 0 ? Math.round(female  / totalS * 100) : 50;
   const maxPts  = leaderboard[0]?.total || 1;
 
+  // ── Build absent persons list for modal ──────────────────────
+  // att.absentStudents + att.pendingStudents now have start_date, end_date, reason
+  const allAbsentPersons = [
+    ...(att?.absentStudents  || []),
+    ...(att?.pendingStudents || []),
+    ...(att?.absentStaff     || []),
+    ...(att?.pendingStaff    || []),
+  ];
+
+  const openAbsentModal = (type) => {
+    // type: 'student' | 'staff' | 'all' | grade string
+    let persons = [];
+    let title   = '';
+    if (type === 'student') {
+      persons = [...(att?.absentStudents||[]), ...(att?.pendingStudents||[])];
+      title   = 'Student Absences Today';
+    } else if (type === 'staff') {
+      persons = [...(att?.absentStaff||[]), ...(att?.pendingStaff||[])];
+      title   = 'Staff Absences Today';
+    } else {
+      // grade string e.g. "12" or "Unknown"
+      persons = allAbsentPersons.filter(p =>
+        (p.grade || 'Unknown') === (type || 'Unknown')
+      );
+      title = type && type !== 'Unknown' ? `Grade ${type} — Absences` : 'Grade Unknown — Absences';
+    }
+    if (persons.length > 0) setModal({ title, persons });
+  };
+
   return (
     <div style={{ flex:1, overflowY:'auto', background:'#F5F3EE', WebkitOverflowScrolling:'touch', paddingBottom:'40px' }}>
       <style>{`
@@ -106,9 +239,14 @@ export default function ManagementDashboard() {
         .tool-card { transition:transform 0.15s, box-shadow 0.15s; cursor:pointer; }
         .tool-card:hover { transform:translateY(-3px); box-shadow:0 8px 24px rgba(0,0,0,0.13) !important; }
         .leave-row:hover { background:#FFFBF0 !important; }
+        .abs-pill { cursor:pointer; transition:opacity 0.15s; }
+        .abs-pill:hover { opacity:0.75; }
         ::-webkit-scrollbar { width:3px }
         ::-webkit-scrollbar-thumb { background:rgba(0,0,0,0.1); border-radius:99px }
       `}</style>
+
+      {/* Absent Detail Modal */}
+      {modal && <AbsentModal title={modal.title} persons={modal.persons} onClose={() => setModal(null)}/>}
 
       {/* ── HERO ── */}
       <div style={{ background:'linear-gradient(150deg,#0D0C22 0%,#1A1845 55%,#0E1F3D 100%)',
@@ -281,8 +419,8 @@ export default function ManagementDashboard() {
             const BADGE_LB = { green:'All Clear', yellow:'On Leave', red:'Absent' };
 
             const rows = [
-              { label:'Students', data: att.school, icon:'🎓' },
-              { label:'Staff',    data: att.staff,  icon:'👔' },
+              { label:'Students', data: att.school, icon:'🎓', type:'student' },
+              { label:'Staff',    data: att.staff,  icon:'👔', type:'staff'   },
             ];
 
             return (
@@ -293,13 +431,16 @@ export default function ManagementDashboard() {
                   const bg  = BG[r.data.color]       || BG.green;
                   const bb  = BADGE_BG[r.data.color] || BADGE_BG.green;
                   const lb  = BADGE_LB[r.data.color] || 'All Clear';
+                  const hasAbsent = (r.data.absent || 0) + (r.data.pending || 0) > 0;
                   return (
                     <div key={i} style={{
                       padding:'12px 16px',
                       borderBottom: i < rows.length-1 ? '1px solid #F7F2E8' : 'none',
                       display:'flex', alignItems:'center', gap:12,
                       background: r.data.absent > 0 ? bg : '#fff',
-                    }}>
+                      cursor: hasAbsent ? 'pointer' : 'default',
+                    }}
+                    onClick={() => hasAbsent && openAbsentModal(r.type)}>
                       <svg width="44" height="44" viewBox="0 0 36 36"
                         style={{ flexShrink:0, transform:'rotate(-90deg)' }}>
                         <circle cx="18" cy="18" r="14" fill="none"
@@ -319,6 +460,11 @@ export default function ManagementDashboard() {
                           <span style={{ fontSize:8, fontWeight:700, padding:'2px 7px',
                             borderRadius:99, background:bb, color:col,
                             textTransform:'uppercase', letterSpacing:'0.06em' }}>{lb}</span>
+                          {hasAbsent && (
+                            <span style={{ fontSize:8, color:'#94A3B8', fontWeight:600 }}>
+                              (tap for details)
+                            </span>
+                          )}
                         </div>
                         <div style={{ display:'flex', gap:14, flexWrap:'wrap' }}>
                           <span style={{ fontSize:9, color:'#16a34a', fontWeight:700 }}>
@@ -337,29 +483,45 @@ export default function ManagementDashboard() {
                           <span style={{ fontSize:9, color:'#A0AEC0' }}>/ {r.data.total} total</span>
                         </div>
                       </div>
+                      {hasAbsent && <span style={{ color:'#CBD5E1', fontSize:14 }}>›</span>}
                     </div>
                   );
                 })}
 
-                {/* Grade breakdown */}
+                {/* Grade breakdown — clickable pills */}
                 {att.classes?.some(c => c.absent > 0 || c.pending > 0) && (
-                  <div style={{ padding:'8px 16px 12px', borderTop:'1px solid #F7F2E8',
-                                display:'flex', flexWrap:'wrap', gap:5 }}>
-                    {att.classes.filter(c => c.absent > 0 || c.pending > 0).slice(0,6).map((c,i) => (
-                      <span key={i} style={{
-                        fontSize:8, fontWeight:700, padding:'2px 8px', borderRadius:99,
-                        background: c.color==='red'?'#fee2e2':c.color==='yellow'?'#fef3c7':'#f0fdf4',
-                        color:      c.color==='red'?'#dc2626':c.color==='yellow'?'#d97706':'#16a34a',
-                        textTransform:'uppercase', letterSpacing:'0.06em'
-                      }}>
-                        {c.grade || '?'} · {c.absent > 0 ? `${c.absent} absent` : `${c.pending} pending`}
-                      </span>
-                    ))}
-                    {att.classes.filter(c => c.absent > 0 || c.pending > 0).length > 6 && (
-                      <span style={{ fontSize:8, color:'#A0AEC0', fontWeight:600, padding:'2px 4px' }}>
-                        +{att.classes.filter(c => c.absent > 0 || c.pending > 0).length - 6} more
-                      </span>
-                    )}
+                  <div style={{ padding:'8px 16px 12px', borderTop:'1px solid #F7F2E8' }}>
+                    <p style={{ fontSize:'8px', color:'#94A3B8', fontWeight:700, textTransform:'uppercase',
+                                letterSpacing:'0.1em', marginBottom:'6px' }}>
+                      By Class — tap to see who
+                    </p>
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+                      {att.classes.filter(c => c.absent > 0 || c.pending > 0).map((c,i) => {
+                        const gradeLabel = (c.grade && c.grade !== 'Unknown')
+                          ? `Grade ${c.grade}` : '';
+                        const countLabel = c.absent > 0
+                          ? `${c.absent} absent` : `${c.pending} pending`;
+                        return (
+                          <button key={i} className="abs-pill" onClick={() => openAbsentModal(c.grade || 'Unknown')}
+                            style={{
+                              fontSize:8, fontWeight:700, padding:'4px 10px', borderRadius:99,
+                              border:'none', cursor:'pointer',
+                              background: c.color==='red'?'#fee2e2':c.color==='yellow'?'#fef3c7':'#f0fdf4',
+                              color:      c.color==='red'?'#dc2626':c.color==='yellow'?'#d97706':'#16a34a',
+                              textTransform:'uppercase', letterSpacing:'0.06em',
+                              display:'flex', alignItems:'center', gap:4,
+                            }}>
+                            {gradeLabel ? `${gradeLabel} · ${countLabel}` : countLabel}
+                            <span style={{ fontSize:9 }}>›</span>
+                          </button>
+                        );
+                      })}
+                      {att.classes.filter(c => c.absent > 0 || c.pending > 0).length > 6 && (
+                        <span style={{ fontSize:8, color:'#A0AEC0', fontWeight:600, padding:'4px 4px' }}>
+                          +{att.classes.filter(c => c.absent > 0 || c.pending > 0).length - 6} more
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
