@@ -35,10 +35,11 @@ const TOOL_SECTIONS = [
     ],
   },
   {
-    label: 'Operations',
+    label: 'Operations & Facilities',
     tools: [
       { name:'Leave Hub',        path:'/management/leave',           desc:'Leave approvals',        bg:'linear-gradient(135deg,#FFF1F2,#FECDD3)', icon:'📄' },
       { name:'Calendar',         path:'/management/calendar',        desc:'Events & timetable',     bg:'linear-gradient(135deg,#EEF2FF,#C7D2FE)', icon:'📅' },
+      { name:'Vehicle Registry', path:'/management/vehicles',        desc:'Monitor vehicles',       bg:'linear-gradient(135deg,#F0F9FF,#BAE6FD)', icon:'🛵' },
       { name:'Inventory',        path:'/staff/inventory',            desc:'Stock & assets',         bg:'linear-gradient(135deg,#FEFCE8,#FEF08A)', icon:'📦' },
       { name:'Communication',    path:'/management/communication',   desc:'Announcements',          bg:'linear-gradient(135deg,#F0FDF4,#BBF7D0)', icon:'📢' },
       { name:'Permissions',      path:'/management/staff-permissions', desc:'Staff access control',   bg:'linear-gradient(135deg,#FDF4FF,#E9D5FF)', icon:'🔐' },
@@ -47,7 +48,6 @@ const TOOL_SECTIONS = [
   },
 ];
 
-// ── Absent Detail Modal ───────────────────────────────────────────────────────
 function AbsentModal({ persons, title, onClose }) {
   if (!persons || persons.length === 0) return null;
   return (
@@ -63,11 +63,9 @@ function AbsentModal({ persons, title, onClose }) {
         padding:'0 0 40px',
         boxShadow:'0 -8px 40px rgba(0,0,0,0.2)',
       }} onClick={e => e.stopPropagation()}>
-        {/* Handle */}
         <div style={{display:'flex',justifyContent:'center',padding:'12px 0 0'}}>
           <div style={{width:'40px',height:'4px',borderRadius:'99px',background:'#E2E8F0'}}/>
         </div>
-        {/* Header */}
         <div style={{
           padding:'14px 20px 12px',
           borderBottom:'1px solid #F1F5F9',
@@ -83,14 +81,9 @@ function AbsentModal({ persons, title, onClose }) {
             fontSize:'14px',color:'#64748B',display:'flex',alignItems:'center',justifyContent:'center',
           }}>✕</button>
         </div>
-        {/* List */}
         <div style={{padding:'8px 0'}}>
           {persons.map((p, i) => (
-            <div key={i} style={{
-              padding:'12px 20px',
-              borderBottom: i < persons.length-1 ? '1px solid #F8FAFC' : 'none',
-            }}>
-              {/* Name + type */}
+            <div key={i} style={{ padding:'12px 20px', borderBottom: i < persons.length-1 ? '1px solid #F8FAFC' : 'none' }}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'6px'}}>
                 <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
                   <div style={{
@@ -114,31 +107,17 @@ function AbsentModal({ persons, title, onClose }) {
                   textTransform:'uppercase', letterSpacing:'0.06em', flexShrink:0,
                 }}>{p.status}</span>
               </div>
-              {/* Leave details */}
-              <div style={{
-                background:'#F8FAFC', borderRadius:'12px', padding:'10px 12px',
-                display:'flex', flexDirection:'column', gap:'5px',
-              }}>
-                {/* Leave type + dates */}
+              <div style={{ background:'#F8FAFC', borderRadius:'12px', padding:'10px 12px', display:'flex', flexDirection:'column', gap:'5px' }}>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'4px'}}>
-                  <span style={{
-                    fontSize:'9px',fontWeight:900,color:'#4338CA',
-                    background:'#EEF2FF',padding:'2px 8px',borderRadius:'6px',textTransform:'uppercase',
-                  }}>{p.leave_type || 'Leave'}</span>
+                  <span style={{ fontSize:'9px',fontWeight:900,color:'#4338CA', background:'#EEF2FF',padding:'2px 8px',borderRadius:'6px',textTransform:'uppercase' }}>{p.leave_type || 'Leave'}</span>
                   {p.start_date && (
                     <span style={{fontSize:'9px',color:'#64748B',fontWeight:700}}>
-                      📅 {p.start_date}
-                      {p.end_date && p.end_date !== p.start_date ? ` → ${p.end_date}` : ''}
-                      {p.total_days ? ` (${p.total_days} day${Number(p.total_days)>1?'s':''})` : ''}
+                      📅 {p.start_date} {p.end_date && p.end_date !== p.start_date ? ` → ${p.end_date}` : ''} {p.total_days ? ` (${p.total_days} day${Number(p.total_days)>1?'s':''})` : ''}
                     </span>
                   )}
                 </div>
-                {/* Reason */}
                 {p.reason && p.reason !== '-' && p.reason !== '' && (
-                  <p style={{
-                    fontSize:'11px',color:'#475569',margin:0,
-                    fontStyle:'italic', lineHeight:1.4,
-                  }}>"{p.reason}"</p>
+                  <p style={{ fontSize:'11px',color:'#475569',margin:0, fontStyle:'italic', lineHeight:1.4 }}>"{p.reason}"</p>
                 )}
               </div>
             </div>
@@ -154,9 +133,7 @@ export default function ManagementDashboard() {
   const [user,    setUser]   = useState(null);
   const [loading, setLoading]= useState(true);
   const [dash,    setDash]   = useState(null);
-
-  // Absent detail modal
-  const [modal, setModal] = useState(null); // { title, persons }
+  const [modal, setModal] = useState(null); 
 
   useEffect(() => {
     const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
@@ -169,7 +146,6 @@ export default function ManagementDashboard() {
       .finally(() => setLoading(false));
   }, []);
 
-  // ── Attendance ────────────────────────────────────────────────
   const [att,        setAtt]        = useState(null);
   const [attLoading, setAttLoading] = useState(true);
   const todayMM = new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Yangon' });
@@ -200,8 +176,6 @@ export default function ManagementDashboard() {
   const femaleW = totalS > 0 ? Math.round(female  / totalS * 100) : 50;
   const maxPts  = leaderboard[0]?.total || 1;
 
-  // ── Build absent persons list for modal ──────────────────────
-  // att.absentStudents + att.pendingStudents now have start_date, end_date, reason
   const allAbsentPersons = [
     ...(att?.absentStudents  || []),
     ...(att?.pendingStudents || []),
@@ -210,7 +184,6 @@ export default function ManagementDashboard() {
   ];
 
   const openAbsentModal = (type) => {
-    // type: 'student' | 'staff' | 'all' | grade string
     let persons = [];
     let title   = '';
     if (type === 'student') {
@@ -220,11 +193,8 @@ export default function ManagementDashboard() {
       persons = [...(att?.absentStaff||[]), ...(att?.pendingStaff||[])];
       title   = 'Staff Absences Today';
     } else {
-      // grade string e.g. "12" or "Unknown"
-      persons = allAbsentPersons.filter(p =>
-        (p.grade || 'Unknown') === (type || 'Unknown')
-      );
-      title = type && type !== 'Unknown' ? `Grade ${type} — Absences` : 'Grade Unknown — Absences';
+      persons = allAbsentPersons.filter(p => (p.classKey || 'Unknown') === (type || 'Unknown'));
+      title = type && type !== 'Unknown' ? `Class ${type} — Absences` : 'Grade Unknown — Absences';
     }
     if (persons.length > 0) setModal({ title, persons });
   };
@@ -245,7 +215,6 @@ export default function ManagementDashboard() {
         ::-webkit-scrollbar-thumb { background:rgba(0,0,0,0.1); border-radius:99px }
       `}</style>
 
-      {/* Absent Detail Modal */}
       {modal && <AbsentModal title={modal.title} persons={modal.persons} onClose={() => setModal(null)}/>}
 
       {/* ── HERO ── */}
@@ -490,21 +459,19 @@ export default function ManagementDashboard() {
 
                 {/* Grade breakdown — clickable pills */}
                 {att.classes?.some(c => c.absent > 0 || c.pending > 0) && (
-                  <div style={{ padding:'8px 16px 12px', borderTop:'1px solid #F7F2E8' }}>
+                  <div style={{ padding:'10px 16px 14px', borderTop:'1px solid #F7F2E8' }}>
                     <p style={{ fontSize:'8px', color:'#94A3B8', fontWeight:700, textTransform:'uppercase',
-                                letterSpacing:'0.1em', marginBottom:'6px' }}>
+                                letterSpacing:'0.1em', marginBottom:'8px' }}>
                       By Class — tap to see who
                     </p>
-                    <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
                       {att.classes.filter(c => c.absent > 0 || c.pending > 0).map((c,i) => {
-                        const gradeLabel = (c.grade && c.grade !== 'Unknown')
-                          ? `Grade ${c.grade}` : '';
-                        const countLabel = c.absent > 0
-                          ? `${c.absent} absent` : `${c.pending} pending`;
+                        const gradeLabel = (c.grade && c.grade !== 'Unknown') ? `${c.grade}` : '';
+                        const countLabel = c.absent > 0 ? `${c.absent} absent` : `${c.pending} pending`;
                         return (
                           <button key={i} className="abs-pill" onClick={() => openAbsentModal(c.grade || 'Unknown')}
                             style={{
-                              fontSize:8, fontWeight:700, padding:'4px 10px', borderRadius:99,
+                              fontSize:9, fontWeight:900, padding:'6px 12px', borderRadius:99,
                               border:'none', cursor:'pointer',
                               background: c.color==='red'?'#fee2e2':c.color==='yellow'?'#fef3c7':'#f0fdf4',
                               color:      c.color==='red'?'#dc2626':c.color==='yellow'?'#d97706':'#16a34a',
@@ -512,15 +479,10 @@ export default function ManagementDashboard() {
                               display:'flex', alignItems:'center', gap:4,
                             }}>
                             {gradeLabel ? `${gradeLabel} · ${countLabel}` : countLabel}
-                            <span style={{ fontSize:9 }}>›</span>
+                            <span style={{ fontSize:10 }}>›</span>
                           </button>
                         );
                       })}
-                      {att.classes.filter(c => c.absent > 0 || c.pending > 0).length > 6 && (
-                        <span style={{ fontSize:8, color:'#A0AEC0', fontWeight:600, padding:'4px 4px' }}>
-                          +{att.classes.filter(c => c.absent > 0 || c.pending > 0).length - 6} more
-                        </span>
-                      )}
                     </div>
                   </div>
                 )}
