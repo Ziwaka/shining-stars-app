@@ -41,6 +41,7 @@ const TOOL_SECTIONS = [
       { name:'Calendar',         path:'/management/calendar',        desc:'Events & timetable',     bg:'linear-gradient(135deg,#EEF2FF,#C7D2FE)', icon:'📅' },
       { name:'Vehicle Registry', path:'/management/vehicles',        desc:'Monitor vehicles',       bg:'linear-gradient(135deg,#F0F9FF,#BAE6FD)', icon:'🛵' },
       { name:'Inventory',        path:'/staff/inventory',            desc:'Stock & assets',         bg:'linear-gradient(135deg,#FEFCE8,#FEF08A)', icon:'📦' },
+      { name:'Vendors Directory',path:'/management/vendors',         desc:'Partners Contacts',      bg:'linear-gradient(135deg,#FDF4FF,#E9D5FF)', icon:'🤝' },
       { name:'Communication',    path:'/management/communication',   desc:'Announcements',          bg:'linear-gradient(135deg,#F0FDF4,#BBF7D0)', icon:'📢' },
       { name:'Permissions',      path:'/management/staff-permissions', desc:'Staff access control',   bg:'linear-gradient(135deg,#FDF4FF,#E9D5FF)', icon:'🔐' },
       { name:'Photo Upload',     path:'/management/photo-upload',    desc:'Student photos',         bg:'linear-gradient(135deg,#F0F9FF,#BAE6FD)', icon:'📸' },
@@ -54,70 +55,67 @@ function AbsentModal({ persons, title, onClose }) {
     <div style={{
       position:'fixed', inset:0, zIndex:9999,
       background:'rgba(0,0,0,0.6)', backdropFilter:'blur(4px)',
-      display:'flex', alignItems:'flex-end', justifyContent:'center',
+      display:'flex', alignItems:'center', justifyContent:'center', padding: '16px'
     }} onClick={onClose}>
       <div style={{
-        background:'#fff', borderRadius:'24px 24px 0 0',
+        background:'#fff', borderRadius:'24px',
         width:'100%', maxWidth:'520px',
-        maxHeight:'80dvh', overflowY:'auto',
-        padding:'0 0 40px',
-        boxShadow:'0 -8px 40px rgba(0,0,0,0.2)',
+        maxHeight:'85vh', display:'flex', flexDirection:'column',
+        boxShadow:'0 8px 40px rgba(0,0,0,0.2)',
       }} onClick={e => e.stopPropagation()}>
-        <div style={{display:'flex',justifyContent:'center',padding:'12px 0 0'}}>
-          <div style={{width:'40px',height:'4px',borderRadius:'99px',background:'#E2E8F0'}}/>
-        </div>
         <div style={{
-          padding:'14px 20px 12px',
+          padding:'20px 20px 16px',
           borderBottom:'1px solid #F1F5F9',
           display:'flex', alignItems:'center', justifyContent:'space-between',
+          flexShrink:0
         }}>
           <div>
             <p style={{fontSize:'9px',color:'#94A3B8',textTransform:'uppercase',letterSpacing:'0.15em',fontWeight:900,margin:'0 0 3px'}}>Absent Detail</p>
-            <p style={{fontSize:'15px',fontWeight:900,color:'#1A1A2E',margin:0}}>{title}</p>
+            <p style={{fontSize:'16px',fontWeight:900,color:'#1A1A2E',margin:0}}>{title}</p>
           </div>
           <button onClick={onClose} style={{
             background:'#F1F5F9',border:'none',borderRadius:'10px',
-            width:'32px',height:'32px',cursor:'pointer',
+            width:'36px',height:'36px',cursor:'pointer',
             fontSize:'14px',color:'#64748B',display:'flex',alignItems:'center',justifyContent:'center',
           }}>✕</button>
         </div>
-        <div style={{padding:'8px 0'}}>
+        <div style={{padding:'8px 0', overflowY:'auto', flex:1}}>
           {persons.map((p, i) => (
             <div key={i} style={{ padding:'12px 20px', borderBottom: i < persons.length-1 ? '1px solid #F8FAFC' : 'none' }}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'6px'}}>
-                <div style={{display:'flex',alignItems:'center',gap:'8px'}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'8px'}}>
+                <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
                   <div style={{
-                    width:'32px',height:'32px',borderRadius:'10px',
+                    width:'36px',height:'36px',borderRadius:'12px',
                     background: p.status === 'Approved' ? '#FFF0F0' : '#FFFBEB',
-                    display:'flex',alignItems:'center',justifyContent:'center',fontSize:'14px',flexShrink:0,
+                    display:'flex',alignItems:'center',justifyContent:'center',fontSize:'16px',flexShrink:0,
                   }}>
                     {p.grade ? '🎓' : '👔'}
                   </div>
                   <div>
-                    <p style={{fontSize:'13px',fontWeight:900,color:'#1A1A2E',margin:0}}>{p.name || p.id}</p>
-                    {p.grade && <p style={{fontSize:'8px',color:'#94A3B8',margin:'1px 0 0',fontWeight:700,textTransform:'uppercase'}}>
-                      Grade {p.grade}{p.section ? ` · ${p.section}` : ''}
+                    <p style={{fontSize:'14px',fontWeight:900,color:'#1A1A2E',margin:0}}>{p.name || p.id}</p>
+                    {p.grade && <p style={{fontSize:'9px',color:'#64748b',margin:'2px 0 0',fontWeight:900,textTransform:'uppercase',letterSpacing:'0.05em'}}>
+                      {p.grade === 'Unknown' ? 'Class Unknown' : `Grade ${p.grade}`}{p.section ? ` · ${p.section}` : ''}
                     </p>}
                   </div>
                 </div>
                 <span style={{
-                  fontSize:'8px',fontWeight:900,padding:'3px 10px',borderRadius:'99px',
+                  fontSize:'9px',fontWeight:900,padding:'4px 10px',borderRadius:'8px',
                   background: p.status === 'Approved' ? '#FEE2E2' : '#FEF3C7',
                   color:      p.status === 'Approved' ? '#DC2626'  : '#D97706',
                   textTransform:'uppercase', letterSpacing:'0.06em', flexShrink:0,
                 }}>{p.status}</span>
               </div>
-              <div style={{ background:'#F8FAFC', borderRadius:'12px', padding:'10px 12px', display:'flex', flexDirection:'column', gap:'5px' }}>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'4px'}}>
-                  <span style={{ fontSize:'9px',fontWeight:900,color:'#4338CA', background:'#EEF2FF',padding:'2px 8px',borderRadius:'6px',textTransform:'uppercase' }}>{p.leave_type || 'Leave'}</span>
+              <div style={{ background:'#F8FAFC', borderRadius:'12px', padding:'12px', display:'flex', flexDirection:'column', gap:'6px' }}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'6px'}}>
+                  <span style={{ fontSize:'9px',fontWeight:900,color:'#4338CA', background:'#EEF2FF',padding:'3px 8px',borderRadius:'6px',textTransform:'uppercase' }}>{p.leave_type || 'Leave'}</span>
                   {p.start_date && (
-                    <span style={{fontSize:'9px',color:'#64748B',fontWeight:700}}>
+                    <span style={{fontSize:'10px',color:'#475569',fontWeight:700}}>
                       📅 {p.start_date} {p.end_date && p.end_date !== p.start_date ? ` → ${p.end_date}` : ''} {p.total_days ? ` (${p.total_days} day${Number(p.total_days)>1?'s':''})` : ''}
                     </span>
                   )}
                 </div>
                 {p.reason && p.reason !== '-' && p.reason !== '' && (
-                  <p style={{ fontSize:'11px',color:'#475569',margin:0, fontStyle:'italic', lineHeight:1.4 }}>"{p.reason}"</p>
+                  <p style={{ fontSize:'12px',color:'#334155',margin:'4px 0 0', fontStyle:'italic', lineHeight:1.5 }}>"{p.reason}"</p>
                 )}
               </div>
             </div>
@@ -194,7 +192,7 @@ export default function ManagementDashboard() {
       title   = 'Staff Absences Today';
     } else {
       persons = allAbsentPersons.filter(p => (p.classKey || 'Unknown') === (type || 'Unknown'));
-      title = type && type !== 'Unknown' ? `Class ${type} — Absences` : 'Grade Unknown — Absences';
+      title = type && type !== 'Unknown' ? `Class: ${type}` : 'Class: Unknown';
     }
     if (persons.length > 0) setModal({ title, persons });
   };
@@ -217,7 +215,6 @@ export default function ManagementDashboard() {
 
       {modal && <AbsentModal title={modal.title} persons={modal.persons} onClose={() => setModal(null)}/>}
 
-      {/* ── HERO ── */}
       <div style={{ background:'linear-gradient(150deg,#0D0C22 0%,#1A1845 55%,#0E1F3D 100%)',
                     padding:'28px 20px 52px', position:'relative', overflow:'hidden' }}>
         <div style={{ position:'absolute', bottom:-1, left:0, right:0, height:32,
@@ -346,7 +343,6 @@ export default function ManagementDashboard() {
         </div>
       </div>
 
-      {/* ── BODY ── */}
       <div style={{ maxWidth:500, margin:'0 auto', width:'100%', padding:'16px',
                     display:'flex', flexDirection:'column', gap:18,
                     fontFamily:"'DM Sans',system-ui,sans-serif" }}>
@@ -466,7 +462,7 @@ export default function ManagementDashboard() {
                     </p>
                     <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
                       {att.classes.filter(c => c.absent > 0 || c.pending > 0).map((c,i) => {
-                        const gradeLabel = (c.grade && c.grade !== 'Unknown') ? `${c.grade}` : '';
+                        const gradeLabel = (c.grade && c.grade !== 'Unknown') ? `${c.grade}` : 'Unknown Class';
                         const countLabel = c.absent > 0 ? `${c.absent} absent` : `${c.pending} pending`;
                         return (
                           <button key={i} className="abs-pill" onClick={() => openAbsentModal(c.grade || 'Unknown')}
@@ -478,7 +474,7 @@ export default function ManagementDashboard() {
                               textTransform:'uppercase', letterSpacing:'0.06em',
                               display:'flex', alignItems:'center', gap:4,
                             }}>
-                            {gradeLabel ? `${gradeLabel} · ${countLabel}` : countLabel}
+                            {gradeLabel} · {countLabel}
                             <span style={{ fontSize:10 }}>›</span>
                           </button>
                         );

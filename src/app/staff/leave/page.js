@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 
-// ── Date Helpers (Inlined to avoid Import Errors) ──
 const MM_TZ = 'Asia/Yangon';
 const getTodayMM = () => {
   try { return new Date().toLocaleDateString('en-CA', { timeZone: MM_TZ }); }
@@ -31,7 +30,6 @@ const formatDateDisplay = (d) => {
   } catch(e) { return formatMMDate(d); }
 };
 
-// ── UI Constants ──
 const S = {
   page:    { display:'flex', flexDirection:'column', height:'100dvh', overflow:'hidden', background:'#fdfcf0', color:'#020617', fontFamily:'system-ui,sans-serif' },
   header:  { flexShrink:0, background:'#020617', borderBottom:'6px solid #fbbf24', padding:'14px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px' },
@@ -69,7 +67,6 @@ const DUR_TYPES = [
   { id:'PERIOD', label:'Subject',  icon:'⏱️' },
 ];
 
-// ★ အရောင်လင်းလင်းနဲ့ သန့်သန့်ရှင်းရှင်းဖြစ်အောင် ပြင်ဆင်ထားသော Watchlist ★
 const WatchlistGroup = ({ title, users, icon, color, bg }) => (
   <div style={{background:bg||'#ffffff',border:'1px solid #e2e8f0',padding:'20px',borderRadius:'24px',display:'flex',flexDirection:'column',maxHeight:'450px',boxShadow:'0 2px 10px rgba(0,0,0,0.02)'}}>
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px',borderBottom:'1px solid #f1f5f9',paddingBottom:'12px',flexShrink:0}}>
@@ -130,7 +127,7 @@ export default function StaffLeave() {
   const [histFilter, setHistFilter] = useState("ALL");
 
   const [calDate, setCalDate] = useState(new Date());
-  const [selectedCalDate, setSelectedCalDate] = useState(null); // ★ ပြက္ခဒိန် Modal အတွက် State
+  const [selectedCalDate, setSelectedCalDate] = useState(null);
 
   const [form, setForm] = useState({
     category:'School', type:'Sick Leave', durType:'FULL',
@@ -281,10 +278,6 @@ export default function StaffLeave() {
     return true;
   }).filter(l=>typeFilter==="ALL"||l.User_Type===typeFilter);
 
-  const halfDayCount = analysisLeaves.filter(l=>(l.Duration_Type||l.Leave_Mode)==='HALF'||l.Leave_Mode==='Half Day').length;
-  const periodCount  = analysisLeaves.filter(l=>(l.Duration_Type||l.Leave_Mode)==='PERIOD'||l.Leave_Mode==='Period-wise').length;
-  const fullDayCount = analysisLeaves.filter(l=>(l.Duration_Type||l.Leave_Mode)==='FULL'||l.Leave_Mode==='Full Day').length;
-
   const userStats = {};
   const todayStr = getTodayMM(); 
 
@@ -329,14 +322,14 @@ export default function StaffLeave() {
 
   const statsList = Object.values(userStats);
   const watchMap = {
-    'TODAY': { title: 'ယနေ့ ပျက်သူ', users: statsList.filter(u => u.isAbsentToday), icon: '📍', color: '#0284c7' },
-    'C2':    { title: '၂ ရက်ဆက်တိုက်', users: statsList.filter(u => u.maxConsecutive >= 2 && u.maxConsecutive < 3), icon: '⚠️', color: '#d97706' },
-    'C3':    { title: '၃ ရက်ဆက်တိုက်', users: statsList.filter(u => u.maxConsecutive >= 3 && u.maxConsecutive < 5), icon: '🔥', color: '#ea580c' },
-    'C5':    { title: '၅ ရက်ဆက်တိုက်', users: statsList.filter(u => u.maxConsecutive >= 5), icon: '🚨', color: '#e11d48' },
-    'W3':    { title: '၁ ပတ် (≥ ၃ ရက်)', users: statsList.filter(u => u.last7 >= 3), icon: '📅', color: '#4f46e5' },
-    'M3':    { title: '၁ လ (≥ ၃ ရက်)', users: statsList.filter(u => u.last30 >= 3), icon: '📆', color: '#9333ea' },
-    'M5':    { title: '၃ လ (≥ ၅ ရက်)', users: statsList.filter(u => u.last90 >= 5), icon: '📊', color: '#db2777' },
-    'ALL5':  { title: 'All Time (≥ ၅ ရက်)', users: statsList.filter(u => u.totalDays >= 5), icon: '🏆', color: '#475569' }
+    'TODAY': { title: 'ယနေ့ ပျက်သူ', users: statsList.filter(u => u.isAbsentToday), icon: '📍', color: 'text-sky-600' },
+    'C2':    { title: '၂ ရက်ဆက်တိုက်', users: statsList.filter(u => u.maxConsecutive >= 2 && u.maxConsecutive < 3), icon: '⚠️', color: 'text-amber-600' },
+    'C3':    { title: '၃ ရက်ဆက်တိုက်', users: statsList.filter(u => u.maxConsecutive >= 3 && u.maxConsecutive < 5), icon: '🔥', color: 'text-orange-600' },
+    'C5':    { title: '၅ ရက်ဆက်တိုက်', users: statsList.filter(u => u.maxConsecutive >= 5), icon: '🚨', color: 'text-rose-600' },
+    'W3':    { title: '၁ ပတ် (≥ ၃ ရက်)', users: statsList.filter(u => u.last7 >= 3), icon: '📅', color: 'text-indigo-600' },
+    'M3':    { title: '၁ လ (≥ ၃ ရက်)', users: statsList.filter(u => u.last30 >= 3), icon: '📆', color: 'text-purple-600' },
+    'M5':    { title: '၃ လ (≥ ၅ ရက်)', users: statsList.filter(u => u.last90 >= 5), icon: '📊', color: 'text-pink-600' },
+    'ALL5':  { title: 'All Time (≥ ၅ ရက်)', users: statsList.filter(u => u.totalDays >= 5), icon: '🏆', color: 'text-slate-600' }
   };
   const watchTabs = [
     { id: 'TODAY', label: 'ယနေ့' }, { id: 'C2', label: '၂ ရက်ဆက်' }, { id: 'C3', label: '၃ ရက်ဆက်' }, { id: 'C5', label: '≥ ၅ ရက်ဆက်' },
@@ -346,7 +339,6 @@ export default function StaffLeave() {
   const [historySearchQueryAnalysis, setHistorySearchQueryAnalysis] = useState("");
   const searchedUsersAnalysis = historySearchQueryAnalysis.trim().length >= 2 ? statsList.filter(u => u.name.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase()) || u.id.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase())) : [];
 
-  // --- CALENDAR GENERATION ---
   const cYear = calDate.getFullYear();
   const cMonth = calDate.getMonth();
   const daysInMonth = new Date(cYear, cMonth + 1, 0).getDate();
@@ -365,7 +357,7 @@ export default function StaffLeave() {
          let g = 'Staff';
          if(l.User_Type==='STUDENT') {
             const st = getStudentInfo(l.User_ID, l.Name);
-            g = st.grade ? `G${st.grade}` : 'Unknown';
+            g = st.grade ? `G-${st.grade}${st.section ? ` - ${st.section}` : ''}` : 'Unknown';
          }
          gradeMap[g] = (gradeMap[g]||0)+1;
          totalAbs++;
@@ -376,7 +368,7 @@ export default function StaffLeave() {
   const prevMonth = () => setCalDate(new Date(cYear, cMonth - 1, 1));
   const nextMonth = () => setCalDate(new Date(cYear, cMonth + 1, 1));
 
-  if (loading) return <div className="min-h-[50vh] flex items-center justify-center font-black text-slate-400 animate-pulse uppercase tracking-widest text-lg">Loading Leave Hub...</div>;
+  if (loading||proc) return <div className="min-h-[50vh] flex items-center justify-center font-black text-[#4c1d95] animate-pulse uppercase italic tracking-widest text-lg">{proc?"Processing...":"Loading Leave Hub..."}</div>;
 
   return (
     <div style={S.page}>
@@ -384,33 +376,33 @@ export default function StaffLeave() {
       {/* ★ CALENDAR MODAL ★ */}
       {selectedCalDate && (
         <div className="fixed inset-0 z-[99] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setSelectedCalDate(null)}>
-           <div className="bg-white w-full max-w-[500px] rounded-[2rem] p-6 shadow-2xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
-             <div className="flex justify-between items-center mb-5 border-b border-slate-100 pb-4">
+           <div className="bg-white w-full max-w-[520px] rounded-[24px] p-6 shadow-2xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+             <div className="flex justify-between items-center mb-5 border-b border-slate-100 pb-4 shrink-0">
                <div>
                  <h3 className="text-xl font-black text-slate-900 leading-none mb-1">Absent Details</h3>
                  <p className="text-[10px] uppercase tracking-widest text-sky-500 font-bold">{formatDateDisplay(selectedCalDate)}</p>
                </div>
                <button onClick={() => setSelectedCalDate(null)} className="w-10 h-10 rounded-full bg-slate-100 text-slate-500 font-black text-lg flex items-center justify-center hover:bg-slate-200">✕</button>
              </div>
-             <div className="overflow-y-auto pr-2 space-y-3 scrollbar-thin scrollbar-thumb-slate-200">
+             <div className="overflow-y-auto pr-2 space-y-3 scrollbar-thin scrollbar-thumb-slate-200 flex-1">
                {registry.allLeaves.filter(l => l.Status === 'Approved' && formatMMDate(l.Start_Date) <= selectedCalDate && (formatMMDate(l.End_Date) || formatMMDate(l.Start_Date)) >= selectedCalDate).map((l, i) => {
                   const stInfo = l.User_Type === 'STUDENT' ? getStudentInfo(l.User_ID, l.Name) : {grade:'',section:''};
                   return (
                     <div key={i} className="bg-slate-50 border border-slate-100 p-4 rounded-2xl shadow-sm">
                       <div className="flex justify-between items-start mb-3">
-                         <p className="font-black text-slate-900 text-[15px]">{l.Name}</p>
-                         <span className="text-[9px] uppercase font-black bg-white px-3 py-1 rounded-lg shadow-sm text-sky-600 border border-slate-100">{l.Leave_Type}</span>
-                      </div>
-                      <div className="flex gap-2 mb-3 flex-wrap">
-                        <span className="text-[9px] bg-slate-200 text-slate-700 px-2 py-1 rounded-md font-black">ID: {l.User_ID}</span>
-                        {l.User_Type === 'STUDENT' ? (
-                           <span className="text-[9px] bg-indigo-100 text-indigo-700 px-2 py-1 rounded-md font-black">
-                             {stInfo.grade ? `G-${stInfo.grade}` : ''}{stInfo.grade && stInfo.section ? ' | ' : ''}{stInfo.section ? `Class ${stInfo.section}` : 'STUDENT'}
-                           </span>
-                        ) : <span className="text-[9px] bg-amber-100 text-amber-700 px-2 py-1 rounded-md font-black">STAFF</span>}
+                         <div className="flex items-center gap-3">
+                           <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center text-lg">{l.User_Type==='STUDENT'?'🎓':'👔'}</div>
+                           <div>
+                             <p className="font-black text-slate-900 text-[15px] m-0">{l.Name}</p>
+                             {l.User_Type==='STUDENT' && <span className="text-[9px] uppercase font-black text-slate-500 tracking-wider">
+                               {stInfo.grade ? `G-${stInfo.grade}` : ''}{stInfo.grade && stInfo.section ? ` - ${stInfo.section}` : ''}{!stInfo.grade ? 'STUDENT' : ''}
+                             </span>}
+                           </div>
+                         </div>
+                         <span className="text-[9px] uppercase font-black bg-white px-3 py-1 rounded-lg shadow-sm text-sky-600 border border-slate-100 shrink-0">{l.Leave_Type}</span>
                       </div>
                       <div className="bg-white p-3 rounded-xl border border-slate-100">
-                        <p className="text-[12px] text-slate-600 italic leading-snug">"{l.Reason}"</p>
+                        <p className="text-[12px] text-slate-600 italic leading-snug m-0">"{l.Reason}"</p>
                       </div>
                     </div>
                   )
@@ -625,7 +617,7 @@ export default function StaffLeave() {
                       <span style={{fontSize:'9px',color:'#64748b',background:'#f1f5f9',padding:'2px 6px',borderRadius:'6px',fontWeight:900}}>ID: {l.User_ID}</span>
                       {l.User_Type === 'STUDENT' && (stInfo.grade || stInfo.section) && (
                          <span style={{fontSize:'9px',background:'#e0f2fe',color:'#0284c7',padding:'2px 6px',borderRadius:'6px',fontWeight:900}}>
-                           {stInfo.grade ? `Grade ${stInfo.grade}` : ''}{stInfo.grade && stInfo.section ? ' | ' : ''}{stInfo.section ? `Class ${stInfo.section}` : ''}
+                           {stInfo.grade ? `G-${stInfo.grade}` : ''}{stInfo.grade && stInfo.section ? ` - ${stInfo.section}` : ''}
                          </span>
                       )}
                     </div>
@@ -682,7 +674,7 @@ export default function StaffLeave() {
                             <span className="text-[8px] color-[#64748b] bg-[#f1f5f9] px-2 py-0.5 rounded-md font-black">ID: {l.User_ID}</span>
                             {l.User_Type === 'STUDENT' && (stInfo.grade || stInfo.section) && (
                                <span className="text-[8px] bg-[#e0f2fe] color-[#0284c7] px-2 py-0.5 rounded-md font-black">
-                                 {stInfo.grade ? `G-${stInfo.grade}` : ''}{stInfo.grade && stInfo.section ? ' | ' : ''}{stInfo.section ? `Class ${stInfo.section}` : ''}
+                                 {stInfo.grade ? `G-${stInfo.grade}` : ''}{stInfo.grade && stInfo.section ? ` - ${stInfo.section}` : ''}
                                </span>
                             )}
                           </div>
@@ -796,7 +788,7 @@ export default function StaffLeave() {
                               {u.type === 'STUDENT' ? (
                                 <>
                                   <span className="text-[8px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md font-black">STUDENT</span>
-                                  {(u.grade || u.section) && <span className="text-[8px] bg-sky-100 text-sky-700 px-2 py-0.5 rounded-md font-black">{u.grade ? `Grade ${u.grade}` : ''}{u.grade && u.section ? ' | ' : ''}{u.section ? `Class ${u.section}` : ''}</span>}
+                                  {(u.grade || u.section) && <span className="text-[8px] bg-sky-100 text-sky-700 px-2 py-0.5 rounded-md font-black">{u.grade ? `Grade ${u.grade}` : ''}{u.grade && u.section ? ` - ${u.section}` : ''}</span>}
                                 </>
                               ) : <span className="text-[8px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md font-black">STAFF</span>}
                             </div>
