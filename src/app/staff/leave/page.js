@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 
+// ── Date Helpers (Inlined to avoid Import Errors) ──
 const MM_TZ = 'Asia/Yangon';
 const getTodayMM = () => {
   try { return new Date().toLocaleDateString('en-CA', { timeZone: MM_TZ }); }
@@ -30,6 +31,7 @@ const formatDateDisplay = (d) => {
   } catch(e) { return formatMMDate(d); }
 };
 
+// ── UI Constants ──
 const S = {
   page:    { display:'flex', flexDirection:'column', height:'100dvh', overflow:'hidden', background:'#fdfcf0', color:'#020617', fontFamily:'system-ui,sans-serif' },
   header:  { flexShrink:0, background:'#020617', borderBottom:'6px solid #fbbf24', padding:'14px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px' },
@@ -188,7 +190,7 @@ export default function StaffLeave() {
         const res = await fetch(WEB_APP_URL, { method:'POST', body:JSON.stringify({ action:'uploadPhoto', base64, filename: file.name, mimeType: file.type }) }).then(r=>r.json());
         if(res.success) { setF('attachment', res.photoUrl); showMsg('File uploaded ✓'); }
         else showMsg('Upload failed','error');
-      } catch(e) { showMsg('Upload error','error'); }
+      } catch(err) { showMsg('Upload error','error'); }
       setUploading(false);
     };
     reader.readAsDataURL(file);
@@ -278,6 +280,10 @@ export default function StaffLeave() {
     return true;
   }).filter(l=>typeFilter==="ALL"||l.User_Type===typeFilter);
 
+  const halfDayCount = analysisLeaves.filter(l=>(l.Duration_Type||l.Leave_Mode)==='HALF'||l.Leave_Mode==='Half Day').length;
+  const periodCount  = analysisLeaves.filter(l=>(l.Duration_Type||l.Leave_Mode)==='PERIOD'||l.Leave_Mode==='Period-wise').length;
+  const fullDayCount = analysisLeaves.filter(l=>(l.Duration_Type||l.Leave_Mode)==='FULL'||l.Leave_Mode==='Full Day').length;
+
   const userStats = {};
   const todayStr = getTodayMM(); 
 
@@ -339,6 +345,7 @@ export default function StaffLeave() {
   const [historySearchQueryAnalysis, setHistorySearchQueryAnalysis] = useState("");
   const searchedUsersAnalysis = historySearchQueryAnalysis.trim().length >= 2 ? statsList.filter(u => u.name.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase()) || u.id.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase())) : [];
 
+  // --- CALENDAR GENERATION ---
   const cYear = calDate.getFullYear();
   const cMonth = calDate.getMonth();
   const daysInMonth = new Date(cYear, cMonth + 1, 0).getDate();
@@ -368,15 +375,16 @@ export default function StaffLeave() {
   const prevMonth = () => setCalDate(new Date(cYear, cMonth - 1, 1));
   const nextMonth = () => setCalDate(new Date(cYear, cMonth + 1, 1));
 
-  if (loading||proc) return <div className="min-h-[50vh] flex items-center justify-center font-black text-[#4c1d95] animate-pulse uppercase italic tracking-widest text-lg">{proc?"Processing...":"Loading Leave Hub..."}</div>;
+  if (loading) return <div className="min-h-[50vh] flex items-center justify-center font-black text-slate-400 animate-pulse uppercase tracking-widest text-lg">Loading Leave Hub...</div>;
 
   return (
     <div style={S.page}>
-      
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box}input[type=date]{color-scheme:light}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.1);border-radius:10px}`}</style>
+
       {/* ★ CALENDAR MODAL ★ */}
       {selectedCalDate && (
         <div className="fixed inset-0 z-[99] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setSelectedCalDate(null)}>
-           <div className="bg-white w-full max-w-[520px] rounded-[24px] p-6 shadow-2xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+           <div className="bg-white w-full max-w-[500px] rounded-[24px] p-6 shadow-2xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
              <div className="flex justify-between items-center mb-5 border-b border-slate-100 pb-4 shrink-0">
                <div>
                  <h3 className="text-xl font-black text-slate-900 leading-none mb-1">Absent Details</h3>
