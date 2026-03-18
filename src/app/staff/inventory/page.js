@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';  // ← useRef ထည့်
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 
@@ -43,7 +43,7 @@ const ITEM_TYPES = [
 ];
 const TYPE_COLOR = { Expense:'#34d399', Capital:'#60a5fa', Tool:'#c084fc' };
 const TYPE_ICON  = { Expense:'🧻', Capital:'🪑', Tool:'🔧' };
-const LOG_ACTIONS = ['Use','Restock','Transfer','Repair','Write-off','Other'];
+const LOG_ACTIONS = ['Use','Restock','Transfer','Repair','Write-off','Other'];  // ← Transfer ပါတယ်
 const REQ_STATUSES = ['All','Pending','Approved','Rejected'];
 
 const resolveType = (item) => {
@@ -181,6 +181,11 @@ const ItemCard = ({ item, onDetail, onEdit, onUsage, onTransfer, onRequest }) =>
 export default function InventoryPage() {
   const router = useRouter();
 
+  // Camera refs (new)
+  const fileInputRef = useRef(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+
   // Data
   const [user,          setUser]          = useState(null);
   const [items,         setItems]         = useState([]);
@@ -219,7 +224,15 @@ export default function InventoryPage() {
   const [editItem,      setEditItem]      = useState(null);
   const [photoPreview,  setPhotoPreview]  = useState(null);
   const [photoUploading,setPhotoUploading]= useState(false);
-  const [nameMode,      setNameMode]      = useState('existing');
+
+  // Camera states (new)
+  const [showCamera, setShowCamera] = useState(false);
+  const [cameraStream, setCameraStream] = useState(null);
+
+  // Auto-suggestion states
+  const [itemSuggestions, setItemSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestion, setSelectedSuggestion] = useState(null);
 
   // Modals
   const [detailModal,   setDetailModal]   = useState(null);
@@ -285,6 +298,81 @@ export default function InventoryPage() {
 
   const showMsg = (text, type='success') => { setMsg({text,type}); setTimeout(()=>setMsg(null),3000); };
 
+  // ── Camera functions (new) ──
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' },
+        audio: false 
+      });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        setCameraStream(stream);
+        setShowCamera(true);
+      }
+    } catch (error) {
+      showMsg('Camera access denied', 'error');
+    }
+  };
+
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+    setShowCamera(false);
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext('2d');
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const base64 = canvas.toDataURL('image/jpeg', 0.7);
+      // Upload the captured image
+      handleCapturedPhoto(base64);
+      stopCamera();
+    }
+  };
+
+  const handleCapturedPhoto = async (base64) => {
+    setPhotoUploading(true);
+    try {
+      const res = await fetch(WEB_APP_URL, {
+        method: 'POST',
+        body: JSON.stringify({ 
+          action: 'uploadPhoto', 
+          base64, 
+          filename: 'inventory_capture_' + Date.now() + '.jpg', 
+          mimeType: 'image/jpeg' 
+        })
+      });
+      const r = await res.json();
+      if (r.success) {
+        setForm(f => ({ ...f, Photo_URL: r.photoUrl }));
+        setPhotoPreview(r.photoUrl);
+        showMsg('ဓာတ်ပုံ တင်ပြီးပါပြီ ✓');
+      } else {
+        showMsg(r.message || 'Upload failed', 'error');
+      }
+    } catch {
+      showMsg('Network error', 'error');
+    }
+    setPhotoUploading(false);
+  };
+
+  // Clean up camera
+  useEffect(() => {
+    return () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [cameraStream]);
+
   // ── Actions ──
   const handleUsageLog = async () => {
     if(!usageQty) return showMsg('Quantity ထည့်ပါ','error');
@@ -332,6 +420,49 @@ export default function InventoryPage() {
       if(r.success) setDetailHistory(r.data||[]);
     } catch {}
     setDetailLoading(false);
+  };
+
+  // Auto-suggestion functions
+  const handleItemNameChange = (e) => {
+    const value = e.target.value;
+    setForm({ ...form, Item_Name: value });
+
+    if (value.length >= 2) {
+      const suggestions = items
+        .filter(item => 
+          item.Item_Name?.toLowerCase().includes(value.toLowerCase())
+        )
+        .map(item => ({
+          name: item.Item_Name,
+          category: item.Category,
+          unit: item.Unit,
+          itemType: item.Item_Type,
+          minStock: item.Min_Stock,
+          location: item.Location,
+          note: item.Note
+        }))
+        .filter((item, index, self) => 
+          index === self.findIndex(i => i.name === item.name)
+        )
+        .slice(0, 5);
+      setItemSuggestions(suggestions);
+      setShowSuggestions(suggestions.length > 0);
+    } else {
+      setShowSuggestions(false);
+      setItemSuggestions([]);
+    }
+  };
+
+  const selectSuggestion = (suggestion) => {
+    setSelectedSuggestion(suggestion);
+    setForm({
+      ...form,
+      Item_Name: suggestion.name,
+      Category: suggestion.category,
+      Unit: suggestion.unit,
+      Item_Type: suggestion.itemType,
+    });
+    setShowSuggestions(false);
   };
 
   const handleSave = async () => {
@@ -847,7 +978,7 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
           )}
 
           {/* ════════════════════════════════
-               LOG TAB
+               LOG TAB (includes Transfer logs)
           ════════════════════════════════ */}
           {tab==='log'&&(
             <div style={{animation:'fadeIn 0.2s ease'}}>
@@ -914,7 +1045,7 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
           )}
 
           {/* ════════════════════════════════
-               ADD / EDIT TAB
+               ADD / EDIT TAB (with Camera)
           ════════════════════════════════ */}
           {tab==='add'&&(
             <div style={{animation:'fadeIn 0.2s ease'}}>
@@ -934,24 +1065,69 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 </div>
               </div>
 
-              {/* Item Name */}
-              <div style={{marginBottom:'12px'}}>
+              {/* Item Name with Auto‑suggestion */}
+              <div style={{marginBottom:'12px', position:'relative' }}>
                 <label style={S.label}>Item Name *</label>
-                <div style={{display:'flex',gap:'6px',marginBottom:'6px'}}>
-                  {['existing','new'].map(m=>(
-                    <button key={m} onClick={()=>{setNameMode(m);setForm(f=>({...f,Item_Name:''}));}}
-                      style={{background:nameMode===m?'#fbbf24':'rgba(255,255,255,0.06)',color:nameMode===m?'#09080f':'rgba(255,255,255,0.4)',border:'none',borderRadius:'8px',padding:'5px 12px',fontSize:'10px',fontWeight:900,cursor:'pointer'}}>
-                      {m==='existing'?'Existing':'Custom'}
-                    </button>
-                  ))}
-                </div>
-                {nameMode==='existing' ? (
-                  <select value={form.Item_Name} onChange={e=>setForm(f=>({...f,Item_Name:e.target.value}))} style={S.select}>
-                    <option value="">Select item…</option>
-                    {[...new Set(items.map(i=>i.Item_Name))].sort().map(n=><option key={n} value={n}>{n}</option>)}
-                  </select>
-                ) : (
-                  <input value={form.Item_Name} onChange={e=>setForm(f=>({...f,Item_Name:e.target.value}))} placeholder="Enter item name" style={S.input}/>
+                <input
+                  value={form.Item_Name}
+                  onChange={handleItemNameChange}
+                  onFocus={() => {
+                    if (form.Item_Name?.length >= 2 && itemSuggestions.length > 0) {
+                      setShowSuggestions(true);
+                    }
+                  }}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                  placeholder="Type item name..."
+                  style={S.input}
+                />
+                {showSuggestions && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    background: '#1a1030',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '12px',
+                    marginTop: '4px',
+                    zIndex: 100,
+                    maxHeight: '200px',
+                    overflowY: 'auto',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
+                  }}>
+                    {itemSuggestions.map((suggestion, idx) => (
+                      <div
+                        key={idx}
+                        onMouseDown={() => selectSuggestion(suggestion)}
+                        style={{
+                          padding: '10px 14px',
+                          borderBottom: idx < itemSuggestions.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                          cursor: 'pointer',
+                          transition: 'background 0.1s'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                        onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <div style={{ fontWeight: 900, fontSize: '13px', color: '#fff' }}>{suggestion.name}</div>
+                        <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)' }}>
+                          {suggestion.category} · {suggestion.unit}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {selectedSuggestion && (
+                  <div style={{
+                    marginTop: '8px',
+                    padding: '8px 12px',
+                    background: 'rgba(52,211,153,0.1)',
+                    border: '1px solid rgba(52,211,153,0.2)',
+                    borderRadius: '8px',
+                    fontSize: '10px',
+                    color: '#34d399'
+                  }}>
+                    ✓ Using existing item: {selectedSuggestion.name}
+                  </div>
                 )}
               </div>
 
@@ -1037,21 +1213,86 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                   style={{...S.input,resize:'vertical',minHeight:'60px',fontFamily:'inherit'}}/>
               </div>
 
-              {/* Photo upload */}
+              {/* Photo upload with Camera */}
               <div style={{marginBottom:'16px'}}>
                 <label style={S.label}>Photo</label>
-                {photoPreview&&<img src={photoPreview} alt="" style={{width:'100%',height:'140px',objectFit:'cover',borderRadius:'12px',marginBottom:'8px'}}/>}
-                <label style={{...S.btnSm,display:'block',textAlign:'center',cursor:'pointer',position:'relative',overflow:'hidden'}}>
-                  {photoUploading?'Uploading…':'📷 Choose Photo'}
-                  <input type="file" accept="image/*" onChange={handlePhotoSelect} style={{position:'absolute',inset:0,opacity:0,cursor:'pointer'}}/>
-                </label>
+                {photoPreview && !showCamera && (
+                  <img src={photoPreview} alt="" style={{width:'100%',height:'140px',objectFit:'cover',borderRadius:'12px',marginBottom:'8px'}}/>
+                )}
+
+                {/* Camera preview */}
+                {showCamera && (
+                  <div style={{ position: 'relative', marginBottom: '12px' }}>
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      style={{
+                        width: '100%',
+                        borderRadius: '12px',
+                        border: '2px solid rgba(255,255,255,0.1)'
+                      }}
+                    />
+                    <button
+                      onClick={capturePhoto}
+                      style={{
+                        position: 'absolute',
+                        bottom: '16px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        padding: '10px 24px',
+                        background: '#fbbf24',
+                        color: '#000',
+                        border: 'none',
+                        borderRadius: '999px',
+                        fontWeight: 900,
+                        fontSize: '12px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      📸 Capture
+                    </button>
+                  </div>
+                )}
+
+                {/* Hidden canvas for capture */}
+                <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+                {/* Buttons row */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <label style={{...S.btnSm, textAlign:'center', cursor:'pointer', position:'relative', overflow:'hidden'}}>
+                    {photoUploading ? 'Uploading…' : '📁 Choose File'}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoSelect}
+                      style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
+                    />
+                  </label>
+                  <button
+                    onClick={showCamera ? stopCamera : startCamera}
+                    style={{ ...S.btnSm, background: showCamera ? '#ef4444' : '#10b981', color: '#fff' }}
+                  >
+                    {showCamera ? '⏹️ Stop Camera' : '📸 Open Camera'}
+                  </button>
+                </div>
+
+                {photoPreview && !showCamera && (
+                  <button 
+                    onClick={() => { setPhotoPreview(null); setForm(f => ({ ...f, Photo_URL: '' })); }}
+                    style={{ ...S.btnSm, marginTop: '8px', width: '100%', background: '#ef4444', color: '#fff' }}
+                  >
+                    Remove Photo
+                  </button>
+                )}
               </div>
 
               <button onClick={handleSave} disabled={saving}
-                style={{...S.btn,opacity:saving?0.6:1}}>
+                style={{...S.btn, opacity:saving?0.6:1}}>
                 {saving?'Saving…':editItem?'Update Item':'Add Item'}
               </button>
-              {editItem&&<button onClick={()=>{setEditItem(null);setForm(EMPTY_FORM);setPhotoPreview(null);}} style={{...S.btnSm,width:'100%',textAlign:'center',marginTop:'8px'}}>Cancel Edit</button>}
+              {editItem&&<button onClick={()=>{setEditItem(null);setForm(EMPTY_FORM);setPhotoPreview(null);setSelectedSuggestion(null);setItemSuggestions([]);stopCamera();}} style={{...S.btnSm,width:'100%',textAlign:'center',marginTop:'8px'}}>Cancel Edit</button>}
             </div>
           )}
 
@@ -1097,7 +1338,7 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
       </div>
 
       {/* ════════════════════════════════
-           MODALS
+           MODALS (unchanged)
       ════════════════════════════════ */}
 
       {/* Detail Modal */}

@@ -3,241 +3,259 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 
-/**
- * Shining Stars - Student Observation Registry (v6.0 Pro Master)
- * FEATURE: Recent History Log with Date and Recorded_By [cite: 2026-02-26]
- * FEATURE: Post-Success Auto Refresh for History [cite: 2026-02-26]
- * STYLE: Professional Soft Blue (#F0F9FF) & Slate-950 Bold [cite: 2023-02-23]
- */
-export default function StudentObservationNotes() {
-  const [students, setStudents] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [recentNotes, setRecentNotes] = useState([]); // 🌟 Added History State
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [staff, setStaff] = useState(null);
+const MM_TZ = 'Asia/Yangon';
+const getTodayMM = () => {
+  try { return new Date().toLocaleDateString('en-CA', { timeZone: MM_TZ }); }
+  catch(e) { return new Date().toISOString().split('T')[0]; }
+};
+const formatMMDate = (d) => {
+  if (!d || d === '-') return '-';
+  try {
+    if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.trim())) return d.trim();
+    const dateObj = new Date(d);
+    if (!isNaN(dateObj.getTime())) return dateObj.toLocaleDateString('en-CA', { timeZone: MM_TZ });
+  } catch (e) {}
+  return String(d).split('T')[0];
+};
+const formatDateDisplay = (d) => {
+  if (!d || d === '-') return '-';
+  try {
+    const dateObj = new Date(d);
+    if (isNaN(dateObj.getTime())) return d;
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const year = dateObj.getFullYear();
+    const weekday = dateObj.toLocaleDateString('en-US', { weekday: 'short', timeZone: MM_TZ });
+    return `${day}/${month}/${year}, ${weekday}`;
+  } catch(e) { return formatMMDate(d); }
+};
+
+const CATEGORIES = [
+  { id: 'Discipline', nameEn: 'Discipline', nameMm: 'စည်းကမ်းပိုင်း', icon: '⚖️', color: 'text-rose-600', bg: 'bg-rose-50' },
+  { id: 'Academic', nameEn: 'Academic', nameMm: 'ပညာရေး', icon: '📚', color: 'text-indigo-600', bg: 'bg-indigo-50' },
+  { id: 'Health', nameEn: 'Health', nameMm: 'ကျန်းမာရေး', icon: '🏥', color: 'text-emerald-600', bg: 'bg-emerald-50' },
+  { id: 'General', nameEn: 'General', nameMm: 'အထွေထွေ', icon: '📝', color: 'text-slate-600', bg: 'bg-slate-100' },
+];
+
+export default function RegistryNotes() {
   const router = useRouter();
-
-  const [search, setSearch] = useState("");
+  const [user, setUser] = useState(null);
+  const [students, setStudents] = useState([]);
+  const [notesHistory, setNotesHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+  
+  const [studentSearch, setStudentSearch] = useState('');
   const [selectedStudent, setSelectedStudent] = useState(null);
-  const [selectedCategory, setSelectedCategory] = useState("Observation");
-  const [noteDetail, setNoteDetail] = useState("");
-
-  // Function to fetch History separately for refreshes [cite: 2026-02-26]
-  const fetchRecentLogs = async () => {
-    try {
-      const res = await fetch(WEB_APP_URL, { 
-        method: 'POST', 
-        body: JSON.stringify({ action: 'getData', sheetName: 'Student_Notes_Log' }) 
-      });
-      const result = await res.json();
-      if (result.success && Array.isArray(result.data)) {
-        // Show last 10 notes, newest first [cite: 2026-02-26]
-        setRecentNotes(result.data.reverse().slice(0, 10));
-      }
-    } catch (e) { console.error("History Fetch Failed"); }
-  };
+  const [form, setForm] = useState({ Category: 'Discipline', Note: '', Date: getTodayMM() });
 
   useEffect(() => {
-    const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || "null");
-    if (!auth) { router.push('/login'); return; }
-    setStaff(auth);
+    const u = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
+    if (!u) { router.push('/login'); return; }
+    setUser(u);
+    fetchData();
+  }, []);
 
-    const initNotesHub = async () => {
-      try {
-        const [sRes, cRes] = await Promise.all([
-          fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getData', sheetName: 'Student_Directory' }) }),
-          fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getConfig', category: 'Note_Categories' }) })
-        ]);
-        const sData = await sRes.json();
-        const cData = await cRes.json();
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [initRes, notesRes] = await Promise.all([
+        fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getInitialData' }) }).then(r => r.json()),
+        fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getData', sheetName: 'Student_Notes_Log' }) }).then(r => r.json())
+      ]);
+      if (initRes.success) {
+        const active = s => String(s.Status).toUpperCase() !== 'FALSE';
+        setStudents((initRes.students || []).filter(active));
+      }
+      if (notesRes.success) {
+        setNotesHistory((notesRes.data || []).reverse());
+      }
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  };
 
-        if (sData.success) {
-          const cleanedData = sData.data.map(item => {
-            const normalized = {};
-            Object.keys(item).forEach(key => { normalized[key.trim()] = item[key]; });
-            return normalized;
-          });
-          setStudents(cleanedData);
-        }
-        if (cData.success && cData.data.length > 0) setCategories(cData.data);
-        else setCategories([{ Setting_Name: "Observation" }, { Setting_Name: "Academic" }]);
-        
-        // Load initial history [cite: 2026-02-26]
-        await fetchRecentLogs();
-        
-      } catch (err) { console.error("Sync Error"); } finally { setLoading(false); }
-    };
-    initNotesHub();
-  }, [router]);
+  const showMsg = (text, type = 'success') => { setMsg({ text, type }); setTimeout(() => setMsg(null), 3000); };
 
-  const handleSubmit = async () => {
-    if (!selectedStudent || !noteDetail.trim()) return;
-    setSubmitting(true);
+  const handleSave = async () => {
+    if (!selectedStudent) return showMsg('ကျောင်းသား ရွေးချယ်ရန် လိုအပ်ပါသည် (Select a student)', 'error');
+    if (!form.Note.trim()) return showMsg('မှတ်တမ်း အသေးစိတ် ရေးသားရန် လိုအပ်ပါသည် (Write description)', 'error');
 
-    const data = [{
-      Date: new Date().toISOString().split('T')[0],
-      Student_ID: selectedStudent['Enrollment No.'] || selectedStudent.Student_ID,
-      Name: selectedStudent['Name (ALL CAPITAL)'] || selectedStudent.Name,
-      Category: selectedCategory,
-      Note_Detail: noteDetail.trim(),
-      Visibility: "Staff-Wide",
-      Recorded_By: staff.Name || staff.username || "System Admin"
+    setSaving(true);
+    const payload = [{
+      Date: formatMMDate(form.Date),
+      Student_ID: selectedStudent['Enrollment No.'] || selectedStudent.Student_ID || '',
+      Name: selectedStudent['Name (ALL CAPITAL)'] || selectedStudent.Name || '',
+      Grade: selectedStudent.Grade || selectedStudent.Class || '',
+      Category: form.Category,
+      Note: form.Note.trim(),
+      Recorded_By: user.Name || user.username || ''
     }];
 
     try {
-      const res = await fetch(WEB_APP_URL, { 
-        method: 'POST', 
-        body: JSON.stringify({ action: 'recordNote', sheetName: 'Student_Notes_Log', data }) 
-      });
-      const result = await res.json();
-      if (result.success) {
-        setIsSuccess(true);
-        setNoteDetail("");
-        await fetchRecentLogs(); // 🌟 Auto-Refresh History [cite: 2026-02-26]
+      const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'recordNote', sheetName: 'Student_Notes_Log', data: payload }) });
+      const r = await res.json();
+      if (r.success) {
+        showMsg('မှတ်တမ်း သိမ်းဆည်းပြီးပါပြီ (Saved successfully)');
+        setForm(f => ({ ...f, Note: '' }));
+        setSelectedStudent(null);
+        setStudentSearch('');
+        fetchData();
+      } else {
+        showMsg(r.message || 'Error saving note', 'error');
       }
-    } catch (err) { alert("Network Error"); } finally { setSubmitting(false); }
+    } catch { showMsg('Network Error', 'error'); }
+    setSaving(false);
   };
 
-  const handleNextEntry = () => {
-    setIsSuccess(false);
-    setSelectedStudent(null);
-    setSearch("");
-  };
-
-  const filtered = search.trim() === "" ? [] : students.filter(s => {
-    const name = (s['Name (ALL CAPITAL)'] || s.Name || "").toLowerCase();
-    const id = (s['Enrollment No.'] || s.Student_ID || "").toString();
-    return name.includes(search.toLowerCase()) || id.includes(search);
-  }).slice(0, 6);
-
-  if (loading) return (
-    <div className="min-h-screen flex flex-col items-center justify-center font-black text-slate-950" style={{background:'#F0F9FF'}}>
-      <div className="text-8xl animate-bounce">📓</div>
-      <p className="mt-4 uppercase" style={{letterSpacing:'0.4em'}}>Linking Registry Archives...</p>
-    </div>
-  );
+  const filteredStudents = studentSearch.length >= 2 ? students.filter(s => {
+    const q = studentSearch.toLowerCase();
+    const name = (s['Name (ALL CAPITAL)'] || s.Name || '').toLowerCase();
+    const id = (s['Enrollment No.'] || s.Student_ID || '').toString().toLowerCase();
+    return name.includes(q) || id.includes(q);
+  }).slice(0, 5) : [];
 
   return (
-    <div className="min-h-screen p-6 md:p-14 font-black selection:bg-gold text-slate-950 pb-40" style={{background:'#F0F9FF'}}>
-      <div className="mx-auto space-y-16" style={{maxWidth:'1500px'}}>
-        
-        {/* HEADER */}
-        <div className="bg-slate-950 p-10 md:p-14 shadow-3xl flex flex-col md:flex-row justify-between items-center gap-8 relative overflow-hidden" style={{borderRadius:'4rem', borderBottomWidth:'15px', borderColor:'#fbbf24'}}>
-          <div className="absolute top-0 right-0 w-96 h-96 rounded-full blur-3xl -mr-20 -mt-20" style={{background:'#fbbf24'}}></div>
-          <div className="flex items-center gap-6 z-10 leading-none">
-            <button onClick={() => router.back()} className="bg-white/10 p-5 rounded-3xl text-white hover:bg-gold transition-all">⬅️</button>
-            <h1 className="text-4xl md:text-7xl italic uppercase font-black text-white tracking-tighter ml-4">Observation Log</h1>
-          </div>
-          <div className="bg-white/10 px-8 py-3 rounded-2xl border border-white/20 text-white uppercase font-black z-10 italic text-right" style={{fontSize:'10px'}}>
-             GM Verified Registry Hub<br/>
-             <span className="" style={{color:'#fbbf24'}}>{staff?.Name}</span>
-          </div>
+    <div className="h-screen flex flex-col bg-[#F8FAFC] font-black text-slate-900 overflow-hidden">
+      {/* ── HEADER ── */}
+      <div className="shrink-0 bg-slate-900 border-b-[8px] border-[#fbbf24] px-6 py-4 flex items-center justify-between z-10 shadow-xl">
+        <button onClick={() => router.push('/staff')} className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-[#fbbf24] hover:text-slate-900 transition-colors text-lg">←</button>
+        <div className="text-center">
+          <h1 className="text-white text-lg uppercase tracking-widest italic">Registry Notes</h1>
+          <p className="text-[#fbbf24] text-[10px] uppercase tracking-[0.2em]">ကျောင်းသား မှတ်တမ်းများ</p>
         </div>
+        <button onClick={fetchData} className="w-10 h-10 rounded-xl bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors text-lg">↻</button>
+      </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
+      {msg && <div className={`fixed top-24 left-1/2 -translate-x-1/2 px-6 py-2 rounded-full text-xs text-white z-50 shadow-2xl uppercase tracking-widest ${msg.type === 'error' ? 'bg-rose-600' : 'bg-emerald-500'}`}>{msg.text}</div>}
+
+      <div className="flex-1 overflow-y-auto p-4 md:p-8">
+        <div className="max-w-[1200px] mx-auto grid grid-cols-1 xl:grid-cols-2 gap-8">
           
-          {/* LEFT: SEARCH & FORM */}
-          <div className="xl:col-span-8 space-y-10">
-            <div className="bg-white p-12 md:p-16 shadow-2xl border-slate-900 flex flex-col justify-center" style={{borderRadius:'5rem', borderTopWidth:'12px', minHeight:'600px'}}>
-              {!isSuccess ? (
-                <>
-                  <div className="mb-10 flex justify-between items-end border-b-4 border-slate-100 pb-6">
-                    <h2 className="text-2xl md:text-3xl uppercase italic font-black text-slate-950">1. Link & Record</h2>
-                    <span className="uppercase text-emerald-600 font-bold tracking-widest italic" style={{fontSize:'10px'}}>Live Database Active</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-10 mb-10">
-                    <div className="space-y-4">
-                      <label className="text-xs uppercase text-slate-400 font-black ml-4">Student Identity *</label>
+          {/* ── LEFT: ADD NOTE FORM ── */}
+          <div className="space-y-6">
+             <div className="bg-white rounded-[2rem] border border-slate-200 p-6 md:p-8 shadow-xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-sky-50 rounded-bl-full -mr-10 -mt-10 pointer-events-none opacity-50" />
+                <h2 className="text-sm uppercase tracking-widest text-slate-800 mb-6 pb-3 border-b border-slate-100 flex items-center gap-2 relative z-10"><span className="text-2xl">✍️</span> New Note <span className="text-[10px] text-sky-600 bg-sky-50 px-2 py-1 rounded-md ml-2">မှတ်တမ်းသစ်</span></h2>
+                
+                <div className="space-y-6 relative z-10">
+                  {/* Select Student */}
+                  <div>
+                    <label className="block text-[10px] uppercase text-slate-400 mb-2 tracking-widest">Student Name <span className="text-slate-500 font-bold">(ကျောင်းသားအမည်)</span> *</label>
+                    {!selectedStudent ? (
                       <div className="relative">
-                        <input 
-                          type="text" 
-                          placeholder="SEARCH NAME/ID..." 
-                          className="w-full bg-slate-50 border-4 border-slate-100 p-6 rounded-3xl text-slate-950 font-black italic text-xl outline-none focus:border-gold shadow-inner uppercase" 
-                          value={search} onChange={(e) => setSearch(e.target.value)}
-                        />
-                        {search.length > 0 && !selectedStudent && (
-                          <div className="absolute top-full left-0 w-full mt-3 bg-white rounded-3xl shadow-2xl border-4 border-slate-950 overflow-hidden z-[100]">
-                            {filtered.map((s, idx) => (
-                              <button key={idx} onClick={() => setSelectedStudent(s)} className="w-full p-6 text-left hover:bg-slate-50 border-b-2 border-slate-100 flex justify-between items-center group">
-                                <span className="text-xl font-black italic uppercase">{s['Name (ALL CAPITAL)'] || s.Name}</span>
-                                <span className="bg-slate-950 px-3 py-1 rounded-lg uppercase" style={{color:'#fbbf24', fontSize:'8px'}}>{s.House}</span>
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+                        <input value={studentSearch} onChange={e => setStudentSearch(e.target.value)} placeholder="Search by name or ID..." className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-10 pr-4 py-3.5 text-sm outline-none focus:border-[#fbbf24] focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all" />
+                        {filteredStudents.length > 0 && (
+                          <div className="absolute top-full left-0 right-0 z-20 bg-white border border-slate-200 rounded-2xl mt-2 overflow-hidden shadow-2xl">
+                            {filteredStudents.map((s, i) => (
+                              <button key={i} onClick={() => { setSelectedStudent(s); setStudentSearch(''); }} className={`w-full px-5 py-4 text-left hover:bg-amber-50 transition-colors ${i < filteredStudents.length - 1 ? 'border-b border-slate-100' : ''}`}>
+                                <p className="text-sm font-black text-slate-800">{s['Name (ALL CAPITAL)'] || s.Name}</p>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">ID: {s['Enrollment No.'] || s.Student_ID} | G-{s.Grade || s.Class}</p>
                               </button>
                             ))}
                           </div>
                         )}
                       </div>
-                      {selectedStudent && (
-                        <div className="p-6 rounded-2xl bg-slate-950 shadow-lg animate-in zoom-in-95" style={{color:'#fbbf24'}}>
-                          <p className="text-lg uppercase italic font-black leading-none">{selectedStudent['Name (ALL CAPITAL)'] || selectedStudent.Name}</p>
-                          <p className="text-white/50 mt-1 uppercase" style={{fontSize:'9px'}}>ID: {selectedStudent['Enrollment No.'] || selectedStudent.Student_ID}</p>
+                    ) : (
+                      <div className="flex justify-between items-center bg-emerald-50 border border-emerald-200 rounded-2xl p-4 shadow-sm">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-white rounded-xl shadow-sm border border-emerald-100 flex items-center justify-center text-xl">🎓</div>
+                          <div>
+                            <p className="font-black text-sm text-emerald-900 m-0 uppercase">{selectedStudent['Name (ALL CAPITAL)'] || selectedStudent.Name}</p>
+                            <p className="text-[10px] font-bold text-emerald-600 m-0 mt-1 uppercase tracking-wider">ID: {selectedStudent['Enrollment No.'] || selectedStudent.Student_ID} | G-{selectedStudent.Grade || selectedStudent.Class}</p>
+                          </div>
                         </div>
-                      )}
-                    </div>
+                        <button onClick={() => setSelectedStudent(null)} className="text-[10px] uppercase tracking-widest px-3 py-2 bg-white border border-rose-200 text-rose-600 rounded-xl hover:bg-rose-50 font-black shadow-sm transition-colors">Change</button>
+                      </div>
+                    )}
+                  </div>
 
-                    <div className="space-y-4">
-                      <label className="text-xs uppercase text-slate-400 font-black ml-4">Classification</label>
-                      <select className="w-full bg-slate-50 border-4 border-slate-100 p-6 rounded-3xl font-black italic text-xl outline-none focus:border-slate-950 appearance-none shadow-inner" onChange={(e) => setSelectedCategory(e.target.value)} value={selectedCategory}>
-                        {categories.map((c, idx) => <option key={idx} value={c.Setting_Name}>{c.Setting_Name}</option>)}
-                      </select>
+                  {/* Date */}
+                  <div>
+                    <label className="block text-[10px] uppercase text-slate-400 mb-2 tracking-widest">Date <span className="text-slate-500 font-bold">(ရက်စွဲ)</span> *</label>
+                    <input type="date" value={form.Date} onChange={e => setForm({...form, Date: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3.5 text-sm outline-none focus:border-[#fbbf24] focus:bg-white transition-colors" />
+                  </div>
+
+                  {/* Category */}
+                  <div>
+                    <label className="block text-[10px] uppercase text-slate-400 mb-2 tracking-widest">Category <span className="text-slate-500 font-bold">(အမျိုးအစား)</span> *</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {CATEGORIES.map(c => (
+                        <button key={c.id} onClick={() => setForm({...form, Category: c.id})} className={`p-4 rounded-2xl border flex items-center gap-3 transition-all ${form.Category === c.id ? `border-transparent shadow-md ${c.bg}` : 'bg-white border-slate-200 hover:border-slate-300'}`}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shrink-0 ${form.Category === c.id ? 'bg-white shadow-sm' : c.bg}`}>{c.icon}</div>
+                          <div className="text-left flex-1 min-w-0">
+                            <p className={`text-[11px] font-black uppercase tracking-wider truncate ${form.Category === c.id ? c.color : 'text-slate-700'}`}>{c.nameEn}</p>
+                            <p className={`text-[9px] font-bold mt-0.5 truncate ${form.Category === c.id ? c.color : 'text-slate-400'}`}>{c.nameMm}</p>
+                          </div>
+                          {form.Category === c.id && <div className={`text-lg ${c.color}`}>✓</div>}
+                        </button>
+                      ))}
                     </div>
                   </div>
 
-                  <div className="space-y-4 mb-10">
-                    <label className="text-xs uppercase text-slate-400 font-black ml-4">Observation Detail *</label>
-                    <textarea rows="6" placeholder="WRITE DETAILED LOG..." className="w-full bg-slate-50 border-4 border-slate-100 p-8 text-slate-950 font-black italic text-2xl outline-none focus:border-gold shadow-inner custom-scrollbar" style={{borderRadius:'3.5rem'}} value={noteDetail} onChange={(e) => setNoteDetail(e.target.value)} />
+                  {/* Description */}
+                  <div>
+                    <label className="block text-[10px] uppercase text-slate-400 mb-2 tracking-widest">Description <span className="text-slate-500 font-bold">(အသေးစိတ်ရေးသားရန်)</span> *</label>
+                    <textarea value={form.Note} onChange={e => setForm({...form, Note: e.target.value})} placeholder="Write detailed report here..." rows={4} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm outline-none focus:border-[#fbbf24] focus:bg-white transition-colors resize-none leading-relaxed" />
                   </div>
 
-                  <button onClick={handleSubmit} disabled={!selectedStudent || !noteDetail.trim() || submitting} className={`w-full py-10 rounded-[4rem] text-3xl font-black uppercase italic shadow-2xl border-b-[15px] transition-all active:scale-95 ${submitting ? 'bg-slate-200' : 'bg-slate-950 text-white border-slate-800 hover:bg-slate-900'}`}>
-                    {submitting ? 'SYNCING...' : 'ARCHIVE LOG ★'}
-                  </button>
-                </>
-              ) : (
-                <div className="text-center space-y-8 animate-in zoom-in-90">
-                   <div className="text-9xl">✅</div>
-                   <h2 className="text-5xl font-black italic uppercase text-slate-950">Record Archived</h2>
-                   <button onClick={handleNextEntry} className="px-16 py-8 text-slate-950 text-3xl font-black uppercase italic shadow-2xl border-b-8 border-amber-600 active:scale-95" style={{background:'#fbbf24', borderRadius:'4rem'}}>Next Student 👤</button>
+                  {/* Submit Button */}
+                  <div className="pt-4 border-t border-slate-100">
+                    <button onClick={handleSave} disabled={saving || !selectedStudent} className={`w-full py-4 rounded-2xl text-sm font-black uppercase tracking-widest shadow-xl transition-all flex items-center justify-center gap-2 border-b-[6px] ${saving || !selectedStudent ? 'bg-slate-200 text-slate-400 border-slate-300' : 'bg-[#fbbf24] text-slate-950 border-amber-500 hover:bg-amber-300 active:scale-95'}`}>
+                      {saving ? 'Saving...' : '💾 Submit Record (သိမ်းမည်)'}
+                    </button>
+                  </div>
+
                 </div>
-              )}
-            </div>
+             </div>
           </div>
 
-          {/* 🌟 RIGHT: RECENT HISTORY LOG [cite: 2026-02-26] */}
-          <div className="xl:col-span-4 space-y-8">
-            <div className="bg-white p-10 shadow-xl h-full overflow-hidden" style={{borderRadius:'4rem', borderTopWidth:'12px', borderColor:'#fbbf24'}}>
-              <h2 className="text-2xl uppercase italic text-slate-950 font-black border-l-8 border-slate-950 pl-5 mb-8 tracking-tighter">Recent Archive</h2>
-              <div className="space-y-6 max-h-[700px] overflow-y-auto pr-2 custom-scrollbar">
-                {recentNotes.length > 0 ? recentNotes.map((n, i) => (
-                  <div key={i} className="bg-slate-50 p-6 border-2 border-slate-100 shadow-sm relative group" style={{borderRadius:'2.5rem'}}>
-                    <div className="flex justify-between items-start mb-3">
-                      <span className="uppercase font-black bg-slate-950 px-3 py-1 rounded-lg italic" style={{fontSize:'8px', color:'#fbbf24'}}>
-                        {n.Date}
-                      </span>
-                      <span className="uppercase font-black text-slate-400 italic" style={{fontSize:'8px'}}>
-                        By: {n.Recorded_By}
-                      </span>
-                    </div>
-                    <p className="text-md font-black italic uppercase text-slate-950 leading-tight mb-2">{n.Name}</p>
-                    <p className="text-slate-500 font-bold italic line-clamp-3" style={{fontSize:'10px'}}>"{n.Note_Detail}"</p>
-                    <div className="mt-3 pt-3 border-t border-slate-200 flex justify-between items-center">
-                       <span className="uppercase font-black text-blue-600" style={{fontSize:'8px'}}>{n.Category}</span>
-                       <span className="text-slate-300" style={{fontSize:'8px'}}>ID: {n.Student_ID}</span>
-                    </div>
-                  </div>
-                )) : <div className="p-20 text-center text-slate-300 italic uppercase font-black">No Recent Records</div>}
-              </div>
-            </div>
+          {/* ── RIGHT: HISTORY ── */}
+          <div className="flex flex-col h-full min-h-[500px]">
+             <div className="bg-white rounded-[2rem] border border-slate-200 p-6 md:p-8 shadow-sm flex flex-col h-full">
+                <h2 className="text-sm uppercase tracking-widest text-slate-800 mb-6 pb-3 border-b border-slate-100 flex items-center gap-2 shrink-0"><span className="text-2xl">📋</span> Recent Notes <span className="text-[10px] text-sky-600 bg-sky-50 px-2 py-1 rounded-md ml-2">မှတ်တမ်းဟောင်းများ</span></h2>
+                
+                <div className="flex-1 overflow-y-auto pr-2 space-y-4 scrollbar-thin scrollbar-thumb-slate-200">
+                  {loading ? (
+                    <div className="text-center py-20 text-slate-400 animate-pulse text-xs font-black uppercase tracking-widest">Loading history...</div>
+                  ) : notesHistory.length === 0 ? (
+                    <div className="text-center py-20 text-slate-400 text-xs font-black uppercase tracking-widest border border-dashed border-slate-200 rounded-3xl">No records found.</div>
+                  ) : (
+                    notesHistory.map((note, i) => {
+                      const cat = CATEGORIES.find(c => c.id === note.Category) || CATEGORIES[3];
+                      return (
+                        <div key={i} className="bg-slate-50 border border-slate-100 p-5 rounded-[1.5rem] hover:shadow-md transition-all group">
+                          <div className="flex justify-between items-start mb-4">
+                            <div className="flex items-center gap-4">
+                              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shadow-sm border border-white shrink-0 group-hover:scale-110 transition-transform ${cat.bg}`}>{cat.icon}</div>
+                              <div>
+                                <p className="text-sm font-black text-slate-900 leading-none mb-1.5">{note.Name}</p>
+                                <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">ID: {note.Student_ID} {note.Grade ? `· G-${note.Grade}` : ''}</p>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0 pl-2">
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{formatDateDisplay(note.Date)}</p>
+                              <span className={`inline-block mt-2 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${cat.bg} ${cat.color} border-${cat.color.split('-')[1]}-200`}>{cat.nameEn}</span>
+                            </div>
+                          </div>
+                          <div className="bg-white p-4 rounded-2xl border border-slate-100 mb-3 shadow-sm">
+                            <p className="text-[12px] md:text-[13px] text-slate-700 leading-relaxed font-bold break-words">"{note.Note}"</p>
+                          </div>
+                          <div className="flex justify-end items-center gap-2">
+                            <span className="text-[8px] text-slate-400 uppercase tracking-widest font-black">Recorded by</span>
+                            <span className="text-[9px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded uppercase font-black">{note.Recorded_By || 'Unknown'}</span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+             </div>
           </div>
 
         </div>
       </div>
-      <style jsx global>{`
-        body { background-color: #F0F9FF; font-weight: 900 !important; }
-        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #020617; border-radius: 20px; }
-      `}</style>
     </div>
   );
 }

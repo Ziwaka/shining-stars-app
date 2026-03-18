@@ -15,6 +15,7 @@ const fmtDate = (d) => {
   } catch { return String(d); }
 };
 
+// Inventory လမ်းကြောင်းကို /staff/inventory ဆီပြောင်းထားသည် (Management အတွက် သီးသန့်မထားတော့)
 const TOOL_SECTIONS = [
   {
     label: 'Students & Campus',
@@ -40,11 +41,11 @@ const TOOL_SECTIONS = [
       { name:'Leave Hub',        path:'/management/leave',           desc:'Leave approvals',        bg:'linear-gradient(135deg,#FFF1F2,#FECDD3)', icon:'📄' },
       { name:'Calendar',         path:'/management/calendar',        desc:'Events & timetable',     bg:'linear-gradient(135deg,#EEF2FF,#C7D2FE)', icon:'📅' },
       { name:'Vehicle Registry', path:'/management/vehicles',        desc:'Monitor vehicles',       bg:'linear-gradient(135deg,#F0F9FF,#BAE6FD)', icon:'🛵' },
+      // ⬇️ ဒီနေရာမှာ path ကို /staff/inventory ဆီပြောင်းထားသည်
       { name:'Inventory',        path:'/staff/inventory',            desc:'Stock & assets',         bg:'linear-gradient(135deg,#FEFCE8,#FEF08A)', icon:'📦' },
       { name:'Vendors Directory',path:'/management/vendors',         desc:'Partners Contacts',      bg:'linear-gradient(135deg,#FDF4FF,#E9D5FF)', icon:'🤝' },
       { name:'Communication',    path:'/management/communication',   desc:'Announcements',          bg:'linear-gradient(135deg,#F0FDF4,#BBF7D0)', icon:'📢' },
       { name:'Permissions',      path:'/management/staff-permissions', desc:'Staff access control',   bg:'linear-gradient(135deg,#FDF4FF,#E9D5FF)', icon:'🔐' },
-      { name:'Photo Upload',     path:'/management/photo-upload',    desc:'Student photos',         bg:'linear-gradient(135deg,#F0F9FF,#BAE6FD)', icon:'📸' },
     ],
   },
 ];

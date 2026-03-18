@@ -2,8 +2,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
+import CompactWatchlistFilter from '@/components/leave/CompactWatchlistFilter';
 
-// ── Date Helpers (Inlined to avoid Import Errors) ──
 const MM_TZ = 'Asia/Yangon';
 const getTodayMM = () => {
   try { return new Date().toLocaleDateString('en-CA', { timeZone: MM_TZ }); }
@@ -31,7 +31,6 @@ const formatDateDisplay = (d) => {
   } catch(e) { return formatMMDate(d); }
 };
 
-// ── UI Constants ──
 const S = {
   page:    { display:'flex', flexDirection:'column', height:'100dvh', overflow:'hidden', background:'#fdfcf0', color:'#020617', fontFamily:'system-ui,sans-serif' },
   header:  { flexShrink:0, background:'#020617', borderBottom:'6px solid #fbbf24', padding:'14px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px' },
@@ -190,7 +189,7 @@ export default function StaffLeave() {
         const res = await fetch(WEB_APP_URL, { method:'POST', body:JSON.stringify({ action:'uploadPhoto', base64, filename: file.name, mimeType: file.type }) }).then(r=>r.json());
         if(res.success) { setF('attachment', res.photoUrl); showMsg('File uploaded ✓'); }
         else showMsg('Upload failed','error');
-      } catch(err) { showMsg('Upload error','error'); }
+      } catch(e) { showMsg('Upload error','error'); }
       setUploading(false);
     };
     reader.readAsDataURL(file);
@@ -280,10 +279,6 @@ export default function StaffLeave() {
     return true;
   }).filter(l=>typeFilter==="ALL"||l.User_Type===typeFilter);
 
-  const halfDayCount = analysisLeaves.filter(l=>(l.Duration_Type||l.Leave_Mode)==='HALF'||l.Leave_Mode==='Half Day').length;
-  const periodCount  = analysisLeaves.filter(l=>(l.Duration_Type||l.Leave_Mode)==='PERIOD'||l.Leave_Mode==='Period-wise').length;
-  const fullDayCount = analysisLeaves.filter(l=>(l.Duration_Type||l.Leave_Mode)==='FULL'||l.Leave_Mode==='Full Day').length;
-
   const userStats = {};
   const todayStr = getTodayMM(); 
 
@@ -337,15 +332,21 @@ export default function StaffLeave() {
     'M5':    { title: '၃ လ (≥ ၅ ရက်)', users: statsList.filter(u => u.last90 >= 5), icon: '📊', color: 'text-pink-600' },
     'ALL5':  { title: 'All Time (≥ ၅ ရက်)', users: statsList.filter(u => u.totalDays >= 5), icon: '🏆', color: 'text-slate-600' }
   };
+
   const watchTabs = [
-    { id: 'TODAY', label: 'ယနေ့' }, { id: 'C2', label: '၂ ရက်ဆက်' }, { id: 'C3', label: '၃ ရက်ဆက်' }, { id: 'C5', label: '≥ ၅ ရက်ဆက်' },
-    { id: 'W3', label: '၁ ပတ် (၃)' }, { id: 'M3', label: '၁ လ (၃)' }, { id: 'M5', label: '၃ လ (၅)' }, { id: 'ALL5', label: 'All Time (၅)' }
+    { id: 'TODAY', label: 'ယနေ့', count: watchMap['TODAY'].users.length },
+    { id: 'C2', label: '၂ ရက်ဆက်', count: watchMap['C2'].users.length },
+    { id: 'C3', label: '၃ ရက်ဆက်', count: watchMap['C3'].users.length },
+    { id: 'C5', label: '≥ ၅ ရက်ဆက်', count: watchMap['C5'].users.length },
+    { id: 'W3', label: '၁ ပတ် (၃)', count: watchMap['W3'].users.length },
+    { id: 'M3', label: '၁ လ (၃)', count: watchMap['M3'].users.length },
+    { id: 'M5', label: '၃ လ (၅)', count: watchMap['M5'].users.length },
+    { id: 'ALL5', label: 'All Time (၅)', count: watchMap['ALL5'].users.length }
   ];
 
   const [historySearchQueryAnalysis, setHistorySearchQueryAnalysis] = useState("");
   const searchedUsersAnalysis = historySearchQueryAnalysis.trim().length >= 2 ? statsList.filter(u => u.name.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase()) || u.id.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase())) : [];
 
-  // --- CALENDAR GENERATION ---
   const cYear = calDate.getFullYear();
   const cMonth = calDate.getMonth();
   const daysInMonth = new Date(cYear, cMonth + 1, 0).getDate();
@@ -375,16 +376,19 @@ export default function StaffLeave() {
   const prevMonth = () => setCalDate(new Date(cYear, cMonth - 1, 1));
   const nextMonth = () => setCalDate(new Date(cYear, cMonth + 1, 1));
 
-  if (loading) return <div className="min-h-[50vh] flex items-center justify-center font-black text-slate-400 animate-pulse uppercase tracking-widest text-lg">Loading Leave Hub...</div>;
+  if (loading || saving || uploading) return (
+    <div className="min-h-[50vh] flex items-center justify-center font-black text-[#4c1d95] animate-pulse uppercase italic tracking-widest text-lg">
+      {saving || uploading ? "Processing..." : "Loading Leave Hub..."}
+    </div>
+  );
 
   return (
     <div style={S.page}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box}input[type=date]{color-scheme:light}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.1);border-radius:10px}`}</style>
-
+      
       {/* ★ CALENDAR MODAL ★ */}
       {selectedCalDate && (
         <div className="fixed inset-0 z-[99] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setSelectedCalDate(null)}>
-           <div className="bg-white w-full max-w-[500px] rounded-[24px] p-6 shadow-2xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+           <div className="bg-white w-full max-w-[520px] rounded-[24px] p-6 shadow-2xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
              <div className="flex justify-between items-center mb-5 border-b border-slate-100 pb-4 shrink-0">
                <div>
                  <h3 className="text-xl font-black text-slate-900 leading-none mb-1">Absent Details</h3>
@@ -733,24 +737,19 @@ export default function StaffLeave() {
                   <div className="w-1 h-4 bg-sky-500 rounded-full"/>
                   <h3 className="text-[12px] text-slate-900 font-black uppercase tracking-widest m-0">Attendance Watchlist</h3>
                 </div>
-                <div className="flex gap-2 overflow-x-auto pb-3 mb-3 scrollbar-hide snap-x">
-                  {watchTabs.map(f => {
-                    const count = watchMap[f.id].users.length;
-                    const active = watchFilter === f.id;
-                    return (
-                      <button key={f.id} onClick={() => setWatchFilter(f.id)}
-                        style={{
-                          flexShrink:0, padding:'10px 12px', borderRadius:'12px', border:'none', cursor:'pointer',
-                          fontSize:'10px', fontWeight:900, textTransform:'uppercase', letterSpacing:'0.05em',
-                          display:'flex', alignItems:'center', gap:'6px',
-                          background: active ? '#0f172a' : '#f8fafc', color: active ? '#fff' : '#64748b'
-                        }}>
-                        {f.label} 
-                        <span style={{background:active?'rgba(255,255,255,0.2)':'#e2e8f0',color:active?'#fbbf24':'#475569',padding:'2px 6px',borderRadius:'6px'}}>{count}</span>
-                      </button>
-                    )
-                  })}
+                
+                {/* Dropdown Filter ထည့်ထားသော နေရာ */}
+                <div className="flex items-center justify-between mb-4">
+                  <CompactWatchlistFilter
+                    tabs={watchTabs}
+                    activeId={watchFilter}
+                    onSelect={setWatchFilter}
+                  />
+                  <span className="text-xs text-slate-400 font-black">
+                    {watchMap[watchFilter]?.users.length || 0} individuals
+                  </span>
                 </div>
+
                 {watchMap[watchFilter] && <WatchlistGroup {...watchMap[watchFilter]} bg="#ffffff" color="#0f172a" />}
               </div>
 
