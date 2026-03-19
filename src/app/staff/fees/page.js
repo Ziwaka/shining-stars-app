@@ -126,7 +126,7 @@ export default function FeesManagementHub() {
       Status:'PAID', Recorded_By: staff?.Name||'', Remark: form.remark
     }];
     try {
-      const res  = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'recordNote', sheetName:'Fees_Management', data:payload[0] }) });
+      const res  = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'recordNote', sheetName:'Fees_Management', data:payload[0], userRole: staff?.userRole||'staff', staffId: staff?.Staff_ID||staff?.username||'' }) });
       const r    = await res.json();
       if (r.success) {
         setFeeLogs(prev => [...prev, payload[0]]);
@@ -184,7 +184,8 @@ export default function FeesManagementHub() {
     setSaving(true);
     try {
       const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({
-        action:'recordFeesBulk', entries, Date:bulkDate, Recorded_By:staff?.Name||''
+        action:'recordFeesBulk', entries, Date:bulkDate, Recorded_By:staff?.Name||'',
+        userRole: staff?.userRole || 'staff', staffId: staff?.Staff_ID || staff?.username || ''
       })});
       const r = await res.json();
       if (r.success) {

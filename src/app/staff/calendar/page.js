@@ -122,7 +122,7 @@ export default function CalendarTimetablePage() {
     if (!eventForm.Date || !eventForm.Title) return showMsg('Date နှင့် Title ထည့်ပါ', 'error');
     setSaving(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'saveEvent', ...eventForm, Created_By: user?.Name||user?.name||user?.username }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'saveEvent', ...eventForm, Created_By: user?.Name||user?.name||user?.username, userRole: user?.userRole||'staff', staffId: user?.Staff_ID||user?.username||'' }) });
       const r = await res.json();
       if (r.success) {
         showMsg(r.message);
@@ -137,7 +137,7 @@ export default function CalendarTimetablePage() {
   const handleDeleteEvent = async (e) => {
     if (!confirm(`"${e.Title}" ဖျက်မှာ သေချာပါသလား?`)) return;
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'deleteEvent', Date:e.Date, Title:e.Title }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'deleteEvent', Date:e.Date, Title:e.Title, userRole: user?.userRole||'staff', staffId: user?.Staff_ID||user?.username||'' }) });
       const r = await res.json();
       if (r.success) { showMsg(r.message); fetchAll(user); }
     } catch {}

@@ -33,7 +33,8 @@ export default function ApprovalPage() {
           name: leave.Name,
           startDate: cleanDate,
           status,
-          approvedBy: user.Name
+          approvedBy: user.Name,
+          userRole: 'management',
         })
       });
       const r = await res.json();

@@ -183,6 +183,7 @@ export default function ExamRecordsPage() {
         entries,
         Recorded_By: user?.Name || user?.username || '',
         config,
+        userRole: user?.userRole || 'staff', staffId: user?.Staff_ID || user?.username || '',
       })});
       const r = await res.json();
       if (r.success) { showMsg(r.message||'✓ သိမ်းပြီး'); }

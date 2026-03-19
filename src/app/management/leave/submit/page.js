@@ -75,7 +75,7 @@ export default function SubmitPage() {
           const res = await fetch(WEB_APP_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ action: 'uploadPhoto', base64, filename: file.name, mimeType: file.type })
+            body: JSON.stringify({ action: 'uploadPhoto', base64, filename: file.name, mimeType: file.type, folder: 'documents' })
           }).then(r => r.json());
           if (res.success) {
             setAttachments(prev => [...prev, res.photoUrl]);

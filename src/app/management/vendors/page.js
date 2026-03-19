@@ -50,7 +50,7 @@ export default function ManagementVendorsDirectory() {
       const base64 = ev.target.result;
       setUploading(true);
       try {
-        const res = await fetch(WEB_APP_URL, { method:'POST', body:JSON.stringify({ action:'uploadPhoto', base64, filename: file.name, mimeType: file.type }) }).then(r=>r.json());
+        const res = await fetch(WEB_APP_URL, { method:'POST', body:JSON.stringify({ action:'uploadPhoto', base64, filename: file.name, mimeType: file.type, folder: 'vendors' }) }).then(r=>r.json());
         if(res.success) { setForm(f => ({...f, Photo_URL: res.photoUrl})); showMsg('Photo uploaded ✓'); }
         else showMsg('Upload failed', 'error');
       } catch(err) { showMsg('Upload error', 'error'); }

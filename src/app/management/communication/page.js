@@ -75,6 +75,7 @@ export default function CommunicationPage() {
       const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({
         action:'postAnnouncement', ...form,
         Posted_By: user?.Name || user?.name || user?.username,
+        userRole: 'management',
       })});
       const r = await res.json();
       if (r.success) { showMsg(r.message); setForm(EMPTY); fetchAnn(); setTab('list'); }
@@ -90,6 +91,7 @@ export default function CommunicationPage() {
       const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({
         action:'deleteAnnouncement',
         Title: ann.Title, Posted_By: ann.Posted_By, Date: ann.Date,
+        userRole: 'management',
       })});
       const r = await res.json();
       if (r.success) { showMsg(r.message); fetchAnn(); }

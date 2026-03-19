@@ -93,7 +93,7 @@ export default function RegistryNotes() {
     }];
 
     try {
-      const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'recordNote', sheetName: 'Student_Notes_Log', data: payload }) });
+      const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'recordNote', sheetName: 'Student_Notes_Log', data: payload, userRole: user?.userRole||'staff', staffId: user?.Staff_ID||user?.username||'' }) });
       const r = await res.json();
       if (r.success) {
         showMsg('မှတ်တမ်း သိမ်းဆည်းပြီးပါပြီ (Saved successfully)');

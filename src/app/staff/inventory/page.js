@@ -56,7 +56,7 @@ const EMPTY_FORM = {
   Item_Name:'', Category:'Stationery', Unit:'Pcs', Stock_Qty:'', Min_Stock:'',
   Unit_Price:'', Condition:'Good', Item_Type:'Expense', Serial_No:'', Purchase_Date:'',
   Warranty_Until:'', Useful_Life_Years:'', Location:'', Assigned_To:'', Note:'', Photo_URL:'',
-  Bulk_Quantity: 1   // ← NEW: for Capital bulk add
+  Bulk_Quantity: 1
 };
 
 const daysUntil = (d) => { if (!d) return null; return Math.ceil((new Date(d)-new Date())/(864e5)); };
@@ -130,7 +130,6 @@ const ItemCard = ({ item, onDetail, onEdit, onUsage, onTransfer, onRequest }) =>
         {item.Photo_URL && <img src={item.Photo_URL} alt="" style={{width:'48px',height:'48px',borderRadius:'10px',objectFit:'cover',flexShrink:0}}/>}
       </div>
 
-      {/* Stats row */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'6px',marginTop:'12px'}}>
         {item.Item_Type==='Expense' ? (<>
           <div style={{background:'rgba(255,255,255,0.04)',borderRadius:'10px',padding:'8px',textAlign:'center'}}>
@@ -161,7 +160,6 @@ const ItemCard = ({ item, onDetail, onEdit, onUsage, onTransfer, onRequest }) =>
         </>)}
       </div>
 
-      {/* Action buttons */}
       <div style={{display:'flex',gap:'6px',marginTop:'10px',flexWrap:'wrap'}}>
         <button onClick={()=>onDetail(item)} style={{...S.btnSm,flex:1}}>🔍 Details</button>
         {item.Item_Type==='Expense' && (<>
@@ -182,24 +180,20 @@ const ItemCard = ({ item, onDetail, onEdit, onUsage, onTransfer, onRequest }) =>
 export default function InventoryPage() {
   const router = useRouter();
 
-  // Camera refs
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
 
-  // Data
   const [user,          setUser]          = useState(null);
   const [items,         setItems]         = useState([]);
   const [logs,          setLogs]          = useState([]);
   const [requests,      setRequests]      = useState([]);
   const [loading,       setLoading]       = useState(true);
 
-  // UI state
   const [tab,           setTab]           = useState('dashboard');
   const [saving,        setSaving]        = useState(false);
   const [msg,           setMsg]           = useState(null);
 
-  // List filters
   const [typeFilter,    setTypeFilter]    = useState('All');
   const [catFilter,     setCatFilter]     = useState('All');
   const [locFilter,     setLocFilter]     = useState('All');
@@ -207,35 +201,28 @@ export default function InventoryPage() {
   const [search,        setSearch]        = useState('');
   const [sortBy,        setSortBy]        = useState('name');
 
-  // Log filters
   const [logSearch,     setLogSearch]     = useState('');
   const [logAction,     setLogAction]     = useState('All');
   const [logDateFrom,   setLogDateFrom]   = useState('');
   const [logDateTo,     setLogDateTo]     = useState('');
 
-  // Request filters
   const [reqStatus,     setReqStatus]     = useState('All');
 
-  // Config
   const [invCategories, setInvCategories] = useState(['Stationery','Cleaning','Furniture','Tool','Electronics','Other']);
   const [invLocations,  setInvLocations]  = useState(['Store Room','Office','Classroom','Lab','Gym','Library']);
 
-  // Form
   const [form,          setForm]          = useState(EMPTY_FORM);
   const [editItem,      setEditItem]      = useState(null);
   const [photoPreview,  setPhotoPreview]  = useState(null);
   const [photoUploading,setPhotoUploading]= useState(false);
 
-  // Camera states
   const [showCamera, setShowCamera] = useState(false);
   const [cameraStream, setCameraStream] = useState(null);
 
-  // Auto-suggestion states
   const [itemSuggestions, setItemSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestion, setSelectedSuggestion] = useState(null);
 
-  // Modals
   const [detailModal,   setDetailModal]   = useState(null);
   const [detailHistory, setDetailHistory] = useState([]);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -299,21 +286,28 @@ export default function InventoryPage() {
 
   const showMsg = (text, type='success') => { setMsg({text,type}); setTimeout(()=>setMsg(null),3000); };
 
-  // ── Camera functions ──
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' },
-        audio: false 
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        setCameraStream(stream);
-        setShowCamera(true);
-      }
-    } catch (error) {
-      showMsg('Camera access denied', 'error');
+  // ── Camera functions (FIXED) ──
+  useEffect(() => {
+    if (showCamera && videoRef.current && !cameraStream) {
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+        .then(stream => {
+          videoRef.current.srcObject = stream;
+          setCameraStream(stream);
+        })
+        .catch(error => {
+          showMsg('Camera access denied', 'error');
+          setShowCamera(false);
+        });
     }
+    return () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [showCamera]);
+
+  const startCamera = () => {
+    setShowCamera(true);
   };
 
   const stopCamera = () => {
@@ -347,7 +341,8 @@ export default function InventoryPage() {
           action: 'uploadPhoto', 
           base64, 
           filename: 'inventory_capture_' + Date.now() + '.jpg', 
-          mimeType: 'image/jpeg' 
+          mimeType: 'image/jpeg',
+          folder: 'inventory'
         })
       });
       const r = await res.json();
@@ -364,22 +359,13 @@ export default function InventoryPage() {
     setPhotoUploading(false);
   };
 
-  // Clean up camera
-  useEffect(() => {
-    return () => {
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, [cameraStream]);
-
   // ── Actions ──
   const handleUsageLog = async () => {
     if(!usageQty) return showMsg('Quantity ထည့်ပါ','error');
     setSaving(true);
     const qtyChange = usageAction==='Use' ? -Math.abs(Number(usageQty)) : Math.abs(Number(usageQty));
     try {
-      const res=await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'logInventoryUsage',Item_ID:usageModal.Item_ID,Item_Name:usageModal.Item_Name,Qty_Change:qtyChange,Action:usageAction,Done_By:user?.Name||user?.username,Note:usageNote})});
+      const res=await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'logInventoryUsage',Item_ID:usageModal.Item_ID,Item_Name:usageModal.Item_Name,Qty_Change:qtyChange,Action:usageAction,Done_By:user?.Name||user?.username,Note:usageNote,userRole:user?.userRole||'staff',staffId:user?.Staff_ID||user?.username||''})});
       const r=await res.json();
       if(r.success){showMsg('Log တင်ပြီးပါပြီ ✓');fetchAll();setUsageModal(null);setUsageQty('');setUsageNote('');}
       else showMsg(r.message||'Error','error');
@@ -422,16 +408,13 @@ export default function InventoryPage() {
     setDetailLoading(false);
   };
 
-  // Auto-suggestion functions
   const handleItemNameChange = (e) => {
     const value = e.target.value;
     setForm({ ...form, Item_Name: value });
 
     if (value.length >= 2) {
       const suggestions = items
-        .filter(item => 
-          item.Item_Name?.toLowerCase().includes(value.toLowerCase())
-        )
+        .filter(item => item.Item_Name?.toLowerCase().includes(value.toLowerCase()))
         .map(item => ({
           name: item.Item_Name,
           category: item.Category,
@@ -441,9 +424,7 @@ export default function InventoryPage() {
           location: item.Location,
           note: item.Note
         }))
-        .filter((item, index, self) => 
-          index === self.findIndex(i => i.name === item.name)
-        )
+        .filter((item, index, self) => index === self.findIndex(i => i.name === item.name))
         .slice(0, 5);
       setItemSuggestions(suggestions);
       setShowSuggestions(suggestions.length > 0);
@@ -465,11 +446,9 @@ export default function InventoryPage() {
     setShowSuggestions(false);
   };
 
-  // ── MODIFIED: handleSave with Bulk Add for Capital ──
   const handleSave = async () => {
     if (!form.Item_Name) return showMsg('Item name ထည့်ပါ', 'error');
 
-    // Capital bulk add (quantity > 1)
     if (form.Item_Type === 'Capital' && form.Bulk_Quantity > 1) {
       setSaving(true);
       try {
@@ -515,13 +494,12 @@ export default function InventoryPage() {
       return;
     }
 
-    // Original single item save (for Expense, Tool, or Capital with qty=1)
     setSaving(true);
     try {
       const action = editItem ? 'updateInventoryItem' : 'addInventoryItem';
       const payload = editItem
-        ? { ...form, Item_ID: editItem.Item_ID, Updated_By: user?.Name }
-        : { ...form, Updated_By: user?.Name };
+        ? { ...form, Item_ID: editItem.Item_ID, Updated_By: user?.Name || user?.username || '' }
+        : { ...form, Updated_By: user?.Name || user?.username || '' };
       const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action, ...payload }) });
       const r = await res.json();
       if (r.success) {
@@ -544,7 +522,7 @@ export default function InventoryPage() {
     reader.onload=async(ev)=>{
       const base64=ev.target.result; setPhotoPreview(base64); setPhotoUploading(true);
       try {
-        const res=await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'uploadPhoto',base64,filename:'inventory_'+Date.now()+'.'+file.name.split('.').pop(),mimeType:file.type})});
+        const res=await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'uploadPhoto',base64,filename:'inventory_'+Date.now()+'.'+file.name.split('.').pop(),mimeType:file.type,folder:'inventory'})});
         const r=await res.json();
         if(r.success){setForm(f=>({...f,Photo_URL:r.photoUrl}));showMsg('ဓာတ်ပုံ တင်ပြီးပါပြီ ✓');}
         else showMsg(r.message||'Upload failed','error');
@@ -581,7 +559,6 @@ export default function InventoryPage() {
     } catch{showMsg('Network error','error');}
   };
 
-  // ── Print Report ──
   const handlePrint = () => {
     const lowStock   = items.filter(i=>Number(i.Stock_Qty)<=Number(i.Min_Stock)&&Number(i.Min_Stock)>0);
     const expiring   = items.filter(i=>{const d=daysUntil(i.Warranty_Until);return d!==null&&d<=30&&d>=0;});
@@ -626,7 +603,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
     const w=window.open('','_blank'); w.document.write(html); w.document.close(); setTimeout(()=>w.print(),400);
   };
 
-  // ── Derived ──
   const expenses     = items.filter(i=>i.Item_Type==='Expense');
   const capitals     = items.filter(i=>i.Item_Type==='Capital');
   const tools        = items.filter(i=>i.Item_Type==='Tool');
@@ -639,17 +615,14 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
   const totalStockValue  = expenses.reduce((s,i)=>s+(Number(i.Stock_Qty)||0)*(Number(i.Unit_Price)||0),0);
   const pendingRequests  = requests.filter(r=>r.Status==='Pending'||!r.Status);
 
-  // Category breakdown
   const catBreakdown = useMemo(() => {
     const map = {};
     items.forEach(i=>{ map[i.Category||'Other']=(map[i.Category||'Other']||0)+1; });
     return Object.entries(map).sort((a,b)=>b[1]-a[1]);
   },[items]);
 
-  // Recent logs
   const recentLogs = useMemo(()=>[...logs].slice(0,8),[logs]);
 
-  // List filtered
   const listItems = useMemo(()=>{
     let base = items;
     if(typeFilter!=='All') base=base.filter(i=>i.Item_Type===typeFilter);
@@ -698,7 +671,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
     <div style={S.page}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}} @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}} *{box-sizing:border-box} select option{background:#130f22} input[type=date]{color-scheme:dark}`}</style>
 
-      {/* ── Header ── */}
       <div style={S.header}>
         <button onClick={()=>router.back()} style={{background:'none',border:'none',color:'rgba(255,255,255,0.35)',cursor:'pointer',fontSize:'13px',fontWeight:900}}>← Back</button>
         <div style={{textAlign:'center'}}>
@@ -717,14 +689,12 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
         </div>
       </div>
 
-      {/* ── Toast ── */}
       {msg&&(
         <div style={{position:'fixed',top:'60px',left:'50%',transform:'translateX(-50%)',zIndex:999,padding:'8px 20px',borderRadius:'999px',fontSize:'12px',fontWeight:900,color:'#fff',background:msg.type==='error'?'#ef4444':'#10b981',boxShadow:'0 4px 20px rgba(0,0,0,0.5)',whiteSpace:'nowrap',animation:'fadeIn 0.2s ease'}}>
           {msg.text}
         </div>
       )}
 
-      {/* ── Tab Bar ── */}
       <div style={{display:'flex',gap:'6px',padding:'10px 16px 6px',overflowX:'auto',borderBottom:'1px solid rgba(255,255,255,0.05)',flexShrink:0}}>
         {TABS.map(t=>(
           <button key={t.id} onClick={()=>{setTab(t.id);if(t.id!=='add'){setEditItem(null);setForm(EMPTY_FORM);setPhotoPreview(null);}}}
@@ -734,7 +704,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
         ))}
       </div>
 
-      {/* ── Content ── */}
       <div style={{padding:'12px 16px 80px'}}>
         {loading ? (
           <div style={{display:'flex',justifyContent:'center',padding:'80px 0'}}>
@@ -742,13 +711,8 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
           </div>
         ) : (<>
 
-          {/* ════════════════════════════════
-               DASHBOARD TAB
-          ════════════════════════════════ */}
           {tab==='dashboard'&&(
             <div style={{display:'flex',flexDirection:'column',gap:'14px',animation:'fadeIn 0.2s ease'}}>
-
-              {/* Summary stats */}
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px'}}>
                 <StatCard icon="🏛" value={totalAssetCost.toLocaleString()+' ks'} label="Original Asset Value" sub={`Current: ${totalAssetCurrent.toLocaleString()} ks`} color="#60a5fa"/>
                 <StatCard icon="🧻" value={totalStockValue.toLocaleString()+' ks'} label="Expense Stock Value" sub={`${expenses.length} types`} color="#34d399"/>
@@ -756,7 +720,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 <StatCard icon="🛒" value={pendingRequests.length} label="Pending Requests" sub={`${requests.length} total`} color="#f472b6" alert={pendingRequests.length>0} onClick={()=>setTab('requests')}/>
               </div>
 
-              {/* Type count row */}
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'8px'}}>
                 {[{icon:'🧻',label:'Expense',count:expenses.length,color:'#34d399'},
                   {icon:'🪑',label:'Capital',count:capitals.length,color:'#60a5fa'},
@@ -769,7 +732,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 ))}
               </div>
 
-              {/* Category breakdown */}
               {catBreakdown.length>0&&(
                 <div style={S.card}>
                   <p style={{fontWeight:900,fontSize:'11px',textTransform:'uppercase',letterSpacing:'0.1em',margin:'0 0 12px',color:'rgba(255,255,255,0.4)'}}>Category Breakdown</p>
@@ -787,7 +749,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 </div>
               )}
 
-              {/* Warranty expiring soon */}
               {expiringWarr.length>0&&(
                 <div style={{...S.card,border:'1px solid rgba(248,113,113,0.3)'}}>
                   <p style={{fontWeight:900,fontSize:'11px',textTransform:'uppercase',letterSpacing:'0.1em',margin:'0 0 10px',color:'#f87171'}}>🔧 Warranty Expiring Soon</p>
@@ -803,7 +764,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 </div>
               )}
 
-              {/* Recent activity */}
               {recentLogs.length>0&&(
                 <div style={S.card}>
                   <p style={{fontWeight:900,fontSize:'11px',textTransform:'uppercase',letterSpacing:'0.1em',margin:'0 0 10px',color:'rgba(255,255,255,0.4)'}}>Recent Activity</p>
@@ -825,20 +785,14 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
             </div>
           )}
 
-          {/* ════════════════════════════════
-               ITEMS TAB
-          ════════════════════════════════ */}
           {tab==='list'&&(
             <div style={{animation:'fadeIn 0.2s ease'}}>
-
-              {/* Search bar */}
               <div style={{position:'relative',marginBottom:'10px'}}>
                 <span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',fontSize:'14px',opacity:0.4}}>🔍</span>
                 <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search items, serial…"
                   style={{...S.input,paddingLeft:'34px'}}/>
               </div>
 
-              {/* Filters row 1: type */}
               <div style={{display:'flex',gap:'6px',overflowX:'auto',marginBottom:'8px'}}>
                 {['All','Expense','Capital','Tool'].map(t=>(
                   <button key={t} onClick={()=>setTypeFilter(t)}
@@ -848,7 +802,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 ))}
               </div>
 
-              {/* Filters row 2: category + location */}
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'8px'}}>
                 <select value={catFilter} onChange={e=>setCatFilter(e.target.value)} style={{...S.select,fontSize:'11px',padding:'8px 10px'}}>
                   <option value="All">All Categories</option>
@@ -860,7 +813,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 </select>
               </div>
 
-              {/* Sort + condition */}
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'12px'}}>
                 <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{...S.select,fontSize:'11px',padding:'8px 10px'}}>
                   <option value="name">Sort: A-Z</option>
@@ -874,7 +826,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 </select>
               </div>
 
-              {/* Results count */}
               <p style={{fontSize:'10px',color:'rgba(255,255,255,0.25)',fontWeight:900,marginBottom:'10px',textTransform:'uppercase',letterSpacing:'0.08em'}}>
                 {listItems.length} items {listItems.length!==items.length&&`(filtered from ${items.length})`}
               </p>
@@ -898,13 +849,8 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
             </div>
           )}
 
-          {/* ════════════════════════════════
-               ALERTS TAB
-          ════════════════════════════════ */}
           {tab==='alerts'&&(
             <div style={{display:'flex',flexDirection:'column',gap:'12px',animation:'fadeIn 0.2s ease'}}>
-
-              {/* Out of stock */}
               {outOfStock.length>0&&(
                 <div style={{...S.card,border:'1px solid rgba(239,68,68,0.3)'}}>
                   <p style={{fontWeight:900,fontSize:'12px',textTransform:'uppercase',letterSpacing:'0.1em',margin:'0 0 10px',color:'#f87171'}}>🚫 Out of Stock ({outOfStock.length})</p>
@@ -923,7 +869,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 </div>
               )}
 
-              {/* Low stock */}
               {lowStock.filter(i=>Number(i.Stock_Qty)>0).length>0&&(
                 <div style={{...S.card,border:'1px solid rgba(251,191,36,0.3)'}}>
                   <p style={{fontWeight:900,fontSize:'12px',textTransform:'uppercase',letterSpacing:'0.1em',margin:'0 0 10px',color:'#fbbf24'}}>⚠️ Low Stock ({lowStock.filter(i=>Number(i.Stock_Qty)>0).length})</p>
@@ -942,7 +887,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 </div>
               )}
 
-              {/* Warranty expiring */}
               {expiringWarr.length>0&&(
                 <div style={{...S.card,border:'1px solid rgba(248,113,113,0.3)'}}>
                   <p style={{fontWeight:900,fontSize:'12px',textTransform:'uppercase',letterSpacing:'0.1em',margin:'0 0 10px',color:'#f87171'}}>🔧 Warranty Expiring ≤ 30 days ({expiringWarr.length})</p>
@@ -958,7 +902,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 </div>
               )}
 
-              {/* Expired warranty */}
               {expiredWarr.length>0&&(
                 <div style={S.card}>
                   <p style={{fontWeight:900,fontSize:'12px',textTransform:'uppercase',letterSpacing:'0.1em',margin:'0 0 10px',color:'rgba(255,255,255,0.3)'}}>📋 Warranty Expired ({expiredWarr.length})</p>
@@ -984,13 +927,8 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
             </div>
           )}
 
-          {/* ════════════════════════════════
-               PURCHASE REQUESTS TAB
-          ════════════════════════════════ */}
           {tab==='requests'&&(
             <div style={{animation:'fadeIn 0.2s ease'}}>
-
-              {/* Status filter */}
               <div style={{display:'flex',gap:'6px',marginBottom:'12px',overflowX:'auto'}}>
                 {REQ_STATUSES.map(s=>(
                   <button key={s} onClick={()=>setReqStatus(s)}
@@ -1036,12 +974,8 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
             </div>
           )}
 
-          {/* ════════════════════════════════
-               LOG TAB (includes Transfer logs)
-          ════════════════════════════════ */}
           {tab==='log'&&(
             <div style={{animation:'fadeIn 0.2s ease'}}>
-              {/* Log stats */}
               <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'8px',marginBottom:'12px'}}>
                 {[
                   {label:'Total Entries', value:logs.length, color:'#fff'},
@@ -1055,7 +989,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 ))}
               </div>
 
-              {/* Log search + action filter */}
               <div style={{position:'relative',marginBottom:'8px'}}>
                 <span style={{position:'absolute',left:'12px',top:'50%',transform:'translateY(-50%)',fontSize:'14px',opacity:0.4}}>🔍</span>
                 <input value={logSearch} onChange={e=>setLogSearch(e.target.value)} placeholder="Search by item or person…" style={{...S.input,paddingLeft:'34px'}}/>
@@ -1103,14 +1036,10 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
             </div>
           )}
 
-          {/* ════════════════════════════════
-               ADD / EDIT TAB (with Camera & Bulk Capital)
-          ════════════════════════════════ */}
           {tab==='add'&&(
             <div style={{animation:'fadeIn 0.2s ease'}}>
               <p style={{fontWeight:900,fontSize:'14px',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:'16px',color:editItem?'#fbbf24':'rgba(255,255,255,0.6)'}}>{editItem?`✏️ Editing: ${editItem.Item_Name}`:'➕ New Item'}</p>
 
-              {/* Item Type */}
               <div style={{marginBottom:'14px'}}>
                 <label style={S.label}>Item Type *</label>
                 <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
@@ -1124,7 +1053,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 </div>
               </div>
 
-              {/* Item Name with Auto‑suggestion */}
               <div style={{marginBottom:'12px', position:'relative' }}>
                 <label style={S.label}>Item Name *</label>
                 <input
@@ -1190,7 +1118,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 )}
               </div>
 
-              {/* Category + Unit */}
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'12px'}}>
                 <div>
                   <label style={S.label}>Category</label>
@@ -1206,7 +1133,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 </div>
               </div>
 
-              {/* Expense fields */}
               {form.Item_Type==='Expense'&&(
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'12px'}}>
                   <div><label style={S.label}>Stock Qty</label><input type="number" value={form.Stock_Qty} onChange={e=>setForm(f=>({...f,Stock_Qty:e.target.value}))} placeholder="0" style={S.input}/></div>
@@ -1214,7 +1140,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 </div>
               )}
 
-              {/* Capital/Tool fields */}
               {(form.Item_Type==='Capital'||form.Item_Type==='Tool')&&(
                 <>
                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'12px'}}>
@@ -1228,7 +1153,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 </>
               )}
 
-              {/* Capital Bulk Quantity Field (NEW) */}
               {form.Item_Type === 'Capital' && (
                 <div style={{ marginBottom: '12px' }}>
                   <label style={S.label}>Quantity (Bulk Add) *</label>
@@ -1246,7 +1170,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 </div>
               )}
 
-              {/* Tool-specific */}
               {form.Item_Type==='Tool'&&(
                 <>
                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'12px'}}>
@@ -1260,7 +1183,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 </>
               )}
 
-              {/* Common fields */}
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginBottom:'12px'}}>
                 <div>
                   <label style={S.label}>Condition</label>
@@ -1297,7 +1219,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                   <img src={photoPreview} alt="" style={{width:'100%',height:'140px',objectFit:'cover',borderRadius:'12px',marginBottom:'8px'}}/>
                 )}
 
-                {/* Camera preview */}
                 {showCamera && (
                   <div style={{ position: 'relative', marginBottom: '12px' }}>
                     <video
@@ -1332,10 +1253,8 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                   </div>
                 )}
 
-                {/* Hidden canvas for capture */}
                 <canvas ref={canvasRef} style={{ display: 'none' }} />
 
-                {/* Buttons row */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                   <label style={{...S.btnSm, textAlign:'center', cursor:'pointer', position:'relative', overflow:'hidden'}}>
                     {photoUploading ? 'Uploading…' : '📁 Choose File'}
@@ -1373,9 +1292,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
             </div>
           )}
 
-          {/* ════════════════════════════════
-               CONFIG TAB
-          ════════════════════════════════ */}
           {tab==='config'&&(
             <div style={{display:'flex',flexDirection:'column',gap:'14px',animation:'fadeIn 0.2s ease'}}>
               {[{type:'category',label:'Categories',list:invCategories,icon:'🏷'},
@@ -1396,7 +1312,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 </div>
               ))}
 
-              {/* Summary info */}
               <div style={S.card}>
                 <p style={{fontWeight:900,fontSize:'12px',textTransform:'uppercase',letterSpacing:'0.1em',margin:'0 0 12px',color:'rgba(255,255,255,0.4)'}}>📊 Inventory Summary</p>
                 <div style={{display:'flex',flexDirection:'column',gap:'6px'}}>
@@ -1414,11 +1329,7 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
         </>)}
       </div>
 
-      {/* ════════════════════════════════
-           MODALS (unchanged)
-      ════════════════════════════════ */}
-
-      {/* Detail Modal */}
+      {/* MODALS (unchanged) */}
       {detailModal&&(
         <Modal title="Item Details" onClose={()=>setDetailModal(null)}>
           {detailModal.Photo_URL&&<img src={detailModal.Photo_URL} alt="" style={{width:'100%',borderRadius:'14px',aspectRatio:'16/9',objectFit:'cover',marginBottom:'14px'}}/>}
@@ -1471,7 +1382,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
             ))
           )}
 
-          {/* Quick actions from detail */}
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginTop:'16px'}}>
             {detailModal.Item_Type==='Expense'&&<>
               <button onClick={()=>{setDetailModal(null);setUsageModal(detailModal);setUsageAction('Use');setUsageQty('');setUsageNote('');}} style={{...S.btnRed}}>📤 Use Stock</button>
@@ -1483,7 +1393,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
         </Modal>
       )}
 
-      {/* Usage Modal */}
       {usageModal&&(
         <Modal title={usageAction==='Use'?'📤 Record Usage':'📥 Restock Item'} onClose={()=>setUsageModal(null)}>
           <p style={{fontWeight:900,fontSize:'14px',marginBottom:'14px'}}>{usageModal.Item_Name}</p>
@@ -1510,7 +1419,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
         </Modal>
       )}
 
-      {/* Transfer Modal */}
       {transferModal&&(
         <Modal title="📦 Transfer Item" onClose={()=>setTransferModal(null)}>
           <p style={{fontWeight:900,fontSize:'14px',marginBottom:'4px'}}>{transferModal.Item_Name}</p>
@@ -1532,7 +1440,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
         </Modal>
       )}
 
-      {/* Purchase Request Modal */}
       {requestModal&&(
         <Modal title="🛒 Purchase Request" onClose={()=>setRequestModal(null)}>
           <p style={{fontWeight:900,fontSize:'14px',marginBottom:'4px'}}>{requestModal.Item_Name}</p>
@@ -1552,7 +1459,6 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
         </Modal>
       )}
 
-      {/* Config Add Modal */}
       {configModal&&(
         <Modal title={configModal==='category'?'Add Category':'Add Location'} onClose={()=>setConfigModal(null)}>
           <div style={{marginBottom:'14px'}}>

@@ -720,7 +720,7 @@ export default function HostelInventoryPage() {
         }
         const res = await fetch(WEB_APP_URL, {
           method:'POST',
-          body: JSON.stringify({ action:'addHostelItemsBulk', items })
+          body: JSON.stringify({ action:'addHostelItemsBulk', items, userRole: user?.userRole||'staff', staffId: user?.Staff_ID||user?.username||'' })
         });
         const data = await res.json();
         if (data.success) {
@@ -736,7 +736,7 @@ export default function HostelInventoryPage() {
       } else {
         const action = editItem ? 'updateHostelItem' : 'addHostelItem';
         const payload = editItem ? { ...form, Asset_ID: editItem.Asset_ID, Updated_By: user?.Name } : { ...form, Updated_By: user?.Name };
-        const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action, ...payload }) });
+        const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action, ...payload, userRole: user?.userRole||'staff', staffId: user?.Staff_ID||user?.username||'' }) });
         const data = await res.json();
         if (data.success) {
           showMsg(editItem ? 'Updated' : 'Added');
@@ -764,6 +764,7 @@ export default function HostelInventoryPage() {
         Item_Name: updateModal.Item_Name,
         Hostel_Name: updateModal.Hostel_Name,
         Done_By: user?.Name || '',
+        userRole: user?.userRole||'staff', staffId: user?.Staff_ID||user?.username||'',
         ...updateForm
       };
       const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify(payload) });

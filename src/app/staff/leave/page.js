@@ -186,7 +186,7 @@ export default function StaffLeave() {
       const base64 = ev.target.result;
       setUploading(true);
       try {
-        const res = await fetch(WEB_APP_URL, { method:'POST', body:JSON.stringify({ action:'uploadPhoto', base64, filename: file.name, mimeType: file.type }) }).then(r=>r.json());
+        const res = await fetch(WEB_APP_URL, { method:'POST', body:JSON.stringify({ action:'uploadPhoto', base64, filename: file.name, mimeType: file.type, folder: 'documents' }) }).then(r=>r.json());
         if(res.success) { setF('attachment', res.photoUrl); showMsg('File uploaded ✓'); }
         else showMsg('Upload failed','error');
       } catch(e) { showMsg('Upload error','error'); }

@@ -23,6 +23,7 @@ export default function MgtUniversalLayout({ children }) {
     { name:'Calendar',    path:'/management/calendar',      icon:'📅' },
     { name:'Performance', path:'/management/performance',   icon:'🏆' },
     { name:'Analytics',   path:'/management/analytic',      icon:'📈' },
+    { name:'Registry',    path:'/management/registry',      icon:'🗂️' },
   ];
 
   const handleLogout = () => {

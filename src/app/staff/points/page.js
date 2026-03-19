@@ -95,6 +95,7 @@ export default function StaffHousePointsPage() {
         Category:selCategory.name, Points:String(pts),
         Event_Name:eventName||selCategory.name, Remark:remark,
         Recorded_By:user?.Name||user?.name||user?.username,
+        userRole: user?.userRole || 'staff', staffId: user?.Staff_ID || user?.username || '',
       } : {
         action:'recordHousePoint', Type:type,
         Student_ID:selStudent['Enrollment No.']||selStudent.Student_ID||'',
@@ -103,6 +104,7 @@ export default function StaffHousePointsPage() {
         Category:selCategory.name, Points:String(pts),
         Event_Name:eventName||selCategory.name, Remark:remark,
         Recorded_By:user?.Name||user?.name||user?.username,
+        userRole: user?.userRole || 'staff', staffId: user?.Staff_ID || user?.username || '',
       };
       const res = await fetch(WEB_APP_URL, { method:'POST', body:JSON.stringify(payload) });
       const r = await res.json();
