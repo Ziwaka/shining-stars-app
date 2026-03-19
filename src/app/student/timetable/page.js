@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
+import { apiService } from '@/lib/api-service';
 
 const DAYS       = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -67,6 +68,11 @@ export default function StudentTimetablePage() {
   const [section, setSection] = useState('');
   const [selDay,  setSelDay]  = useState('');
   const [loading, setLoading] = useState(true);
+  
+  // NEW: Date picker state
+  const [selectedDate, setSelectedDate] = useState('');
+  const [isHoliday, setIsHoliday] = useState(false);
+  const [holidayReason, setHolidayReason] = useState('');
 
   useEffect(() => {
     const saved = localStorage.getItem('user')||sessionStorage.getItem('user');
@@ -74,6 +80,8 @@ export default function StudentTimetablePage() {
     const u = JSON.parse(saved);
     if (u.userRole !== 'student') { router.push('/login'); return; }
     setUser(u);
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Yangon' });
+    setSelectedDate(today);
     setSelDay(DAYS[new Date().getDay()]);
     fetchAll(u);
   }, []);
@@ -116,6 +124,38 @@ export default function StudentTimetablePage() {
     } catch(e) { console.error(e); }
     setLoading(false);
   };
+
+  // NEW: Fetch effective timetable when date changes
+  useEffect(() => {
+    if (!cfg || !grade || !selectedDate) return;
+    let cancelled = false;
+    setLoading(true);
+    const fetchData = async () => {
+      try {
+        const result = await apiService.getEffectiveTimetable(grade, section, selectedDate);
+        if (result.isHoliday) {
+          setIsHoliday(true);
+          setHolidayReason(result.reason || 'ကျောင်းပိတ်ရက်');
+          setRawRows([]);
+        } else {
+          setIsHoliday(false);
+          // Use the returned data
+          const secUp = section ? section.toUpperCase() : '';
+          setRawRows((result.data||[]).filter(r => {
+            if (!secUp) return true;
+            const rSec=String(r.Section||'').trim().toUpperCase();
+            return rSec===''||rSec===secUp;
+          }));
+        }
+      } catch(e) {
+        console.error(e);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    fetchData();
+    return () => { cancelled = true; setLoading(false); };
+  }, [cfg, grade, section, selectedDate]);
 
   // ── Derived ──────────────────────────────────────────────────────────────
   const todayDay   = DAYS[new Date().getDay()];
@@ -204,6 +244,25 @@ export default function StudentTimetablePage() {
         <div style={{ padding:'16px', maxWidth:'480px', margin:'0 auto',
                       display:'flex', flexDirection:'column', gap:'14px' }}>
 
+          {/* ── Date Picker ── */}
+          <div style={{ background:C.cardBg, borderRadius:'18px', padding:'14px 16px', boxShadow:'0 2px 8px rgba(107,107,168,0.12)' }}>
+            <p style={{ fontSize:'9px', color:C.textSoft, textTransform:'uppercase', letterSpacing:'0.15em', fontWeight:800, margin:'0 0 8px' }}>
+              📅 ရက်စွဲ ရွေးပါ
+            </p>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              style={{ width:'100%', background:C.bgLight, border:'1px solid rgba(107,107,168,0.2)', borderRadius:'12px', padding:'10px 14px', color:C.textDark, fontSize:'14px', outline:'none' }}
+            />
+          </div>
+
+          {isHoliday && (
+            <div style={{ background:'#fef9c3', color:'#92400e', padding:'14px 16px', borderRadius:'18px', fontSize:14, fontWeight:600 }}>
+              🏮 {holidayReason}
+            </div>
+          )}
+
           {loading ? (
             <div style={{ display:'flex', justifyContent:'center', padding:'80px 0' }}>
               <div style={{ width:'32px', height:'32px',
@@ -211,7 +270,7 @@ export default function StudentTimetablePage() {
                             borderTop:`3px solid ${C.bgDark}`,
                             borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
             </div>
-          ) : (
+          ) : !isHoliday && (
             <>
               {/* ── Day Selector ── */}
               <div style={{ display:'flex', gap:'8px', overflowX:'auto', paddingBottom:'4px' }}>
@@ -245,8 +304,6 @@ export default function StudentTimetablePage() {
                   );
                 })}
               </div>
-
-
 
               {/* ── Schedule List ── */}
               <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>

@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
+import { apiService } from '@/lib/api-service';
 
 const VDAYS      = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -60,12 +61,19 @@ export default function StaffTimetablePage() {
   const [cmpTeacher,  setCmpTeacher]  = useState('');
   const [cmpSearch,   setCmpSearch]   = useState('');
   const [showOverview,setShowOverview]= useState(false);
+  
+  // NEW: Date picker state
+  const [selectedDate, setSelectedDate] = useState('');
+  const [isHoliday, setIsHoliday] = useState(false);
+  const [holidayReason, setHolidayReason] = useState('');
 
   useEffect(() => {
     const saved = localStorage.getItem('user')||sessionStorage.getItem('user');
     if (!saved) { router.push('/login'); return; }
     const u = JSON.parse(saved);
     setUser(u);
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Yangon' });
+    setSelectedDate(today);
     setSelDay(VDAYS[new Date().getDay()]);
     fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getTimetableConfig'})})
       .then(r=>r.json()).then(data=>{
@@ -80,60 +88,47 @@ export default function StaffTimetablePage() {
       }).catch(()=>{});
   },[]);
 
-  useEffect(()=>{
-    if (!cfg||!user) return;
+  // NEW: Fetch effective timetable when date changes
+  useEffect(() => {
+    if (!cfg || !user || !selectedDate) return;
     const me = myName(user);
     if (!me) return;
-    let cancelled=false;
+    let cancelled = false;
     setLoading(true);
-    const mine=[], everyone=[];
-    const fetchGrade = async(g)=>{
-      for(let i=0;i<2;i++){
-        try{
-          const r=await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getTimetable',grade:g})});
-          const d=await r.json(); if(d.success) return d.data||[];
-        }catch{}
-        if(i===0) await new Promise(r=>setTimeout(r,800));
-      }
-      return [];
-    };
-    const run=async()=>{
-      const grades=Object.keys(cfg.grades||{});
-      for(let i=0;i<grades.length;i+=3){
-        if(cancelled) break;
-        await Promise.all(grades.slice(i,i+3).map(async g=>{
-          const rows=await fetchGrade(g);
-          if(cancelled) return;
-          rows.forEach(row=>{
-            let day=String(row.Day||'');
-            if(!VDAYS.includes(day)){const p=day.split('_');day=p.find(x=>VDAYS.includes(x))||day;}
-            const base={day,period:String(row.Period_No),subject:row.Subject||'',grade:String(row.Grade||''),section:String(row.Section||''),room:row.Room||'',teacher:row.Teacher||'',asst:row.Asst_Teacher||''};
-            everyone.push(base);
-            if(row.Teacher===me||row.Asst_Teacher===me) mine.push({...base,isAsst:row.Teacher!==me});
-          });
-        }));
-        if(!cancelled){setMyRows([...mine]);setAllRows([...everyone]);}
-      }
-      if(!cancelled){
-        // myRows: teacher can't be 2 places same time → day+period unique
-        const dedupMine=(arr)=>{const seen=new Set();return arr.filter(r=>{const k=r.day+'_'+r.period;if(seen.has(k))return false;seen.add(k);return true;});};
-        // allRows: keep all teachers but remove exact duplicates
-        const dedupAll=(arr)=>{const seen=new Set();return arr.filter(r=>{const k=r.day+'_'+r.period+'_'+r.teacher+'_'+r.grade+'_'+r.section;if(seen.has(k))return false;seen.add(k);return true;});};
-        const dm=dedupMine(mine), de=dedupAll(everyone);
-        // Filter out rows that fall on break periods
-        const cfg = cfgRef.current;
-        const fp = cfg ? getWidestPeriods(cfg) : [];
-        const breakNos = new Set(fp.filter(p=>p.isBreak).map(p=>p.no));
-        const dmFiltered = dm.filter(r => !breakNos.has(r.period));
-        setMyRows(dmFiltered); setAllRows(de);
-        const ts=new Set(); de.forEach(r=>{if(r.teacher)ts.add(r.teacher);if(r.asst)ts.add(r.asst);}); ts.delete(me);
-        setAllTeachers([...ts].sort());
-        setLoading(false);
+    const fetchData = async () => {
+      try {
+        // Fetch timetable for selected date
+        const result = await apiService.getEffectiveTimetable('', '', selectedDate); // staff view, no grade/section filter needed
+        if (result.isHoliday) {
+          setIsHoliday(true);
+          setHolidayReason(result.reason || 'ကျောင်းပိတ်ရက်');
+          setMyRows([]);
+          setAllRows([]);
+        } else {
+          setIsHoliday(false);
+          // Process rows as before
+          const rows = result.data || [];
+          const mine = rows.filter(r => r.Teacher === me || r.Asst_Teacher === me).map(r => ({ ...r, isAsst: r.Teacher !== me }));
+          const everyone = rows;
+          const dedupMine = (arr) => { const seen = new Set(); return arr.filter(r => { const k = r.Day+'_'+r.Period_No; if (seen.has(k)) return false; seen.add(k); return true; }); };
+          const dedupAll = (arr) => { const seen = new Set(); return arr.filter(r => { const k = r.Day+'_'+r.Period_No+'_'+r.Teacher+'_'+r.Grade+'_'+r.Section; if (seen.has(k)) return false; seen.add(k); return true; }); };
+          const fp = cfg ? getWidestPeriods(cfg) : [];
+          const breakNos = new Set(fp.filter(p=>p.isBreak).map(p=>p.no));
+          const dmFiltered = dedupMine(mine).filter(r => !breakNos.has(r.Period_No));
+          setMyRows(dmFiltered);
+          setAllRows(dedupAll(everyone));
+          const ts = new Set(); everyone.forEach(r => { if (r.Teacher) ts.add(r.Teacher); if (r.Asst_Teacher) ts.add(r.Asst_Teacher); }); ts.delete(me);
+          setAllTeachers([...ts].sort());
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     };
-    run();
-    return()=>{cancelled=true;setLoading(false);};
-  },[cfg,user]);
+    fetchData();
+    return () => { cancelled = true; setLoading(false); };
+  }, [cfg, user, selectedDate]);
 
   const now      = new Date();
   const todayDay = VDAYS[now.getDay()];
@@ -143,9 +138,9 @@ export default function StaffTimetablePage() {
   const allDays  = cfg?.days||[];
   const frame    = cfg ? getWidestPeriods(cfg) : [];
   const curP     = frame.find(p=>!p.isBreak&&p.start&&p.end&&toMins(p.start)<=nowMins&&nowMins<toMins(p.end))||null;
-  const myDays   = new Set(myRows.map(r=>r.day));
-  const getMyRow = (day,no) => myRows.find(r=>r.day===day&&r.period===String(no));
-  const getCmpRow= (day,no) => cmpTeacher?allRows.find(r=>r.day===day&&r.period===String(no)&&(r.teacher===cmpTeacher||r.asst===cmpTeacher)):null;
+  const myDays   = new Set(myRows.map(r=>r.Day));
+  const getMyRow = (day,no) => myRows.find(r=>r.Day===day && r.Period_No===String(no));
+  const getCmpRow= (day,no) => cmpTeacher?allRows.find(r=>r.Day===day && r.Period_No===String(no) && (r.Teacher===cmpTeacher||r.Asst_Teacher===cmpTeacher)):null;
   const filtered = allTeachers.filter(t=>!cmpSearch||t.toLowerCase().includes(cmpSearch.toLowerCase()));
 
   const handlePrint=()=>{
@@ -153,7 +148,7 @@ export default function StaffTimetablePage() {
     frame.forEach(p=>{
       if(p.isBreak){h+=`<tr class="br"><td colspan="${allDays.length+1}">${p.label}${p.start?' · '+toRange(p.start,p.end):''}</td></tr>`;return;}
       h+=`<tr><td>${p.start?toRange(p.start,p.end):'P'+p.no}</td>`;
-      allDays.forEach(d=>{const r=getMyRow(d,p.no);h+=r?`<td class="my"><b>${r.subject}</b><br>G${r.grade}${r.section}</td>`:`<td>—</td>`;});
+      allDays.forEach(d=>{const r=getMyRow(d,p.no);h+=r?`<td class="my"><b>${r.Subject}</b><br>G${r.Grade}${r.Section}</td>`:`<td>—</td>`;});
       h+=`</tr>`;
     });
     h+=`</table></body></html>`;
@@ -193,12 +188,29 @@ export default function StaffTimetablePage() {
       <div style={S.body}>
         <div style={S.inner}>
 
+          {/* ── Date Picker ── */}
+          <div style={{...S.card, padding:'14px 16px'}}>
+            <p style={{...S.label, margin:'0 0 8px'}}>📅 ရက်စွဲ ရွေးပါ</p>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              style={{width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10, padding:'10px 14px', color:'#f1f5f9', fontSize:14, outline:'none'}}
+            />
+          </div>
+
+          {isHoliday && (
+            <div style={{background:'#fef9c3', color:'#92400e', padding:'14px 16px', borderRadius:16, fontSize:14, fontWeight:600}}>
+              🏮 {holidayReason}
+            </div>
+          )}
+
           {loading ? (
             <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:14,padding:'80px 0',animation:'fadeUp 0.4s ease'}}>
               <div style={{width:36,height:36,border:'3px solid rgba(255,255,255,0.08)',borderTop:'3px solid #fbbf24',borderRadius:'50%',animation:'spin 0.7s linear infinite'}}/>
-              <p style={{fontSize:13,color:'rgba(255,255,255,0.3)',margin:0}}>Grade တွေ ဖတ်နေသည်…</p>
+              <p style={{fontSize:13,color:'rgba(255,255,255,0.3)',margin:0}}>ဒေတာဖတ်နေသည်…</p>
             </div>
-          ) : (<>
+          ) : !isHoliday && (<>
 
           {/* ── Summary cards ── */}
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,paddingTop:16}}>
@@ -281,8 +293,8 @@ export default function StaffTimetablePage() {
               const isCur= !!(curP?.no===p.no&&selDay===todayDay);
               const isPast= selDay===todayDay&&p.end&&nowMins>toMins(p.end);
               const both = myR&&cmpR;
-              const sc   = myR?getSC(subjects,myR.subject):null;
-              const scC  = cmpR?getSC(subjects,cmpR.subject):null;
+              const sc   = myR?getSC(subjects,myR.Subject):null;
+              const scC  = cmpR?getSC(subjects,cmpR.Subject):null;
 
               return(
                 <div key={pi} style={{
@@ -319,9 +331,9 @@ export default function StaffTimetablePage() {
                             {me.split(' ').slice(-1)[0]}
                             {myR.isAsst&&' · Asst'}
                           </p>
-                          <p style={{fontSize:17,fontWeight:900,color:sc?.text||'#bfdbfe',margin:'0 0 4px',lineHeight:1.2}}>{myR.subject}</p>
+                          <p style={{fontSize:17,fontWeight:900,color:sc?.text||'#bfdbfe',margin:'0 0 4px',lineHeight:1.2}}>{myR.Subject}</p>
                           <p style={{fontSize:12,color:sc?.accent||'#93c5fd',margin:0,opacity:0.75}}>
-                            Grade {myR.grade}{myR.section?' · '+myR.section:''}{myR.room?' · 🚪'+myR.room:''}
+                            Grade {myR.Grade}{myR.Section?' · '+myR.Section:''}{myR.Room?' · 🚪'+myR.Room:''}
                           </p>
                         </div>
                       )}
@@ -330,9 +342,9 @@ export default function StaffTimetablePage() {
                           <p style={{fontSize:10,fontWeight:700,color:'#a5b4fc',margin:'0 0 4px',textTransform:'uppercase',letterSpacing:'0.08em',opacity:0.8}}>
                             {cmpTeacher.split(' ').slice(-1)[0]}
                           </p>
-                          <p style={{fontSize:17,fontWeight:900,color:scC?.text||'#e0e7ff',margin:'0 0 4px',lineHeight:1.2}}>{cmpR.subject}</p>
+                          <p style={{fontSize:17,fontWeight:900,color:scC?.text||'#e0e7ff',margin:'0 0 4px',lineHeight:1.2}}>{cmpR.Subject}</p>
                           <p style={{fontSize:12,color:'#a5b4fc',margin:0,opacity:0.75}}>
-                            Grade {cmpR.grade}{cmpR.section?' · '+cmpR.section:''}{cmpR.room?' · 🚪'+cmpR.room:''}
+                            Grade {cmpR.Grade}{cmpR.Section?' · '+cmpR.Section:''}{cmpR.Room?' · 🚪'+cmpR.Room:''}
                           </p>
                         </div>
                       )}
@@ -392,19 +404,19 @@ export default function StaffTimetablePage() {
                             const myR =getMyRow(day,p.no);
                             const cmpR=getCmpRow(day,p.no);
                             const both=myR&&cmpR;
-                            const sc  =myR?getSC(subjects,myR.subject):null;
+                            const sc  =myR?getSC(subjects,myR.Subject):null;
                             return(
                               <td key={day} style={{padding:4,borderBottom:'1px solid rgba(255,255,255,0.04)',verticalAlign:'top',textAlign:'center'}}>
                                 {myR&&(
                                   <div style={{background:sc?.bg||'#1e40af',borderRadius:7,padding:'5px 4px',marginBottom:cmpR?3:0}}>
-                                    <div style={{fontSize:11,fontWeight:800,color:sc?.text||'#bfdbfe',lineHeight:1.2}}>{myR.subject}</div>
-                                    <div style={{fontSize:9,color:sc?.accent||'#93c5fd',opacity:0.8,marginTop:1}}>G{myR.grade}{myR.section}</div>
+                                    <div style={{fontSize:11,fontWeight:800,color:sc?.text||'#bfdbfe',lineHeight:1.2}}>{myR.Subject}</div>
+                                    <div style={{fontSize:9,color:sc?.accent||'#93c5fd',opacity:0.8,marginTop:1}}>G{myR.Grade}{myR.Section}</div>
                                   </div>
                                 )}
                                 {cmpR&&(
                                   <div style={{background:both?'rgba(239,68,68,0.25)':'rgba(129,140,248,0.15)',border:`1px solid ${both?'rgba(239,68,68,0.4)':'rgba(129,140,248,0.3)'}`,borderRadius:7,padding:'5px 4px'}}>
-                                    <div style={{fontSize:11,fontWeight:800,color:both?'#fca5a5':'#a5b4fc',lineHeight:1.2}}>{cmpR.subject}</div>
-                                    <div style={{fontSize:9,color:both?'rgba(252,165,165,0.7)':'rgba(165,180,252,0.7)',marginTop:1}}>G{cmpR.grade}{cmpR.section}</div>
+                                    <div style={{fontSize:11,fontWeight:800,color:both?'#fca5a5':'#a5b4fc',lineHeight:1.2}}>{cmpR.Subject}</div>
+                                    <div style={{fontSize:9,color:both?'rgba(252,165,165,0.7)':'rgba(165,180,252,0.7)',marginTop:1}}>G{cmpR.Grade}{cmpR.Section}</div>
                                   </div>
                                 )}
                                 {!myR&&!cmpR&&<span style={{fontSize:10,color:'rgba(255,255,255,0.07)'}}>—</span>}

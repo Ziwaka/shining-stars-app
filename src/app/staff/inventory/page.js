@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo, useRef } from 'react';  // ← useRef ထည့်
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 
@@ -43,7 +43,7 @@ const ITEM_TYPES = [
 ];
 const TYPE_COLOR = { Expense:'#34d399', Capital:'#60a5fa', Tool:'#c084fc' };
 const TYPE_ICON  = { Expense:'🧻', Capital:'🪑', Tool:'🔧' };
-const LOG_ACTIONS = ['Use','Restock','Transfer','Repair','Write-off','Other'];  // ← Transfer ပါတယ်
+const LOG_ACTIONS = ['Use','Restock','Transfer','Repair','Write-off','Other'];
 const REQ_STATUSES = ['All','Pending','Approved','Rejected'];
 
 const resolveType = (item) => {
@@ -55,7 +55,8 @@ const resolveType = (item) => {
 const EMPTY_FORM = {
   Item_Name:'', Category:'Stationery', Unit:'Pcs', Stock_Qty:'', Min_Stock:'',
   Unit_Price:'', Condition:'Good', Item_Type:'Expense', Serial_No:'', Purchase_Date:'',
-  Warranty_Until:'', Useful_Life_Years:'', Location:'', Assigned_To:'', Note:'', Photo_URL:''
+  Warranty_Until:'', Useful_Life_Years:'', Location:'', Assigned_To:'', Note:'', Photo_URL:'',
+  Bulk_Quantity: 1   // ← NEW: for Capital bulk add
 };
 
 const daysUntil = (d) => { if (!d) return null; return Math.ceil((new Date(d)-new Date())/(864e5)); };
@@ -181,7 +182,7 @@ const ItemCard = ({ item, onDetail, onEdit, onUsage, onTransfer, onRequest }) =>
 export default function InventoryPage() {
   const router = useRouter();
 
-  // Camera refs (new)
+  // Camera refs
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -225,7 +226,7 @@ export default function InventoryPage() {
   const [photoPreview,  setPhotoPreview]  = useState(null);
   const [photoUploading,setPhotoUploading]= useState(false);
 
-  // Camera states (new)
+  // Camera states
   const [showCamera, setShowCamera] = useState(false);
   const [cameraStream, setCameraStream] = useState(null);
 
@@ -298,7 +299,7 @@ export default function InventoryPage() {
 
   const showMsg = (text, type='success') => { setMsg({text,type}); setTimeout(()=>setMsg(null),3000); };
 
-  // ── Camera functions (new) ──
+  // ── Camera functions ──
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -332,7 +333,6 @@ export default function InventoryPage() {
       const context = canvas.getContext('2d');
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
       const base64 = canvas.toDataURL('image/jpeg', 0.7);
-      // Upload the captured image
       handleCapturedPhoto(base64);
       stopCamera();
     }
@@ -465,17 +465,76 @@ export default function InventoryPage() {
     setShowSuggestions(false);
   };
 
+  // ── MODIFIED: handleSave with Bulk Add for Capital ──
   const handleSave = async () => {
-    if(!form.Item_Name) return showMsg('Item name ထည့်ပါ','error');
+    if (!form.Item_Name) return showMsg('Item name ထည့်ပါ', 'error');
+
+    // Capital bulk add (quantity > 1)
+    if (form.Item_Type === 'Capital' && form.Bulk_Quantity > 1) {
+      setSaving(true);
+      try {
+        const items = [];
+        for (let i = 0; i < form.Bulk_Quantity; i++) {
+          items.push({
+            Item_Name: form.Item_Name,
+            Category: form.Category,
+            Unit: form.Unit,
+            Unit_Price: form.Unit_Price,
+            Useful_Life_Years: form.Useful_Life_Years,
+            Purchase_Date: form.Purchase_Date,
+            Condition: form.Condition,
+            Location: form.Location,
+            Note: form.Note,
+            Photo_URL: form.Photo_URL,
+            Created_By: user?.Name || user?.username || ''
+          });
+        }
+
+        const res = await fetch(WEB_APP_URL, {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'addInventoryItemsBulk',
+            items: items
+          })
+        });
+        const r = await res.json();
+        if (r.success) {
+          showMsg(`${form.Bulk_Quantity} items added successfully ✓`);
+          fetchAll();
+          setForm(EMPTY_FORM);
+          setEditItem(null);
+          setPhotoPreview(null);
+          setTab('list');
+        } else {
+          showMsg(r.message || 'Error', 'error');
+        }
+      } catch {
+        showMsg('Network error', 'error');
+      }
+      setSaving(false);
+      return;
+    }
+
+    // Original single item save (for Expense, Tool, or Capital with qty=1)
     setSaving(true);
     try {
-      const action=editItem?'updateInventoryItem':'addInventoryItem';
-      const payload=editItem?{...form,Item_ID:editItem.Item_ID,Updated_By:user?.Name}:{...form,Updated_By:user?.Name};
-      const res=await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action,...payload})});
-      const r=await res.json();
-      if(r.success){showMsg(editItem?'Update ပြီးပါပြီ ✓':'Item ထည့်ပြီးပါပြီ ✓');fetchAll();setForm(EMPTY_FORM);setEditItem(null);setPhotoPreview(null);setTab('list');}
-      else showMsg(r.message||'Error','error');
-    } catch{showMsg('Network error','error');}
+      const action = editItem ? 'updateInventoryItem' : 'addInventoryItem';
+      const payload = editItem
+        ? { ...form, Item_ID: editItem.Item_ID, Updated_By: user?.Name }
+        : { ...form, Updated_By: user?.Name };
+      const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action, ...payload }) });
+      const r = await res.json();
+      if (r.success) {
+        showMsg(editItem ? 'Update ပြီးပါပြီ ✓' : 'Item ထည့်ပြီးပါပြီ ✓');
+        fetchAll();
+        setForm(EMPTY_FORM);
+        setEditItem(null);
+        setPhotoPreview(null);
+        setTab('list');
+      } else showMsg(r.message || 'Error', 'error');
+    } catch {
+      showMsg('Network error', 'error');
+    }
     setSaving(false);
   };
 
@@ -1045,7 +1104,7 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
           )}
 
           {/* ════════════════════════════════
-               ADD / EDIT TAB (with Camera)
+               ADD / EDIT TAB (with Camera & Bulk Capital)
           ════════════════════════════════ */}
           {tab==='add'&&(
             <div style={{animation:'fadeIn 0.2s ease'}}>
@@ -1167,6 +1226,24 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                     <input type="date" value={form.Purchase_Date} onChange={e=>setForm(f=>({...f,Purchase_Date:e.target.value}))} style={S.input}/>
                   </div>
                 </>
+              )}
+
+              {/* Capital Bulk Quantity Field (NEW) */}
+              {form.Item_Type === 'Capital' && (
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={S.label}>Quantity (Bulk Add) *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={form.Bulk_Quantity || 1}
+                    onChange={e => setForm(f => ({ ...f, Bulk_Quantity: parseInt(e.target.value) || 1 }))}
+                    placeholder="Number of identical items"
+                    style={S.input}
+                  />
+                  <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.25)', marginTop: '4px' }}>
+                    ပစ္စည်းအလုံးရေ အများကြီးကို တစ်ပြိုင်တည်းထည့်ရန်
+                  </p>
+                </div>
               )}
 
               {/* Tool-specific */}
