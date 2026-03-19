@@ -1,218 +1,296 @@
+// src/hooks/useLeaveData.js
 import { useState, useEffect, useMemo } from 'react';
 import { WEB_APP_URL } from '@/lib/api';
-import { formatMMDate, getTodayMM } from '@/components/leave/DateHelpers';
+import { 
+  getTodayMM, 
+  formatMMDate, 
+  parseMMDate, 
+  isDateInRange,
+  compareMMDates 
+} from '@/components/leave/DateHelpers';
 
 export default function useLeaveData() {
   const [allLeaves, setAllLeaves] = useState([]);
-  const [allStaff, setAllStaff] = useState([]);
   const [allStudents, setAllStudents] = useState([]);
-  const [configs, setConfigs] = useState({});
+  const [allStaff, setAllStaff] = useState([]);
+  const [statsList, setStatsList] = useState([]);
+  const [pending, setPending] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
   const fetchLeaves = async () => {
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(WEB_APP_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'getInitialData' })
+        body: JSON.stringify({ action: 'getData', sheetName: 'Leave_Records' })
       });
-      const r = await res.json();
-      if (r.success) {
-        setAllLeaves((r.leaves || []).map((l, i) => ({ ...l, _rowIndex: i + 2 })));
-        setConfigs(r.configs || {});
-        const active = s => String(s.Status || 'TRUE').toUpperCase() !== 'FALSE';
-        setAllStaff((r.staffList || r.staff || []).filter(active));
-        setAllStudents((r.students || []).filter(active));
-      } else {
-        setError(r.message);
+      const data = await res.json();
+      if (data.success) {
+        // Format all dates using our central date utilities
+        const formattedLeaves = data.data.map(l => {
+          const startDate = formatMMDate(l.Start_Date);
+          const endDate = formatMMDate(l.End_Date || l.Start_Date);
+          const dateApplied = formatMMDate(l.Date_Applied);
+          
+          return {
+            ...l,
+            Start_Date: startDate,
+            End_Date: endDate,
+            Date_Applied: dateApplied,
+            // Add a field for easy date comparison
+            _startObj: startDate !== '-' ? parseMMDate(startDate) : null,
+            _endObj: endDate !== '-' ? parseMMDate(endDate) : null,
+          };
+        });
+        
+        setAllLeaves(formattedLeaves);
+        
+        // Filter pending leaves
+        const pendingLeaves = formattedLeaves
+          .filter(l => l.Status === 'Pending')
+          .map((l, index) => ({ ...l, _rowIndex: index + 2 }));
+        
+        setPending(pendingLeaves);
       }
     } catch (e) {
-      console.error("Fetch Error:", e);
-      setError(e.message);
+      console.error('Failed to fetch leaves:', e);
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchStudents = async () => {
+    try {
+      const res = await fetch(WEB_APP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'getData', sheetName: 'Student_Directory' })
+      });
+      const data = await res.json();
+      if (data.success) setAllStudents(data.data);
+    } catch (e) {
+      console.error('Failed to fetch students:', e);
+    }
+  };
+
+  const fetchStaff = async () => {
+    try {
+      const res = await fetch(WEB_APP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'getData', sheetName: 'Staff_Login' })
+      });
+      const data = await res.json();
+      if (data.success) setAllStaff(data.data);
+    } catch (e) {
+      console.error('Failed to fetch staff:', e);
+    }
+  };
+
   useEffect(() => {
-    fetchLeaves();
+    Promise.all([fetchLeaves(), fetchStudents(), fetchStaff()]);
   }, []);
 
-  // Calculate user statistics - မူလကုတ်ကအတိုင်း အပြည့်အစုံ
-  const userStats = useMemo(() => {
-    const stats = {};
-    const now = new Date();
-    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const oneQuarterAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+  // Today in Myanmar time (YYYY-MM-DD)
+  const today = getTodayMM();
 
+  // Get today's absent users
+  const getTodayAbsentUsers = useMemo(() => {
+    const todayLeaves = allLeaves.filter(l => 
+      l.Status === 'Approved' && 
+      isDateInRange(today, l.Start_Date, l.End_Date)
+    );
+
+    return todayLeaves.map(l => {
+      const student = allStudents.find(s => s.Student_ID === l.User_ID || s.Name === l.Name);
+      const staff = allStaff.find(s => s.Staff_ID === l.User_ID || s.Name === l.Name);
+      const userInfo = student || staff || {};
+      
+      return {
+        id: l.User_ID,
+        name: l.Name,
+        type: l.User_Type || (student ? 'STUDENT' : 'STAFF'),
+        grade: student?.Grade || '',
+        totalDays: Number(l.Total_Days) || 1,
+        todayReason: {
+          text: l.Reason,
+          type: l.Leave_Type,
+          attachment: l.Attachment_Link,
+          remark: l.Remark || ''  // Include remark
+        },
+        // For detailed view
+        reasons: [{
+          start: l.Start_Date,
+          end: l.End_Date,
+          text: l.Reason,
+          type: l.Leave_Type,
+          status: l.Status,
+          remark: l.Remark || ''  // Include remark
+        }]
+      };
+    });
+  }, [allLeaves, allStudents, allStaff, today]);
+
+  const getTodayAbsentCount = useMemo(() => 
+    getTodayAbsentUsers.length, [getTodayAbsentUsers]
+  );
+
+  // Generate comprehensive stats for each user
+  const statsListData = useMemo(() => {
+    const userMap = new Map();
+
+    // Process all approved leaves
     allLeaves.filter(l => l.Status === 'Approved').forEach(l => {
-      const k = l.User_ID || l.Name;
-      if (!stats[k]) {
-        stats[k] = { 
-          name: l.Name, 
-          type: l.User_Type, 
-          id: l.User_ID || '-', 
-          totalDays: 0, 
+      const key = `${l.User_Type}_${l.User_ID || l.Name}`;
+      
+      if (!userMap.has(key)) {
+        const student = allStudents.find(s => s.Student_ID === l.User_ID || s.Name === l.Name);
+        const staff = allStaff.find(s => s.Staff_ID === l.User_ID || s.Name === l.Name);
+        
+        userMap.set(key, {
+          id: l.User_ID,
+          name: l.Name,
+          type: l.User_Type || (student ? 'STUDENT' : 'STAFF'),
+          grade: student?.Grade || '',
+          section: student?.Section || '',
+          enrollmentNo: student?.['Enrollment No.'] || '',
+          position: staff?.Position || '',
+          department: staff?.Department || '',
+          phone: l.Phone || student?.Phone || staff?.Phone || '',
+          email: l.Email || student?.Email || staff?.Email || '',
+          totalDays: 0,
           consecutiveMax: 0,
           weekCount: 0,
           monthCount: 0,
           quarterCount: 0,
-          yearCount: 0,
-          reasons: [],
-          periods: [],
           leaveTypes: {},
-          grade: '',
-          section: '',
-          enrollmentNo: '',
-          department: ''
-        };
-      }
-
-      const cleanS = formatMMDate(l.Start_Date);
-      const cleanE = formatMMDate(l.End_Date) || cleanS;
-      const days = Number(l.Total_Days) || 0;
-      const leaveDate = new Date(cleanS);
-
-      stats[k].totalDays += days;
-      stats[k].reasons.push({ 
-        start: cleanS, 
-        end: cleanE, 
-        text: l.Reason, 
-        type: l.Leave_Type, 
-        attachment: l.Attachment_Link 
-      });
-      
-      stats[k].leaveTypes[l.Leave_Type] = (stats[k].leaveTypes[l.Leave_Type] || 0) + days;
-
-      if (leaveDate >= oneWeekAgo) stats[k].weekCount += days;
-      if (leaveDate >= oneMonthAgo) stats[k].monthCount += days;
-      if (leaveDate >= oneQuarterAgo) stats[k].quarterCount += days;
-
-      stats[k].periods.push({ start: new Date(cleanS).getTime(), days });
-    });
-
-    Object.values(stats).forEach(u => {
-      u.periods.sort((a, b) => a.start - b.start);
-      let current = 0;
-      let lastEnd = 0;
-      
-      u.periods.forEach(p => {
-        if (lastEnd === 0) {
-          current = p.days;
-        } else {
-          const gap = (p.start - lastEnd) / 86400000;
-          if (gap <= 3) {
-            current += p.days;
-          } else {
-            current = p.days;
-          }
-        }
-        if (current > u.consecutiveMax) u.consecutiveMax = current;
-        lastEnd = p.start + (p.days * 86400000);
-      });
-
-      if (u.type === 'STUDENT') {
-        const student = allStudents.find(s => s.Student_ID === u.id || s['Enrollment No.'] === u.id || s.Name === u.name);
-        if (student) {
-          u.grade = student.Grade || '';
-          u.section = student.Section || student.Class || '';
-          u.enrollmentNo = student['Enrollment No.'] || '';
-        }
-      } else {
-        const staff = allStaff.find(s => s.Staff_ID === u.id || s.Name === u.name);
-        if (staff) {
-          u.department = staff.Department || '';
-        }
-      }
-
-      u.reasons.sort((a, b) => new Date(b.start) - new Date(a.start));
-    });
-
-    return stats;
-  }, [allLeaves, allStudents, allStaff]);
-
-  const statsList = Object.values(userStats);
-  const pending = allLeaves.filter(x => x.Status === "Pending");
-
-  // Today's absent users - မူလကုတ်ကအတိုင်း
-  const getTodayAbsentUsers = useMemo(() => {
-    const today = getTodayMM();
-    
-    const todayLeaves = allLeaves.filter(l => 
-      l.Status === 'Approved' && 
-      formatMMDate(l.Start_Date) <= today && 
-      formatMMDate(l.End_Date || l.Start_Date) >= today
-    );
-
-    const userMap = new Map();
-    
-    todayLeaves.forEach(leave => {
-      const userId = leave.User_ID || leave.Name;
-      if (!userMap.has(userId)) {
-        const userStat = statsList.find(s => s.id === userId || s.name === leave.Name);
-        
-        userMap.set(userId, {
-          name: leave.Name,
-          id: userId,
-          type: leave.User_Type,
-          grade: userStat?.grade || '',
-          section: userStat?.section || '',
-          totalDays: userStat?.totalDays || 0,
-          consecutiveMax: userStat?.consecutiveMax || 0,
-          weekCount: userStat?.weekCount || 0,
-          monthCount: userStat?.monthCount || 0,
-          quarterCount: userStat?.quarterCount || 0,
-          enrollmentNo: userStat?.enrollmentNo || '',
-          department: userStat?.department || '',
-          stats: userStat,
-          todayReason: {
-            start: formatMMDate(leave.Start_Date),
-            end: formatMMDate(leave.End_Date || leave.Start_Date),
-            text: leave.Reason,
-            type: leave.Leave_Type,
-            attachment: leave.Attachment_Link
-          }
+          reasons: [],
+          leaveDates: []
         });
       }
+
+      const user = userMap.get(key);
+      const days = Number(l.Total_Days) || 1;
+      user.totalDays += days;
+
+      // Track leave types
+      user.leaveTypes[l.Leave_Type] = (user.leaveTypes[l.Leave_Type] || 0) + days;
+
+      // Store reason with remark
+      user.reasons.push({
+        start: l.Start_Date,
+        end: l.End_Date,
+        text: l.Reason,
+        type: l.Leave_Type,
+        status: l.Status,
+        remark: l.Remark || '',
+        attachment: l.Attachment_Link
+      });
+
+      // Track individual dates for consecutive calculation
+      if (l._startObj && l._endObj) {
+        const currentDate = new Date(l._startObj);
+        while (currentDate <= l._endObj) {
+          const dateStr = currentDate.toISOString().split('T')[0];
+          user.leaveDates.push(dateStr);
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
+      } else {
+        // Fallback if objects not available
+        const startParts = l.Start_Date.split('-').map(Number);
+        const endParts = l.End_Date.split('-').map(Number);
+        if (startParts.length === 3 && endParts.length === 3) {
+          const start = new Date(Date.UTC(startParts[0], startParts[1] - 1, startParts[2]));
+          const end = new Date(Date.UTC(endParts[0], endParts[1] - 1, endParts[2]));
+          for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            const dateStr = d.toISOString().split('T')[0];
+            user.leaveDates.push(dateStr);
+          }
+        }
+      }
+    });
+
+    // Calculate additional stats for each user
+    userMap.forEach(user => {
+      // Calculate max consecutive days
+      if (user.leaveDates.length > 0) {
+        const sortedDates = [...new Set(user.leaveDates)].sort();
+        let maxConsecutive = 1;
+        let currentConsecutive = 1;
+        
+        for (let i = 1; i < sortedDates.length; i++) {
+          const prev = new Date(sortedDates[i-1]);
+          const curr = new Date(sortedDates[i]);
+          const diffDays = Math.round((curr - prev) / (1000 * 60 * 60 * 24));
+          
+          if (diffDays === 1) {
+            currentConsecutive++;
+            maxConsecutive = Math.max(maxConsecutive, currentConsecutive);
+          } else {
+            currentConsecutive = 1;
+          }
+        }
+        user.consecutiveMax = maxConsecutive;
+      }
+
+      // Count leaves in recent periods using date comparison
+      const todayObj = parseMMDate(today);
+      const oneWeekAgo = new Date(todayObj); 
+      oneWeekAgo.setDate(todayObj.getDate() - 7);
+      const oneMonthAgo = new Date(todayObj); 
+      oneMonthAgo.setMonth(todayObj.getMonth() - 1);
+      const threeMonthsAgo = new Date(todayObj); 
+      threeMonthsAgo.setMonth(todayObj.getMonth() - 3);
+
+      // Convert to YYYY-MM-DD for comparison
+      const weekAgoStr = oneWeekAgo.toISOString().split('T')[0];
+      const monthAgoStr = oneMonthAgo.toISOString().split('T')[0];
+      const quarterAgoStr = threeMonthsAgo.toISOString().split('T')[0];
+
+      user.weekCount = user.reasons.filter(r => 
+        compareMMDates(r.start, weekAgoStr) >= 0
+      ).length;
+
+      user.monthCount = user.reasons.filter(r => 
+        compareMMDates(r.start, monthAgoStr) >= 0
+      ).length;
+
+      user.quarterCount = user.reasons.filter(r => 
+        compareMMDates(r.start, quarterAgoStr) >= 0
+      ).length;
+
+      // Sort reasons by date (newest first)
+      user.reasons.sort((a, b) => compareMMDates(b.start, a.start));
     });
 
     return Array.from(userMap.values());
-  }, [allLeaves, statsList]);
-
-  const getTodayAbsentCount = getTodayAbsentUsers.length;
+  }, [allLeaves, allStudents, allStaff, today]);
 
   // High risk users (3+ consecutive days)
-  const highRiskUsers = useMemo(() => {
-    return statsList.filter(u => u.consecutiveMax >= 3);
-  }, [statsList]);
+  const highRiskUsers = useMemo(() => 
+    statsListData.filter(u => u.consecutiveMax >= 3)
+      .sort((a, b) => b.consecutiveMax - a.consecutiveMax)
+  , [statsListData]);
 
-  // Top absentees
-  const topAbsentees = useMemo(() => {
-    return [...statsList]
-      .filter(u => u.type === 'STUDENT')
+  // Top 20 absentees
+  const topAbsentees = useMemo(() => 
+    statsListData.filter(u => u.totalDays > 0)
       .sort((a, b) => b.totalDays - a.totalDays)
-      .slice(0, 20);
-  }, [statsList]);
+      .slice(0, 20)
+  , [statsListData]);
 
   return {
     allLeaves,
-    allStaff,
     allStudents,
-    configs,
-    loading,
-    error,
-    fetchLeaves,
-    userStats,
-    statsList,
+    allStaff,
+    statsList: statsListData,
     pending,
+    loading,
+    fetchLeaves,
     getTodayAbsentUsers,
     getTodayAbsentCount,
     highRiskUsers,
-    topAbsentees,
-    WEB_APP_URL
+    topAbsentees
   };
 }

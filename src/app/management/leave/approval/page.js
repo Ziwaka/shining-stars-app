@@ -192,6 +192,16 @@ export default function ApprovalPage() {
                     </p>
                   </div>
 
+                  {/* Remark (ခွင့်တင်စဉ် မှတ်ချက်) */}
+                  {selectedLeave.Remark && selectedLeave.Remark !== '-' && selectedLeave.Remark !== '' && (
+                    <div>
+                      <p className="text-[10px] text-slate-400">မှတ်ချက်</p>
+                      <p className="text-sm bg-amber-50 p-3 rounded-xl border border-amber-200 mt-1">
+                        ✏️ {selectedLeave.Remark}
+                      </p>
+                    </div>
+                  )}
+
                   {/* Attachment */}
                   {selectedLeave.Attachment_Link && selectedLeave.Attachment_Link !== '-' && (
                     <div>
@@ -258,6 +268,10 @@ export default function ApprovalPage() {
                 <h3 className="font-black text-base uppercase truncate">{l.Name}</h3>
                 <p className="text-[9px] text-slate-400">ID: {l.User_ID || '-'} · {l.Leave_Type}</p>
                 {l.Phone && <p className="text-[9px] text-slate-400 mt-0.5">📞 {l.Phone}</p>}
+                {/* Show remark preview if exists */}
+                {l.Remark && l.Remark !== '-' && l.Remark !== '' && (
+                  <p className="text-[9px] text-amber-600 mt-0.5 truncate">✏️ {l.Remark}</p>
+                )}
               </div>
               <div className="text-right">
                 <p className="text-lg font-black text-slate-800">{l.Total_Days || 1}d</p>

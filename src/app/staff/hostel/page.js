@@ -35,23 +35,6 @@ const StatCard = ({ title, value, subtitle, icon, color, trend }) => (
   </div>
 );
 
-const HealthBadge = ({ score }) => {
-  const getStatus = () => {
-    if (score > 85) return { color: 'green', text: 'Optimal', bg: 'bg-green-100', textColor: 'text-green-700' };
-    if (score > 60) return { color: 'yellow', text: 'Maintenance', bg: 'bg-yellow-100', textColor: 'text-yellow-700' };
-    return { color: 'red', text: 'Critical', bg: 'bg-red-100', textColor: 'text-red-700' };
-  };
-
-  const status = getStatus();
-  
-  return (
-    <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full ${status.bg}`}>
-      <div className={`w-2 h-2 rounded-full bg-${status.color}-500 animate-pulse`} />
-      <span className={`text-xs font-semibold ${status.textColor}`}>{status.text}</span>
-    </div>
-  );
-};
-
 const LoadingScreen = () => (
   <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-950 flex items-center justify-center">
     <div className="text-center">
@@ -65,7 +48,7 @@ const LoadingScreen = () => (
   </div>
 );
 
-// Maintenance Request Modal
+// Maintenance Request Modal (unchanged)
 const MaintenanceModal = ({ isOpen, onClose, onSubmit, user }) => {
   const [form, setForm] = useState({
     type: 'water',
@@ -207,7 +190,7 @@ const MaintenanceModal = ({ isOpen, onClose, onSubmit, user }) => {
   );
 };
 
-// Maintenance Log Modal
+// Maintenance Log Modal (unchanged)
 const MaintenanceLogModal = ({ isOpen, onClose, request, onSubmit, user }) => {
   const [form, setForm] = useState({
     completed_note: '',
@@ -291,7 +274,7 @@ const MaintenanceLogModal = ({ isOpen, onClose, request, onSubmit, user }) => {
   );
 };
 
-// Maintenance Requests List
+// Maintenance Requests List (unchanged)
 const MaintenanceList = ({ requests, onComplete, user }) => {
   const getTypeIcon = (type) => {
     switch(type) {
@@ -403,11 +386,12 @@ export default function HostelMasterDashboard() {
   const [facilities, setFacilities] = useState([]);
   const [maintenance, setMaintenance] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [syncStatus, setSyncStatus] = useState('CONNECTING');
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
   const [showLogModal, setShowLogModal] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
-  const [activeTab, setActiveTab] = useState('overview'); // overview, maintenance, logs
+  const [activeTab, setActiveTab] = useState('overview');
   const [user, setUser] = useState(null);
   const router = useRouter();
 
@@ -465,14 +449,20 @@ export default function HostelMasterDashboard() {
   // ── B. DATA FETCHING ───────────────────────────────────────────────────
   const fetchData = async () => {
     setLoading(true);
+    setError(null);
     setSyncStatus('SYNCING');
     
     try {
+      // Try using GIDS.STUDENT_DIR first, fallback to sheet name
+      const studentPayload = GIDS.STUDENT_DIR 
+        ? { action: 'getData', targetGid: GIDS.STUDENT_DIR }
+        : { action: 'getData', sheetName: 'Student_Directory' };
+
       const [studentRes, facilityRes, maintenanceRes] = await Promise.all([
         fetch(WEB_APP_URL, { 
           method: 'POST', 
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'getData', targetGid: GIDS.STUDENT_DIR }) 
+          body: JSON.stringify(studentPayload)
         }),
         fetch(WEB_APP_URL, { 
           method: 'POST', 
@@ -490,13 +480,19 @@ export default function HostelMasterDashboard() {
       const fData = await facilityRes.json();
       const mData = await maintenanceRes.json();
 
-      if (sData.success) setStudents(sData.data);
-      if (fData.success) setFacilities(fData.data);
+      if (sData.success) setStudents(sData.data || []);
+      else console.warn('Student data fetch failed:', sData.message);
+      
+      if (fData.success) setFacilities(fData.data || []);
+      else console.warn('Facilities data fetch failed:', fData.message);
+      
       if (mData.success) setMaintenance(mData.data || []);
+      else console.warn('Maintenance data fetch failed:', mData.message);
       
       setSyncStatus('ONLINE');
     } catch (err) {
       console.error("Data fetch failed:", err);
+      setError(err.message || 'Failed to load data');
       setSyncStatus('ERROR');
     } finally {
       setLoading(false);
@@ -510,7 +506,6 @@ export default function HostelMasterDashboard() {
   }, []);
 
   // ── C. MAINTENANCE HANDLERS ────────────────────────────────────────────
-
   const handleMaintenanceSubmit = async (data) => {
     try {
       const res = await fetch(WEB_APP_URL, {
@@ -527,9 +522,12 @@ export default function HostelMasterDashboard() {
       if (result.success) {
         setShowMaintenanceModal(false);
         fetchData();
+      } else {
+        alert('Failed to submit: ' + result.message);
       }
     } catch (error) {
       console.error('Failed to submit maintenance:', error);
+      alert('Network error');
     }
   };
 
@@ -547,22 +545,15 @@ export default function HostelMasterDashboard() {
       
       const result = await res.json();
       if (result.success) {
-        // Also update original request status
-        await fetch(WEB_APP_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ 
-            action: 'updateHostelMaintenance',
-            data: { ...data, status: 'completed' }
-          })
-        });
-        
         setShowLogModal(false);
         setSelectedRequest(null);
         fetchData();
+      } else {
+        alert('Failed to log completion: ' + result.message);
       }
     } catch (error) {
       console.error('Failed to complete maintenance:', error);
+      alert('Network error');
     }
   };
 
@@ -597,6 +588,21 @@ export default function HostelMasterDashboard() {
   const totalActualCost = maintenance.reduce((sum, m) => sum + (Number(m.actual_cost) || 0), 0);
 
   if (loading) return <LoadingScreen />;
+  if (error) return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="bg-white rounded-3xl p-8 shadow-xl max-w-md text-center">
+        <div className="text-6xl mb-4">⚠️</div>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Error Loading Data</h2>
+        <p className="text-gray-600 mb-6">{error}</p>
+        <button
+          onClick={fetchData}
+          className="px-6 py-3 bg-amber-500 text-white rounded-xl font-medium hover:bg-amber-600"
+        >
+          Try Again
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -637,11 +643,11 @@ export default function HostelMasterDashboard() {
             </div>
           </div>
 
-          {/* Tabs */}
-          <div className="flex gap-2 mt-4 pb-2">
+          {/* Action Bar - Top Navigation (Facilities button removed) */}
+          <div className="flex gap-2 mt-4 pb-2 overflow-x-auto">
             <button
               onClick={() => setActiveTab('overview')}
-              className={`px-6 py-3 rounded-xl font-medium transition-colors ${
+              className={`px-6 py-3 rounded-xl font-medium transition-colors whitespace-nowrap ${
                 activeTab === 'overview'
                   ? 'bg-amber-500 text-white'
                   : 'text-gray-600 hover:bg-gray-100'
@@ -650,14 +656,26 @@ export default function HostelMasterDashboard() {
               📊 Overview
             </button>
             <button
+              onClick={() => router.push('/staff/hostel/inventory')}
+              className="px-6 py-3 rounded-xl font-medium text-gray-600 hover:bg-gray-100 transition-colors whitespace-nowrap"
+            >
+              📦 Inventory
+            </button>
+            <button
               onClick={() => setActiveTab('maintenance')}
-              className={`px-6 py-3 rounded-xl font-medium transition-colors ${
+              className={`px-6 py-3 rounded-xl font-medium transition-colors whitespace-nowrap ${
                 activeTab === 'maintenance'
                   ? 'bg-amber-500 text-white'
                   : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
               🛠️ Maintenance ({pendingMaintenance})
+            </button>
+            <button
+              onClick={() => router.push('/staff/hostel/dir')}
+              className="px-6 py-3 rounded-xl font-medium text-gray-600 hover:bg-gray-100 transition-colors whitespace-nowrap"
+            >
+              🏢 Resident Registry
             </button>
           </div>
         </div>
@@ -797,32 +815,17 @@ export default function HostelMasterDashboard() {
               </div>
             </div>
 
-            {/* Action Modules */}
+            {/* Quick Action Cards (Facilities card removed, grid adjusted) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <button
-                onClick={() => router.push('/staff/hostel/dir')}
+                onClick={() => router.push('/staff/hostel/inventory')}
                 className="group bg-gradient-to-br from-amber-500 to-amber-600 rounded-3xl p-8 text-white text-left hover:shadow-2xl transition-all hover:-translate-y-1"
               >
                 <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center text-3xl mb-6 group-hover:scale-110 transition-transform">
-                  🛏️
+                  📦
                 </div>
-                <h3 className="text-2xl font-bold mb-3">Resident Registry</h3>
-                <p className="text-white/80 text-sm mb-6">Manage boarder profiles and attendance</p>
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <span>Launch</span>
-                  <span className="group-hover:translate-x-2 transition-transform">→</span>
-                </div>
-              </button>
-
-              <button
-                onClick={() => router.push('/staff/hostel/facilities')}
-                className="group bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-3xl p-8 text-white text-left hover:shadow-2xl transition-all hover:-translate-y-1"
-              >
-                <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center text-3xl mb-6 group-hover:scale-110 transition-transform">
-                  🧹
-                </div>
-                <h3 className="text-2xl font-bold mb-3">Facility Audit</h3>
-                <p className="text-white/80 text-sm mb-6">Track maintenance and manage assets</p>
+                <h3 className="text-2xl font-bold mb-3">Inventory</h3>
+                <p className="text-white/80 text-sm mb-6">Manage hostel assets and track items</p>
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <span>Launch</span>
                   <span className="group-hover:translate-x-2 transition-transform">→</span>
@@ -840,6 +843,21 @@ export default function HostelMasterDashboard() {
                 <p className="text-white/80 text-sm mb-6">Request repairs and track progress</p>
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <span>New Request</span>
+                  <span className="group-hover:translate-x-2 transition-transform">→</span>
+                </div>
+              </button>
+
+              <button
+                onClick={() => router.push('/staff/hostel/dir')}
+                className="group bg-gradient-to-br from-blue-500 to-blue-600 rounded-3xl p-8 text-white text-left hover:shadow-2xl transition-all hover:-translate-y-1"
+              >
+                <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center text-3xl mb-6 group-hover:scale-110 transition-transform">
+                  🏢
+                </div>
+                <h3 className="text-2xl font-bold mb-3">Resident Registry</h3>
+                <p className="text-white/80 text-sm mb-6">Manage boarder profiles</p>
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <span>Launch</span>
                   <span className="group-hover:translate-x-2 transition-transform">→</span>
                 </div>
               </button>
