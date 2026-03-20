@@ -257,18 +257,37 @@ export default function InventoryPage() {
     if (!saved) { router.push('/login'); return; }
     const u = JSON.parse(saved);
     if (u.userRole !== 'staff' && u.userRole !== 'management') { router.push('/login'); return; }
-    const checkPerm = (k) => u.userRole==='management'||u[k]===true||String(u[k]||'').toUpperCase()==='TRUE';
+    const checkPerm = (k) => {
+      if (u.userRole==='management') return true;
+      // tolerate common key variants
+      const variants = [k, k.replace(/_/g,' '), k.replace(/_/g,'').toLowerCase()];
+      for (const key of variants) {
+        const v = u[key];
+        if (v===true || String(v||'').trim().toUpperCase()==='TRUE') return true;
+      }
+      // also scan keys loosely
+      const target = k.toLowerCase().replace(/_/g,'');
+      for (const kk of Object.keys(u||{})) {
+        if (kk.toLowerCase().replace(/_/g,'')===target) {
+          const v=u[kk];
+          if (v===true || String(v||'').trim().toUpperCase()==='TRUE') return true;
+        }
+      }
+      return false;
+    };
     if (u.userRole==='management') { setUser(u); fetchAll(); return; }
     if (checkPerm('Can_Manage_Inventory')) { setUser(u); fetchAll(); return; }
-    fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getStaffPermissions'})})
+    fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({
+      action:'getMyStaffPermissions',
+      staffId: u?.Staff_ID || u?.username || u?.Username || '',
+      name: u?.Name || u?.['Name (ALL CAPITAL)'] || ''
+    })})
       .then(r=>r.json()).then(res=>{
-        const fresh=res.success&&res.data?.find(s=>
-          (s.Staff_ID&&s.Staff_ID.toString()===u.Staff_ID?.toString())||
-          (s.Name&&(s.Name===u['Name (ALL CAPITAL)']||s.Name===u.Name)));
+        const fresh = res.success ? res.data : null;
         if(fresh){
           const up={...u,...fresh};
           localStorage.setItem('user',JSON.stringify(up));
-          if(!(up['Can_Manage_Inventory']===true||String(up['Can_Manage_Inventory']||'').toUpperCase()==='TRUE')){router.push('/staff');return;}
+          if(!checkPerm('Can_Manage_Inventory')){router.push('/staff');return;}
           setUser(up);fetchAll();return;
         }
         router.push('/staff');
@@ -410,7 +429,7 @@ export default function InventoryPage() {
     if(!transferLoc) return showMsg('Location ရွေးပါ','error');
     setSaving(true);
     try {
-      const res=await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'transferInventoryItem',Item_ID:transferModal.Item_ID,Item_Name:transferModal.Item_Name,New_Location:transferLoc,Done_By:user?.Name||user?.username||'',Note:transferNote})});
+      const res=await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'transferInventoryItem',Item_ID:transferModal.Item_ID,Item_Name:transferModal.Item_Name,New_Location:transferLoc,Done_By:user?.Name||user?.username||'',Note:transferNote,userRole:user?.userRole||'staff',staffId:user?.Staff_ID||user?.username||user?.Username||''})});
       const r=await res.json();
       if(r.success){showMsg('Transfer ပြီးပါပြီ ✓');setTransferModal(null);setTransferLoc('');setTransferNote('');fetchAll();}
       else showMsg(r.message||'Error','error');
@@ -504,8 +523,11 @@ export default function InventoryPage() {
 
         const res = await fetch(WEB_APP_URL, {
           method: 'POST',
+          headers: {'Content-Type': 'text/plain;charset=utf-8'},
           body: JSON.stringify({
             action: 'addInventoryItemsBulk',
+            userRole: user?.userRole || 'staff',
+            staffId: user?.Staff_ID || user?.username || user?.Username || '',
             items: items
           })
         });
@@ -533,7 +555,12 @@ export default function InventoryPage() {
       const payload = editItem
         ? { ...form, Item_ID: editItem.Item_ID, Updated_By: user?.Name || user?.username || '' }
         : { ...form, Updated_By: user?.Name || user?.username || '' };
-      const res = await fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({ action, ...payload }) });
+      const res = await fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({
+        action,
+        userRole: user?.userRole || 'staff',
+        staffId: user?.Staff_ID || user?.username || user?.Username || '',
+        ...payload
+      }) });
       const r = await res.json();
       if (r.success) {
         showMsg(editItem ? 'Update ပြီးပါပြီ ✓' : 'Item ထည့်ပြီးပါပြီ ✓');
