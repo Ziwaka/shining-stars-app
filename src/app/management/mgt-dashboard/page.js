@@ -1,5 +1,7 @@
 "use client";
 import { DashboardSkeleton } from '@/components/SkeletonLoader';
+import useLeaveData from '@/hooks/useLeaveData';
+import UserDetailModal from '@/components/leave/UserDetailModal';
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
@@ -65,7 +67,7 @@ const TOOL_SECTIONS = [
   },
 ];
 
-function AbsentModal({ persons, title, onClose }) {
+function AbsentModal({ persons, title, onClose, onPersonClick }) {
   if (!persons || persons.length === 0) return null;
   return (
     <div style={{
@@ -97,7 +99,12 @@ function AbsentModal({ persons, title, onClose }) {
         </div>
         <div style={{padding:'8px 0', overflowY:'auto', flex:1}}>
           {persons.map((p, i) => (
-            <div key={i} style={{ padding:'12px 20px', borderBottom: i < persons.length-1 ? '1px solid #F8FAFC' : 'none' }}>
+            <div key={i}
+              onClick={() => onPersonClick && onPersonClick(p)}
+              style={{ padding:'12px 20px', borderBottom: i < persons.length-1 ? '1px solid #F8FAFC' : 'none', cursor: onPersonClick ? 'pointer' : 'default', transition:'background 0.15s' }}
+              onMouseEnter={e => { if(onPersonClick) e.currentTarget.style.background='#F8FAFC'; }}
+              onMouseLeave={e => { e.currentTarget.style.background=''; }}
+            >
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'8px'}}>
                 <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
                   <div style={{
@@ -108,7 +115,10 @@ function AbsentModal({ persons, title, onClose }) {
                     {p.grade ? '🎓' : '👔'}
                   </div>
                   <div>
-                    <p style={{fontSize:'14px',fontWeight:900,color:'#1A1A2E',margin:0}}>{p.name || p.id}</p>
+                    <p style={{fontSize:'14px',fontWeight:900,color:'#1A1A2E',margin:0}}>
+                      {p.name || p.id}
+                      {onPersonClick && <span style={{fontSize:'8px',color:'#94A3B8',marginLeft:6,fontWeight:600}}>History ›</span>}
+                    </p>
                     {p.grade && <p style={{fontSize:'9px',color:'#64748b',margin:'2px 0 0',fontWeight:900,textTransform:'uppercase',letterSpacing:'0.05em'}}>
                       {p.grade === 'Unknown' ? 'Class Unknown' : `Grade ${p.grade}`}{p.section ? ` · ${p.section}` : ''}
                     </p>}
@@ -133,6 +143,12 @@ function AbsentModal({ persons, title, onClose }) {
                 {p.reason && p.reason !== '-' && p.reason !== '' && (
                   <p style={{ fontSize:'12px',color:'#334155',margin:'4px 0 0', fontStyle:'italic', lineHeight:1.5 }}>"{p.reason}"</p>
                 )}
+                {p.remark && p.remark !== '-' && p.remark !== '' && (
+                  <div style={{display:'flex',gap:4,alignItems:'flex-start',marginTop:4,background:'#fffbeb',border:'1px solid #fde68a',borderRadius:6,padding:'3px 8px'}}>
+                    <span style={{fontSize:10}}>✏️</span>
+                    <span style={{fontSize:10,color:'#b45309',fontWeight:700}}>{p.remark}</span>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -147,7 +163,10 @@ export default function ManagementDashboard() {
   const [user,    setUser]   = useState(null);
   const [loading, setLoading]= useState(true);
   const [dash,    setDash]   = useState(null);
-  const [modal, setModal] = useState(null); 
+  // Leave history for full profile modal
+  const { statsList, allLeaves, loading: leaveLoading } = useLeaveData();
+  const [selectedPerson, setSelectedPerson] = useState(null);
+  const [modal, setModal] = useState(null);
 
   useEffect(() => {
     const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
@@ -215,7 +234,80 @@ export default function ManagementDashboard() {
     if (persons.length > 0) setModal({ title, persons });
   };
 
+  // Open full leave history for a person
+  const openPersonHistory = (p) => {
+    setModal(null); // Close AbsentModal first
+
+    // Try statsList first (most complete data)
+    const fromStats = statsList.find(s =>
+      (p.id && s.id === p.id) || (p.name && s.name === p.name)
+    );
+    if (fromStats) { setSelectedPerson(fromStats); return; }
+
+    // Build from allLeaves directly (available sooner than statsList)
+    const personLeaves = allLeaves.filter(l =>
+      (p.id && l.User_ID === p.id) || (p.name && l.Name === p.name)
+    );
+
+    if (personLeaves.length > 0) {
+      const leaveTypes = {};
+      const reasons = personLeaves.map(l => {
+        const days = Number(l.Total_Days) || 1;
+        const lt = l.Leave_Type || 'Leave';
+        leaveTypes[lt] = (leaveTypes[lt] || 0) + days;
+        return {
+          start:  l.Start_Date,
+          end:    l.End_Date || l.Start_Date,
+          text:   l.Reason || '-',
+          type:   lt,
+          status: l.Status || 'Approved',
+          remark: l.Remark || '',
+          attachment: l.Attachment_Link || '',
+        };
+      }).sort((a, b) => (b.start > a.start ? 1 : -1));
+
+      const totalDays = personLeaves.reduce((sum, l) => sum + (Number(l.Total_Days)||1), 0);
+
+      setSelectedPerson({
+        id:            p.id || p.name,
+        name:          p.name || p.id,
+        type:          p.grade ? 'STUDENT' : 'STAFF',
+        grade:         p.grade || '',
+        section:       p.section || '',
+        totalDays,
+        consecutiveMax: 0,
+        weekCount:     0,
+        monthCount:    0,
+        leaveTypes,
+        reasons,
+      });
+    } else {
+      // Last fallback: only today's data (allLeaves not yet loaded)
+      setSelectedPerson({
+        id:            p.id || p.name,
+        name:          p.name || p.id,
+        type:          p.grade ? 'STUDENT' : 'STAFF',
+        grade:         p.grade || '',
+        section:       p.section || '',
+        totalDays:     Number(p.total_days) || 1,
+        consecutiveMax: 0, weekCount: 0, monthCount: 0,
+        leaveTypes:    { [p.leave_type || 'Leave']: Number(p.total_days) || 1 },
+        reasons: [{
+          start:  p.start_date,
+          end:    p.end_date,
+          text:   p.reason || '-',
+          type:   p.leave_type || 'Leave',
+          status: p.status || 'Approved',
+          remark: p.remark || '',
+        }],
+      });
+    }
+  };
+
   return (
+    <>
+      {modal && <AbsentModal title={modal.title} persons={modal.persons} onClose={() => setModal(null)} onPersonClick={openPersonHistory}/>}
+      {selectedPerson && <UserDetailModal user={selectedPerson} onClose={() => setSelectedPerson(null)} />}
     <div style={{ flex:1, overflowY:'auto', background:'#F5F3EE', WebkitOverflowScrolling:'touch', paddingBottom:'40px' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=DM+Sans:wght@400;500;600;700&display=swap');
@@ -230,8 +322,6 @@ export default function ManagementDashboard() {
         ::-webkit-scrollbar { width:3px }
         ::-webkit-scrollbar-thumb { background:rgba(0,0,0,0.1); border-radius:99px }
       `}</style>
-
-      {modal && <AbsentModal title={modal.title} persons={modal.persons} onClose={() => setModal(null)}/>}
 
       <div style={{ background:'linear-gradient(150deg,#0D0C22 0%,#1A1845 55%,#0E1F3D 100%)',
                     padding:'28px 20px 52px', position:'relative', overflow:'hidden' }}>
@@ -577,5 +667,6 @@ export default function ManagementDashboard() {
 
       </div>
     </div>
+    </>
   );
 }
