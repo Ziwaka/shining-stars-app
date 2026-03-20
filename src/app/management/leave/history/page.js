@@ -117,7 +117,7 @@ export default function HistoryPage() {
                 <div
                   key={idx}
                   className={`bg-white p-4 rounded-2xl border-l-8 shadow-md hover:shadow-lg transition-all ${
-                    item.Status === 'Approved' ? 'border-emerald-400' : 'border-rose-400'
+                    item.Status === 'Approved' ? 'border-emerald-400' : item.Status === 'AWOL' ? 'border-orange-500' : 'border-rose-400'
                   }`}
                 >
                   {/* Header Line */}
@@ -131,7 +131,7 @@ export default function HistoryPage() {
                       <DurationBadge leave={item} />
                     </div>
                     <span className={`text-[8px] px-2 py-0.5 rounded-full font-black uppercase ${
-                      item.Status === 'Approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                      item.Status === 'Approved' ? 'bg-emerald-100 text-emerald-700' : item.Status === 'AWOL' ? 'bg-orange-100 text-orange-700' : 'bg-rose-100 text-rose-700'
                     }`}>
                       {item.Status}
                     </span>
@@ -145,6 +145,14 @@ export default function HistoryPage() {
                   <div className="bg-slate-50 p-2 rounded-lg text-[11px] italic text-slate-600 line-clamp-2 mb-2">
                     "{item.Reason || '—'}"
                   </div>
+
+                  {/* Remark — shown prominently if exists */}
+                  {item.Remark && item.Remark !== '-' && item.Remark !== '' && (
+                    <div className="bg-amber-50 border border-amber-200 p-2 rounded-lg text-[11px] text-amber-700 font-bold mb-2 flex items-start gap-1.5">
+                      <span className="shrink-0">✏️</span>
+                      <span>{item.Remark}</span>
+                    </div>
+                  )}
 
                   {/* Attachment link */}
                   {item.Attachment_Link && item.Attachment_Link !== '-' && (

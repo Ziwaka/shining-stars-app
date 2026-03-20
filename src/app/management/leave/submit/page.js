@@ -19,6 +19,7 @@ export default function SubmitPage() {
   const [otherSearch, setOtherSearch] = useState('');
   const [otherSel, setOtherSel] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [isBackDate, setIsBackDate] = useState(false); // ခွင့်မဲ့ ဖြစ်ပြီးမှ ပြန်တိုင်ရန်
   const [uploading, setUploading] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [otherForm, setOtherForm] = useState({
@@ -128,6 +129,7 @@ export default function SubmitPage() {
         End_Date: formatMMDate(endD),
         Total_Days: days,
         Reason: otherForm.Reason.trim(),
+        Remark: otherForm.Remark||'-',
         Leave_Mode: otherForm.Leave_Mode,
         Half_Day_Part: otherForm.Leave_Mode === 'Half Day' ? otherForm.Time_Detail : '-',
         Period_Range: otherForm.Leave_Mode === 'Period-wise' ? otherForm.subject : '-',
@@ -279,13 +281,37 @@ export default function SubmitPage() {
           </div>
         </div>
 
+        {/* Back Date Toggle */}
+        <div style={{display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background: isBackDate?'rgba(234,88,12,0.08)':'rgba(0,0,0,0.02)', border: isBackDate?'1px solid rgba(234,88,12,0.25)':'1px solid rgba(0,0,0,0.06)', borderRadius:10, cursor:'pointer'}} onClick={()=>setIsBackDate(p=>!p)}>
+          <span style={{fontSize:16}}>{isBackDate?'🕐':'📅'}</span>
+          <div style={{flex:1}}>
+            <p style={{fontSize:11, fontWeight:900, color: isBackDate?'#ea580c':'#64748b', margin:0}}>
+              {isBackDate ? 'Back Date Mode — ဖွင့်ထားသည်' : 'Back Date Mode — ပိတ်ထားသည်'}
+            </p>
+            <p style={{fontSize:9, color:'rgba(0,0,0,0.35)', margin:0}}>
+              ခွင့်မဲ့ ဖြစ်ပြီးမှ ပြန်တိုင်ရန် — ယခင်ရက်ကို ရွေးနိုင်သည်
+            </p>
+          </div>
+          <div style={{width:34, height:20, borderRadius:20, background: isBackDate?'#ea580c':'#e2e8f0', position:'relative', transition:'background 0.2s', flexShrink:0}}>
+            <div style={{position:'absolute', top:2, left: isBackDate?14:2, width:16, height:16, borderRadius:'50%', background:'#fff', transition:'left 0.2s', boxShadow:'0 1px 3px rgba(0,0,0,0.2)'}}/>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="text-[8px] font-black text-slate-400 uppercase block mb-1">Start</label>
+            <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4}}>
+              <label className="text-[8px] font-black text-slate-400 uppercase block">Start</label>
+              {isBackDate && (
+                <span style={{fontSize:9, fontWeight:900, background:'rgba(234,88,12,0.1)', color:'#ea580c', border:'1px solid rgba(234,88,12,0.3)', borderRadius:20, padding:'1px 8px'}}>
+                  🕐 Back Date Mode
+                </span>
+              )}
+            </div>
             <input
               type="date"
               value={otherForm.Start_Date}
-              onChange={e => setOtherForm(f => ({ ...f, Start_Date: e.target.value }))}
+              max={isBackDate ? getTodayMM() : undefined}
+              onChange={e => setOtherForm(f => ({ ...f, Start_Date: e.target.value, End_Date: e.target.value }))}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold"
             />
           </div>
@@ -313,7 +339,9 @@ export default function SubmitPage() {
         </div>
 
         <div>
-          <label className="text-[8px] font-black text-slate-400 uppercase block mb-1">Reason</label>
+          <label className="text-[8px] font-black text-slate-400 uppercase block mb-1">
+            Reason {isBackDate && <span style={{color:'#ea580c', fontWeight:900}}> — ခွင့်မဲ့ ပြန်တိုင်ရသည့် အကြောင်းအရင်း</span>}
+          </label>
           <textarea
             value={otherForm.Reason}
             onChange={e => setOtherForm(f => ({ ...f, Reason: e.target.value }))}

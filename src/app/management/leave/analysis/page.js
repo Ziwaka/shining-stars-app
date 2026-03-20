@@ -369,6 +369,11 @@ export default function AnalysisPage() {
                     </div>
                     <div className="bg-white p-4 rounded-2xl border border-slate-100">
                       <p className="text-[13px] text-slate-600 italic leading-relaxed font-medium">"{l.Reason || "No reason specified"}"</p>
+                      {l.Remark && l.Remark !== '-' && l.Remark !== '' && (
+                        <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 text-[11px] text-amber-700 font-bold flex items-center gap-1.5">
+                          <span>✏️</span><span>{l.Remark}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -424,6 +429,48 @@ export default function AnalysisPage() {
             document.getElementById('grade-breakdowns')?.scrollIntoView({ behavior: 'smooth' });
           }}
         />
+      </div>
+
+      {/* Individual Deep Dive */}
+      <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-xl">
+        <p className="text-xs font-black text-sky-600 uppercase tracking-[0.4em] mb-4 flex items-center gap-2">🔍 တစ်ဦးချင်း ရှာဖွေရန်</p>
+        <input
+          value={historySearchQueryAnalysis}
+          onChange={e => setHistorySearchQueryAnalysis(e.target.value)}
+          placeholder="နာမည် သို့မဟုတ် ID ရိုက်ထည့်ပါ..."
+          className="w-full bg-slate-50 border border-slate-200 rounded-full px-5 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-sky-200 transition-all mb-4"
+        />
+
+        {historySearchQueryAnalysis.trim().length >= 2 && (
+          <div className="max-h-[400px] overflow-y-auto flex flex-col gap-3 pr-2 scrollbar-thin">
+            {statsList.filter(u =>
+              u.name.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase()) ||
+              u.id.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase())
+            ).length === 0 ? (
+              <p className="py-10 text-center italic text-slate-300 font-black">မတွေ့ပါ။</p>
+            ) : statsList.filter(u =>
+              u.name.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase()) ||
+              u.id.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase())
+            ).map((u, i) => (
+              <div
+                key={i}
+                className="bg-slate-50 p-4 rounded-xl border border-slate-100 hover:bg-white hover:shadow cursor-pointer transition-all"
+                onClick={() => setSelectedUser(u)}
+              >
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="font-black text-slate-900">{u.name}</p>
+                    <div className="flex gap-2 mt-1">
+                      <span className="text-[8px] bg-white border border-slate-200 px-2 py-0.5 rounded-full font-black">ID: {u.id}</span>
+                      <span className={`text-[8px] px-2 py-0.5 rounded-full font-black ${u.type === 'STUDENT' ? 'bg-indigo-100' : 'bg-amber-100'}`}>{u.type}</span>
+                    </div>
+                  </div>
+                  <span className="text-sm font-black text-amber-600">{u.totalDays}d</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Filter Bar */}
@@ -597,47 +644,6 @@ export default function AnalysisPage() {
         )}
       </div>
 
-      {/* Individual Deep Dive */}
-      <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-xl">
-        <p className="text-xs font-black text-sky-600 uppercase tracking-[0.4em] mb-4 flex items-center gap-2">🔍 တစ်ဦးချင်း ရှာဖွေရန်</p>
-        <input
-          value={historySearchQueryAnalysis}
-          onChange={e => setHistorySearchQueryAnalysis(e.target.value)}
-          placeholder="နာမည် သို့မဟုတ် ID ရိုက်ထည့်ပါ..."
-          className="w-full bg-slate-50 border border-slate-200 rounded-full px-5 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-sky-200 transition-all mb-4"
-        />
-
-        {historySearchQueryAnalysis.trim().length >= 2 && (
-          <div className="max-h-[400px] overflow-y-auto flex flex-col gap-3 pr-2 scrollbar-thin">
-            {statsList.filter(u =>
-              u.name.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase()) ||
-              u.id.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase())
-            ).length === 0 ? (
-              <p className="py-10 text-center italic text-slate-300 font-black">မတွေ့ပါ။</p>
-            ) : statsList.filter(u =>
-              u.name.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase()) ||
-              u.id.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase())
-            ).map((u, i) => (
-              <div
-                key={i}
-                className="bg-slate-50 p-4 rounded-xl border border-slate-100 hover:bg-white hover:shadow cursor-pointer transition-all"
-                onClick={() => setSelectedUser(u)}
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="font-black text-slate-900">{u.name}</p>
-                    <div className="flex gap-2 mt-1">
-                      <span className="text-[8px] bg-white border border-slate-200 px-2 py-0.5 rounded-full font-black">ID: {u.id}</span>
-                      <span className={`text-[8px] px-2 py-0.5 rounded-full font-black ${u.type === 'STUDENT' ? 'bg-indigo-100' : 'bg-amber-100'}`}>{u.type}</span>
-                    </div>
-                  </div>
-                  <span className="text-sm font-black text-amber-600">{u.totalDays}d</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }

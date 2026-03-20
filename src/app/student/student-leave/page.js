@@ -123,6 +123,7 @@ export default function StaffMyLeavePage() {
         End_Date:     myForm.End_Date,
         Total_Days:   days,
         Reason:       myForm.Reason.trim(),
+        Remark:       '-',
         Leave_Mode:   myForm.Leave_Mode,
         Leave_Detail: myForm.Time_Detail.trim()||'-',
         Attachment_Link: myForm.Attachment_Link||'-',

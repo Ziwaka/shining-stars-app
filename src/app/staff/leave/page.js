@@ -133,7 +133,7 @@ export default function StaffLeave() {
   const [form, setForm] = useState({
     category:'School', type:'Sick Leave', durType:'FULL',
     start: getTodayMM(), end: getTodayMM(), halfPart:'AM', subject:'',
-    reason:'', notes:'', attachment:'',
+    reason:'', remark:'', attachment:'',
     reporter:'', relation:'', phone:'', method:'Phone Call',
   });
   const setF = (k,v) => setForm(f=>({...f,[k]:v}));
@@ -228,7 +228,7 @@ export default function StaffLeave() {
       Leave_Type:form.type, Duration_Type:form.durType, Half_Day_Part:form.durType==='HALF'?form.halfPart:'-',
       Period_Count:'-', Period_Range:form.durType==='PERIOD'?form.subject:'-',
       Start_Date: startDateMM, End_Date: endDateMM, Total_Days:totalDays,
-      Reason:form.reason, Notes:form.notes||'-', Attachment_Link:form.attachment||'-',
+      Reason:form.reason, Remark:form.remark||'-', Attachment_Link:form.attachment||'-',
       Reporter_Name:target==='STUDENT'?form.reporter:'-', Relationship:target==='STUDENT'?form.relation:'-',
       Phone:target==='STUDENT'?form.phone:'-', Method:target==='STUDENT'?form.method:'-',
       Approved_By:'-', Status:'Pending',
@@ -238,7 +238,7 @@ export default function StaffLeave() {
       const r = await res.json();
       if (r.success) {
         showMsg('Leave တင်ပြီးပါပြီ ✓');
-        setForm({category:'School',type:'Sick Leave',durType:'FULL',start:getTodayMM(),end:getTodayMM(),halfPart:'AM',subject:'',reason:'',notes:'',attachment:'',reporter:'',relation:'',phone:'',method:'Phone Call'});
+        setForm({category:'School',type:'Sick Leave',durType:'FULL',start:getTodayMM(),end:getTodayMM(),halfPart:'AM',subject:'',reason:'',remark:'',attachment:'',reporter:'',relation:'',phone:'',method:'Phone Call'});
         setSelected(null); setSearch(''); fetchData();
       } else showMsg(r.message||'Error','error');
     } catch { showMsg('Network error','error'); }
@@ -415,6 +415,11 @@ export default function StaffLeave() {
                       </div>
                       <div className="bg-white p-3 rounded-xl border border-slate-100">
                         <p className="text-[12px] text-slate-600 italic leading-snug m-0">"{l.Reason}"</p>
+                         {l.Remark && l.Remark !== '-' && l.Remark !== '' && (
+                           <div className="mt-1.5 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 text-[10px] text-amber-700 font-bold flex items-start gap-1">
+                             <span>✏️</span><span>{l.Remark}</span>
+                           </div>
+                         )}
                       </div>
                     </div>
                   )
@@ -584,7 +589,7 @@ export default function StaffLeave() {
 
               <div style={S.card}>
                 <label style={{...S.label,color:'#7c3aed'}}>📝 Notes / Remark <span style={{fontSize:'8px',fontWeight:400,color:'#94a3b8'}}>(Optional)</span></label>
-                <textarea rows={2} value={form.notes} onChange={e=>setF('notes',e.target.value)} placeholder="ထပ်ဆောင်း မှတ်ချက် (optional)..." style={{...S.input,resize:'vertical',minHeight:'60px'}}/>
+                <textarea rows={2} value={form.remark} onChange={e=>setF('remark',e.target.value)} placeholder="ထပ်ဆောင်း မှတ်ချက် (optional)..." style={{...S.input,resize:'vertical',minHeight:'60px'}}/>
               </div>
 
               {form.start&&(

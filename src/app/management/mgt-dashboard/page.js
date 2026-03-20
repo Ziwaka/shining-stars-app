@@ -1,4 +1,5 @@
 "use client";
+import { DashboardSkeleton } from '@/components/SkeletonLoader';
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
@@ -173,6 +174,8 @@ export default function ManagementDashboard() {
   }, [todayMM]);
 
   useEffect(() => { fetchAttendance(); }, [fetchAttendance]);
+
+  if (loading) return <DashboardSkeleton />;
 
   const name     = user?.Name || user?.name || user?.['Name (ALL CAPITAL)'] || user?.username || 'Admin';
   const dateStr  = new Date().toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric' });

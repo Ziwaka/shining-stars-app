@@ -7,14 +7,16 @@ import { WEB_APP_URL } from '@/lib/api';
 
 // ── helpers ──────────────────────────────────────────────────────
 const STATUS_STYLE = {
-  Approved: { bg:'#dcfce7', color:'#16a34a', label:'Approved' },
-  Rejected:  { bg:'#fee2e2', color:'#dc2626', label:'Rejected' },
-  Pending:   { bg:'#fef3c7', color:'#d97706', label:'Pending'  },
+  Approved: { bg:'#dcfce7', color:'#16a34a', label:'✓ Approved'    },
+  Rejected: { bg:'#fee2e2', color:'#dc2626', label:'✗ Rejected'    },
+  AWOL:     { bg:'#fff7ed', color:'#ea580c', label:'🚫 AWOL'        },
+  Pending:  { bg:'#fef3c7', color:'#d97706', label:'⏳ Pending'     },
 };
 
 export default function ApprovalPage() {
   const { allLeaves, pending, loading, fetchLeaves } = useLeaveData();
   const [proc, setProc]           = useState(false);
+  const [remark, setRemark]         = useState('');
   const [selectedLeave, setSelectedLeave] = useState(null);
   const [histTab, setHistTab]     = useState('detail'); // 'detail' | 'history'
   const [user] = useState(() => {
@@ -41,7 +43,8 @@ export default function ApprovalPage() {
   // ── Approve / Reject ─────────────────────────────────────────
   const handleAction = async (leave, status) => {
     if (!user?.Name) return alert('Session Expired.');
-    if (!confirm(`${status} လုပ်မှာ သေချာပါသလား?`)) return;
+    const statusLabel = status === 'Approved' ? 'Approve' : status === 'Rejected' ? 'Decline (Reject)' : 'ခွင့်မဲ့ ပျက်ကွက် (AWOL) မှတ်တမ်းတင်';
+    if (!confirm(`${statusLabel} လုပ်မှာ သေချာပါသလား?`)) return;
     setProc(true);
     try {
       const res = await fetch(WEB_APP_URL, {
@@ -54,12 +57,14 @@ export default function ApprovalPage() {
           name:       leave.Name,
           startDate:  formatMMDate(leave.Start_Date),
           status,
+          remark:     remark.trim() || '-',
           approvedBy: user?.Name || user?.username || "Management",
           userRole:   'management',
         }),
       });
       const r = await res.json();
       if (r.success) {
+        setRemark('');
         setSelectedLeave(null);
         fetchLeaves();
       } else {
@@ -241,8 +246,8 @@ export default function ApprovalPage() {
                       display:'flex', alignItems:'center', gap:10,
                     }}>
                       <span style={{ fontSize:20 }}>
-                        {history.filter(h=>h.Status==='Approved').length >= 5 ? '⚠️' :
-                         history.filter(h=>h.Status==='Approved').length >= 3 ? '🟡' : '✅'}
+                        {(history.filter(h=>h.Status==='Approved').length + history.filter(h=>h.Status==='AWOL').length) >= 5 ? '⚠️' :
+                         (history.filter(h=>h.Status==='Approved').length + history.filter(h=>h.Status==='AWOL').length) >= 3 ? '🟡' : history.filter(h=>h.Status==='AWOL').length > 0 ? '🚫' : '✅'}
                       </span>
                       <div>
                         <p style={{ fontSize:11, fontWeight:900, color:'#1a1a2e', margin:0 }}>
@@ -251,6 +256,7 @@ export default function ApprovalPage() {
                         <p style={{ fontSize:10, color:'#64748b', margin:'2px 0 0' }}>
                           Approved: {history.filter(h=>h.Status==='Approved').length} ·
                           Rejected: {history.filter(h=>h.Status==='Rejected').length} ·
+                          AWOL: {history.filter(h=>h.Status==='AWOL').length} ·
                           Pending: {history.filter(h=>h.Status==='Pending').length}
                           &nbsp;— History tab တွင် အသေးစိတ် ကြည့်ပါ
                         </p>
@@ -273,7 +279,8 @@ export default function ApprovalPage() {
                         const st = STATUS_STYLE[h.Status] || STATUS_STYLE.Pending;
                         return (
                           <div key={i} style={{
-                            background:'#f8fafc', borderRadius:14,
+                            background: h.Status==='AWOL' ? '#fff7ed' : '#f8fafc',
+                            borderRadius:14,
                             padding:'12px 14px',
                             borderLeft: `4px solid ${st.color}`,
                           }}>
@@ -300,14 +307,41 @@ export default function ApprovalPage() {
                                 : ''}
                             </p>
                             {h.Reason && h.Reason !== '-' && (
-                              <p style={{ fontSize:11, color:'#475569', fontStyle:'italic', margin:0 }}>
+                              <p style={{ fontSize:11, color:'#475569', fontStyle:'italic', margin:'0 0 4px' }}>
                                 "{h.Reason}"
+                              </p>
+                            )}
+                            {h.Remark && h.Remark !== '-' && h.Remark !== '' && (
+                              <p style={{ fontSize:10, color:'#b45309', background:'#fffbeb', borderRadius:6, padding:'3px 8px', display:'inline-block', margin:'0 0 4px' }}>
+                                ✏️ {h.Remark}
                               </p>
                             )}
                             {h.Approved_By && h.Approved_By !== '-' && h.Status === 'Approved' && (
                               <p style={{ fontSize:9, color:'#94a3b8', margin:'4px 0 0' }}>
                                 ✓ Approved by {h.Approved_By}
                               </p>
+                            )}
+                            {/* AWOL → ခွင့်ပြန်တိုင်နိုင်ရန် */}
+                            {h.Status === 'AWOL' && (
+                              <div style={{ marginTop:8, paddingTop:8, borderTop:'1px solid rgba(234,88,12,0.15)' }}>
+                                <p style={{ fontSize:9, color:'#ea580c', fontWeight:700, margin:'0 0 6px' }}>
+                                  ⚠️ ခွင့်မဲ့ ပျက်ကွက် — ပြန်တိုင်ခွင့် ပေးမည်လား?
+                                </p>
+                                <button
+                                  onClick={() => {
+                                    const el = document.querySelector('[data-submit-tab]');
+                                    if (el) el.click();
+                                    else alert('Submit tab သို့ သွားပြီး Back Date mode ဖွင့်ကာ\n' + (selectedLeave?.Name||'') + ' ၏ ' + h.Start_Date + ' မှ ' + (h.End_Date||h.Start_Date) + ' အတွက် ပြန်တိုင်ပေးပါ');
+                                  }}
+                                  style={{
+                                    fontSize:9, fontWeight:900, color:'#ea580c',
+                                    background:'rgba(234,88,12,0.08)',
+                                    border:'1px solid rgba(234,88,12,0.25)',
+                                    borderRadius:20, padding:'4px 12px', cursor:'pointer',
+                                  }}>
+                                  🕐 Back Date ခွင့်တိုင် →
+                                </button>
+                              </div>
                             )}
                           </div>
                         );
@@ -318,32 +352,37 @@ export default function ApprovalPage() {
               )}
             </div>
 
-            {/* Action buttons - sticky bottom */}
+            {/* Remark input + Action buttons */}
             {selectedLeave.Status === 'Pending' && (
-              <div style={{
-                padding:'14px 20px', borderTop:'1px solid #f1f5f9',
-                display:'flex', gap:10, flexShrink:0,
-              }}>
-                <button
-                  onClick={() => handleAction(selectedLeave, 'Approved')}
-                  style={{
-                    flex:1, padding:'13px', background:'#22c55e',
-                    color:'#fff', border:'none', borderRadius:14,
-                    fontSize:13, fontWeight:900, cursor:'pointer',
-                    textTransform:'uppercase', letterSpacing:'0.05em',
-                  }}>
-                  ✓ Approve
-                </button>
-                <button
-                  onClick={() => handleAction(selectedLeave, 'Rejected')}
-                  style={{
-                    flex:1, padding:'13px', background:'#ef4444',
-                    color:'#fff', border:'none', borderRadius:14,
-                    fontSize:13, fontWeight:900, cursor:'pointer',
-                    textTransform:'uppercase', letterSpacing:'0.05em',
-                  }}>
-                  ✗ Decline
-                </button>
+              <div style={{ padding:'14px 20px', borderTop:'1px solid #f1f5f9', flexShrink:0 }}>
+                <div style={{ marginBottom:10 }}>
+                  <label style={{ display:'block', fontSize:'9px', fontWeight:900, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.12em', marginBottom:'5px' }}>
+                    ✏️ Remark (optional) — Approve/Decline မတိုင်မီ မှတ်ချက်ရေးနိုင်သည်
+                  </label>
+                  <input
+                    value={remark}
+                    onChange={e => setRemark(e.target.value)}
+                    placeholder="ဥပမာ: ဆရာဝန်ထောက်ခံစာ တင်ရန် — leave approved conditionally"
+                    style={{ width:'100%', background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:10, padding:'9px 12px', fontSize:12, outline:'none', boxSizing:'border-box', color:'#334155' }}
+                  />
+                </div>
+                <div style={{ display:'flex', gap:8 }}>
+                  <button
+                    onClick={() => handleAction(selectedLeave, 'Approved')}
+                    style={{ flex:1, padding:'12px 8px', background:'#22c55e', color:'#fff', border:'none', borderRadius:12, fontSize:12, fontWeight:900, cursor:'pointer', textTransform:'uppercase', letterSpacing:'0.03em' }}>
+                    ✓ Approve
+                  </button>
+                  <button
+                    onClick={() => handleAction(selectedLeave, 'Rejected')}
+                    style={{ flex:1, padding:'12px 8px', background:'#ef4444', color:'#fff', border:'none', borderRadius:12, fontSize:12, fontWeight:900, cursor:'pointer', textTransform:'uppercase', letterSpacing:'0.03em' }}>
+                    ✗ Decline
+                  </button>
+                  <button
+                    onClick={() => handleAction(selectedLeave, 'AWOL')}
+                    style={{ flex:1, padding:'12px 8px', background:'#ea580c', color:'#fff', border:'none', borderRadius:12, fontSize:12, fontWeight:900, cursor:'pointer', textTransform:'uppercase', letterSpacing:'0.03em' }}>
+                    🚫 AWOL
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -407,25 +446,22 @@ export default function ApprovalPage() {
                 "{l.Reason || '—'}"
               </p>
 
-              {/* Inline approve/decline */}
-              <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+              {/* Inline approve / decline / AWOL */}
+              <div style={{ display:'flex', gap:6, justifyContent:'flex-end', flexWrap:'wrap' }}>
                 <button
                   onClick={e => { e.stopPropagation(); handleAction(l, 'Approved'); }}
-                  style={{
-                    padding:'7px 16px', background:'#22c55e', color:'#fff',
-                    border:'none', borderRadius:20, fontSize:10,
-                    fontWeight:900, cursor:'pointer', textTransform:'uppercase',
-                  }}>
+                  style={{ padding:'6px 14px', background:'#22c55e', color:'#fff', border:'none', borderRadius:20, fontSize:10, fontWeight:900, cursor:'pointer', textTransform:'uppercase' }}>
                   ✓ Approve
                 </button>
                 <button
                   onClick={e => { e.stopPropagation(); handleAction(l, 'Rejected'); }}
-                  style={{
-                    padding:'7px 16px', background:'#ef4444', color:'#fff',
-                    border:'none', borderRadius:20, fontSize:10,
-                    fontWeight:900, cursor:'pointer', textTransform:'uppercase',
-                  }}>
+                  style={{ padding:'6px 14px', background:'#ef4444', color:'#fff', border:'none', borderRadius:20, fontSize:10, fontWeight:900, cursor:'pointer', textTransform:'uppercase' }}>
                   ✗ Decline
+                </button>
+                <button
+                  onClick={e => { e.stopPropagation(); handleAction(l, 'AWOL'); }}
+                  style={{ padding:'6px 14px', background:'#ea580c', color:'#fff', border:'none', borderRadius:20, fontSize:10, fontWeight:900, cursor:'pointer', textTransform:'uppercase' }}>
+                  🚫 AWOL
                 </button>
               </div>
             </div>

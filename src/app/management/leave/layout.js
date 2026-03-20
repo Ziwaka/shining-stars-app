@@ -84,6 +84,7 @@ export default function LeaveLayout({ children }) {
               <Link 
                 key={tab.id} 
                 href={tab.path}
+                data-submit-tab={tab.id === 'submit' ? 'true' : undefined}
                 className={`py-2 px-3 rounded-xl font-black uppercase text-[9px] md:text-[10px] tracking-widest transition-all flex items-center justify-center gap-1 whitespace-nowrap text-center
                   ${pathname === tab.path ? 'bg-slate-950 text-white shadow-lg' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
               >

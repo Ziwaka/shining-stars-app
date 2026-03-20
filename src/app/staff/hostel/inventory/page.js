@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { InventorySkeleton } from '@/components/SkeletonLoader';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 
@@ -530,33 +531,52 @@ export default function HostelInventoryPage() {
   const fetchAll = async () => {
     setLoading(true);
     setError(null);
+
+    // ── 1. Check sessionStorage cache ─────────────────────────
     try {
-      const [assetsRes, logRes] = await Promise.all([
-        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getHostelInventory' }) }),
-        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getHostelInventoryLog' }) })
-      ]);
-      
+      const cached = sessionStorage.getItem('hostel_inv_cache');
+      if (cached) {
+        const { data, ts } = JSON.parse(cached);
+        if (Date.now() - ts < 3 * 60 * 1000) { // 3 min
+          setAssets(data || []);
+          setHostels([...new Set((data||[]).map(a=>a.Hostel_Name).filter(Boolean))]);
+          setLoading(false);
+        }
+      }
+    } catch {}
+
+    // ── 2. Assets first (priority) ────────────────────────────
+    try {
+      const assetsRes = await fetch(WEB_APP_URL, {
+        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body: JSON.stringify({ action:'getHostelInventory' })
+      });
       const assetsData = await assetsRes.json();
-      const logData = await logRes.json();
-      
       if (assetsData.success) {
         setAssets(assetsData.data || []);
-        const uniqueHostels = [...new Set((assetsData.data || []).map(a => a.Hostel_Name).filter(Boolean))];
-        setHostels(uniqueHostels);
+        setHostels([...new Set((assetsData.data||[]).map(a=>a.Hostel_Name).filter(Boolean))]);
+        setLoading(false); // show content immediately
+        try { sessionStorage.setItem('hostel_inv_cache', JSON.stringify({data:assetsData.data, ts:Date.now()})); } catch {}
       } else {
         setError(assetsData.message);
-      }
-      
-      if (logData.success) {
-        setLogs(logData.data || []);
-      } else {
-        console.warn('Log fetch failed:', logData.message);
+        setLoading(false);
+        return;
       }
     } catch (err) {
       setError(err.message);
-    } finally {
       setLoading(false);
+      return;
     }
+
+    // ── 3. Log in background (non-blocking) ───────────────────
+    try {
+      const logRes = await fetch(WEB_APP_URL, {
+        method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body: JSON.stringify({ action:'getHostelInventoryLog' })
+      });
+      const logData = await logRes.json();
+      if (logData.success) setLogs(logData.data || []);
+    } catch {}
   };
 
   const fetchConfig = async () => {
@@ -899,8 +919,15 @@ export default function HostelInventoryPage() {
   }, [assets, filters]);
 
   // ── Loading / Error ──
-  if (loading) return <div style={styles.page}>Loading...</div>;
-  if (error) return <div style={styles.page}>Error: {error}</div>;
+  if (loading) return <InventorySkeleton title="Hostel Inventory" accent="#a78bfa" tabs={[0,1,2,3,4]} />;
+  if (error) return (
+    <div style={{...styles.page, alignItems:'center', justifyContent:'center', gap:12}}>
+      <div style={{fontSize:32}}>⚠️</div>
+      <p style={{fontWeight:900, color:'#f87171'}}>Data load မရပါ</p>
+      <p style={{fontSize:12, color:'rgba(255,255,255,0.4)'}}>{error}</p>
+      <button onClick={fetchAll} style={{background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.15)', color:'#fff', borderRadius:10, padding:'8px 18px', cursor:'pointer', fontSize:12, fontWeight:700}}>↻ Retry</button>
+    </div>
+  );
 
   const TABS = [
     { id:'dashboard', label:'📊 Dashboard' },

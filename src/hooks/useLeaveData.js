@@ -99,7 +99,7 @@ export default function useLeaveData() {
   // Get today's absent users
   const getTodayAbsentUsers = useMemo(() => {
     const todayLeaves = allLeaves.filter(l => 
-      l.Status === 'Approved' && 
+      (l.Status === 'Approved' || l.Status === 'AWOL') && 
       isDateInRange(today, l.Start_Date, l.End_Date)
     );
 
@@ -142,7 +142,7 @@ export default function useLeaveData() {
     const userMap = new Map();
 
     // Process all approved leaves
-    allLeaves.filter(l => l.Status === 'Approved').forEach(l => {
+    allLeaves.filter(l => l.Status === 'Approved' || l.Status === 'AWOL').forEach(l => {
       const key = `${l.User_Type}_${l.User_ID || l.Name}`;
       
       if (!userMap.has(key)) {
@@ -180,12 +180,13 @@ export default function useLeaveData() {
 
       // Store reason with remark
       user.reasons.push({
-        start: l.Start_Date,
-        end: l.End_Date,
-        text: l.Reason,
-        type: l.Leave_Type,
-        status: l.Status,
-        remark: l.Remark || '',
+        start:      l.Start_Date,
+        end:        l.End_Date,
+        text:       l.Reason,
+        type:       l.Leave_Type,
+        status:     l.Status,
+        remark:     l.Remark   || '',
+        notes:      l.Notes    || '',
         attachment: l.Attachment_Link
       });
 

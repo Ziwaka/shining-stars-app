@@ -1,4 +1,5 @@
 "use client";
+import { InventorySkeleton } from '@/components/SkeletonLoader';
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';

@@ -1,4 +1,5 @@
 "use client";
+import { InventorySkeleton } from '@/components/SkeletonLoader';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
@@ -267,21 +268,43 @@ export default function InventoryPage() {
   // ── Fetch ──
   const fetchAll = async () => {
     setLoading(true);
+    // ── 1. Load inventory items first (priority — needed for all tabs) ──
     try {
-      const [invRes,logRes,cfgRes,reqRes] = await Promise.all([
-        fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getInventory'})}),
+      const cached = sessionStorage.getItem('inv_items_cache');
+      if (cached) {
+        const {data, ts} = JSON.parse(cached);
+        if (Date.now()-ts < 3*60*1000) { // 3 min cache
+          setItems((data||[]).map(i=>({...i,Item_Type:resolveType(i)})));
+          setLoading(false); // show content immediately from cache
+        }
+      }
+    } catch {}
+
+    try {
+      const invRes = await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getInventory'})});
+      const inv = await invRes.json();
+      if(inv.success) {
+        const mapped = (inv.data||[]).map(i=>({...i,Item_Type:resolveType(i)}));
+        setItems(mapped);
+        setLoading(false); // show items immediately after first call
+        try { sessionStorage.setItem('inv_items_cache', JSON.stringify({data:inv.data, ts:Date.now()})); } catch {}
+      } else {
+        setLoading(false);
+      }
+    } catch { setLoading(false); }
+
+    // ── 2. Load secondary data in background (non-blocking) ──
+    try {
+      const [logRes,cfgRes,reqRes] = await Promise.all([
         fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getInventoryLog'})}),
         fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getInventoryConfig'})}),
         fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getPurchaseRequests'})}),
       ]);
-      const inv=await invRes.json(), log=await logRes.json(),
-            cfg=await cfgRes.json(), req=await reqRes.json();
-      if(inv.success) setItems((inv.data||[]).map(i=>({...i,Item_Type:resolveType(i)})));
+      const log=await logRes.json(), cfg=await cfgRes.json(), req=await reqRes.json();
       if(log.success) setLogs(log.data||[]);
       if(cfg.success){ if(cfg.categories?.length) setInvCategories(cfg.categories); if(cfg.locations?.length) setInvLocations(cfg.locations); }
       if(req.success) setRequests(req.data||[]);
     } catch {}
-    setLoading(false);
   };
 
   const showMsg = (text, type='success') => { setMsg({text,type}); setTimeout(()=>setMsg(null),3000); };
@@ -706,9 +729,7 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
 
       <div style={{padding:'12px 16px 80px'}}>
         {loading ? (
-          <div style={{display:'flex',justifyContent:'center',padding:'80px 0'}}>
-            <div style={{width:'32px',height:'32px',border:'3px solid rgba(255,255,255,0.08)',borderTop:'3px solid #fbbf24',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/>
-          </div>
+          <InventorySkeleton title="School Inventory" accent="#fbbf24" tabs={[0,1,2,3,4,5,6]} />
         ) : (<>
 
           {tab==='dashboard'&&(

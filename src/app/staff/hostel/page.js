@@ -1,4 +1,5 @@
 "use client";
+import { HostelSkeleton } from '@/components/SkeletonLoader';
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL, GIDS } from '@/lib/api';
@@ -451,51 +452,57 @@ export default function HostelMasterDashboard() {
     setLoading(true);
     setError(null);
     setSyncStatus('SYNCING');
-    
+
+    // ── Check cache first ──────────────────────────────────────
     try {
-      // Try using GIDS.STUDENT_DIR first, fallback to sheet name
-      const studentPayload = GIDS.STUDENT_DIR 
+      const cached = sessionStorage.getItem('hostel_students_cache');
+      if (cached) {
+        const { data, ts } = JSON.parse(cached);
+        if (Date.now() - ts < 3 * 60 * 1000) {
+          setStudents(data || []);
+          setLoading(false); // show immediately from cache
+        }
+      }
+    } catch {}
+
+    // ── Students first (priority) ──────────────────────────────
+    try {
+      const studentPayload = GIDS.STUDENT_DIR
         ? { action: 'getData', targetGid: GIDS.STUDENT_DIR }
         : { action: 'getData', sheetName: 'Student_Directory' };
 
-      const [studentRes, facilityRes, maintenanceRes] = await Promise.all([
-        fetch(WEB_APP_URL, { 
-          method: 'POST', 
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify(studentPayload)
-        }),
-        fetch(WEB_APP_URL, { 
-          method: 'POST', 
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'getData', sheetName: 'Hostel_Facilities' }) 
-        }),
-        fetch(WEB_APP_URL, { 
-          method: 'POST', 
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'getData', sheetName: 'Hostel_Maintenance' }) 
-        })
-      ]);
-      
+      const studentRes = await fetch(WEB_APP_URL, {
+        method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(studentPayload)
+      });
       const sData = await studentRes.json();
+      if (sData.success) {
+        setStudents(sData.data || []);
+        setLoading(false); // show content right away
+        try { sessionStorage.setItem('hostel_students_cache', JSON.stringify({data:sData.data,ts:Date.now()})); } catch {}
+      } else {
+        setLoading(false);
+      }
+    } catch (err) {
+      setLoading(false);
+    }
+
+    // ── Facilities + Maintenance in background ─────────────────
+    try {
+      const [facilityRes, maintenanceRes] = await Promise.all([
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+          body: JSON.stringify({ action: 'getData', sheetName: 'Hostel_Facilities' }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+          body: JSON.stringify({ action: 'getData', sheetName: 'Hostel_Maintenance' }) }),
+      ]);
       const fData = await facilityRes.json();
       const mData = await maintenanceRes.json();
-
-      if (sData.success) setStudents(sData.data || []);
-      else console.warn('Student data fetch failed:', sData.message);
-      
       if (fData.success) setFacilities(fData.data || []);
-      else console.warn('Facilities data fetch failed:', fData.message);
-      
       if (mData.success) setMaintenance(mData.data || []);
-      else console.warn('Maintenance data fetch failed:', mData.message);
-      
       setSyncStatus('ONLINE');
     } catch (err) {
-      console.error("Data fetch failed:", err);
-      setError(err.message || 'Failed to load data');
-      setSyncStatus('ERROR');
-    } finally {
-      setLoading(false);
+      console.warn('Secondary data fetch failed:', err.message);
+      setSyncStatus('ONLINE');
     }
   };
 
@@ -587,7 +594,7 @@ export default function HostelMasterDashboard() {
   const totalEstimatedCost = maintenance.reduce((sum, m) => sum + (Number(m.estimated_cost) || 0), 0);
   const totalActualCost = maintenance.reduce((sum, m) => sum + (Number(m.actual_cost) || 0), 0);
 
-  if (loading) return <LoadingScreen />;
+  if (loading) return <HostelSkeleton />;
   if (error) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="bg-white rounded-3xl p-8 shadow-xl max-w-md text-center">
