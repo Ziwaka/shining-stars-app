@@ -175,7 +175,7 @@ export default function ExamRecordsPage() {
     setSaving(true);
     try {
       const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({
-        action: 'recordExamBulk',
+        action: 'recordExamBulk', userRole:'staff', staffId: user?.Staff_ID||user?.username||'',
         Academic_Year: selYear,
         Term: selTerm,
         Grade: selGrade,

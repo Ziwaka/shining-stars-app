@@ -164,7 +164,7 @@ export default function CalendarTimetablePage() {
       const days = cfg?.days || [];
       for (const day of days) {
         const dayCells = cells.filter(c => c.Day === day);
-        const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'saveTimetable', grade:selGrade, day, cells:dayCells, Updated_By:user?.Name||user?.name||user?.username }) });
+        const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'saveTimetable', userRole:'staff', staffId: user?.Staff_ID||user?.username||'', grade:selGrade, day, cells:dayCells, Updated_By:user?.Name||user?.name||user?.username }) });
         await res.json();
       }
       showMsg('Timetable သိမ်းပြီးပါပြီ');
@@ -176,7 +176,7 @@ export default function CalendarTimetablePage() {
   const handleSaveConfig = async () => {
     setSaving(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'saveTimetableConfig', ...editCfg }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'saveTimetableConfig', userRole:'staff', staffId: user?.Staff_ID||user?.username||'', ...editCfg }) });
       const r = await res.json();
       if (r.success) { showMsg(r.message); setCfg(JSON.parse(JSON.stringify(editCfg))); }
       else showMsg(r.message||'Error','error');

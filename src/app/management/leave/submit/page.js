@@ -76,7 +76,7 @@ export default function SubmitPage() {
           const res = await fetch(WEB_APP_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ action: 'uploadPhoto', base64, filename: file.name, mimeType: file.type, folder: 'documents' })
+            body: JSON.stringify({ action: 'uploadPhoto', userRole:'management', base64, filename: file.name, mimeType: file.type, folder: 'documents' })
           }).then(r => r.json());
           if (res.success) {
             setAttachments(prev => [...prev, res.photoUrl]);
@@ -144,7 +144,7 @@ export default function SubmitPage() {
       const res = await fetch(WEB_APP_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'recordNote', sheetName: 'Leave_Records', data: entry })
+        body: JSON.stringify({ action: 'recordNote', sheetName: 'Leave_Records', userRole:'management', data: entry })
       });
       const r = await res.json();
       if (r.success) {

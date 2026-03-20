@@ -304,7 +304,7 @@ export default function CalendarTimetablePage() {
     });
     try {
       const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({
-        action:'saveTimetable', grade:selGrade, section:selSection, allDays:true,
+        action:'saveTimetable', userRole:'management', grade:selGrade, section:selSection, allDays:true,
         cells:allCells, Updated_By: user?.Name||user?.name||user?.username
       })});
       const r = await res.json();
@@ -318,7 +318,7 @@ export default function CalendarTimetablePage() {
     if (!silent) setCfgSaving('saving');
     try {
       const snapshotCfg = JSON.parse(JSON.stringify(editCfg));
-      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'saveTimetableConfig', ...snapshotCfg, periods_by_grade: snapshotCfg.periods_by_grade||{default: snapshotCfg.periods||[]} }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'saveTimetableConfig', userRole:'management', ...snapshotCfg, periods_by_grade: snapshotCfg.periods_by_grade||{default: snapshotCfg.periods||[]} }) });
       const r = await res.json();
       if (!silent) setCfgSaving('ok');
       setTimeout(() => {

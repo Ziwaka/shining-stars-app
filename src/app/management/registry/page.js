@@ -12,10 +12,12 @@ const canManage = (u) => {
 };
 
 const gas = async (action, payload = {}) => {
+  // ✅ Always inject userRole so GAS permission check works
+  const _u = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
   const res = await fetch(WEB_APP_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action, ...payload }),
+    body: JSON.stringify({ action, userRole: _u?.userRole || 'management', ...payload }),
   });
   return res.json();
 };
@@ -148,7 +150,7 @@ export default function RegistryPage() {
     setSaving(true);
     try {
       const action = modal === 'addStu' ? 'addStudent' : 'updateStudent';
-      const res = await gas(action, form);
+      const res = await gas(action, {...form, userRole:'management'});
       if (res.success) { showMsg(res.message || '\u101e\u102d\u1019\u103a\u1015\u103c\u102e\u1038\u1015\u102a\u1038\u1015\u103c\u102e'); setModal(null); await loadAll(); }
       else showMsg(res.message || '\u1019\u1021\u1031\u102c\u1004\u103a\u1019\u103c\u1004\u103a\u1015\u102a', 'err');
     } catch(e) { showMsg(e.toString(), 'err'); }
@@ -161,7 +163,7 @@ export default function RegistryPage() {
     setSaving(true);
     try {
       const action = modal === 'addStaff' ? 'addStaff' : 'updateStaff';
-      const res = await gas(action, form);
+      const res = await gas(action, {...form, userRole:'management'});
       if (res.success) { showMsg(res.message || '\u101e\u102d\u1019\u103a\u1015\u103c\u102e\u1038\u1015\u102a\u1038\u1015\u103c\u102e'); setModal(null); await loadAll(); }
       else showMsg(res.message || '\u1019\u1021\u1031\u102c\u1004\u103a\u1019\u103c\u1004\u103a\u1015\u102a', 'err');
     } catch(e) { showMsg(e.toString(), 'err'); }

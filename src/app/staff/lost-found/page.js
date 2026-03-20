@@ -62,7 +62,7 @@ export default function StaffLostFoundPage() {
     setSaving(true);
     try {
       const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({
-        action:'submitLostFound', ...form,
+        action:'submitLostFound', userRole:'staff', staffId: user?.Staff_ID||user?.username||'', ...form,
         Reported_By: user?.name, Reporter_Type: 'Staff'
       })});
       const r = await res.json();
@@ -76,7 +76,7 @@ export default function StaffLostFoundPage() {
     setSaving(true);
     try {
       const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({
-        action:'updateLostFound', LF_ID: lfId, Status: status,
+        action:'updateLostFound', userRole:'staff', staffId: user?.Staff_ID||user?.username||'', LF_ID: lfId, Status: status,
         Claimed_By: status === 'Claimed' ? claimName : '', Note: ''
       })});
       const r = await res.json();

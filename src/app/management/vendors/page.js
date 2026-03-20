@@ -64,7 +64,7 @@ export default function ManagementVendorsDirectory() {
     if (!form.Company.trim()) return showMsg('Company Name ထည့်ရန် လိုအပ်ပါသည်', 'error');
     setSaving(true);
     try {
-      const payload = { action: 'saveVendor', ...form, Updated_By: user.Name || user.username };
+      const payload = { action: 'saveVendor', userRole:'management', ...form, Updated_By: user.Name || user.username };
       const res = await fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify(payload) });
       const r = await res.json();
       if (r.success) { showMsg(r.message); setIsModalOpen(false); fetchData(); } 
@@ -77,7 +77,7 @@ export default function ManagementVendorsDirectory() {
     if (!confirm('ဒီ Contact ကို အမှန်တကယ် ဖျက်မှာလား?')) return;
     setLoading(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({ action: 'deleteVendor', Vendor_ID: vid }) });
+      const res = await fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({ action: 'deleteVendor', userRole:'management', Vendor_ID: vid }) });
       if ((await res.json()).success) { showMsg('ဖျက်ပြီးပါပြီ'); fetchData(); }
     } catch {}
     setLoading(false);

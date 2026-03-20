@@ -66,7 +66,7 @@ export default function ManagementVehiclesDashboard() {
     if (!form.Plate_No && !['Bicycle'].includes(form.Vehicle_Type)) return showMsg('ယာဉ်အမှတ် (Plate No) ထည့်ပါ', 'error');
     setSaving(true);
     const payload = {
-      action: 'saveVehicle', Reg_ID: form.Reg_ID, User_Type: targetType,
+      action: 'saveVehicle', userRole:'management', Reg_ID: form.Reg_ID, User_Type: targetType,
       User_ID: selectedPerson['Enrollment No.'] || selectedPerson.Staff_ID, Name: selectedPerson['Name (ALL CAPITAL)'] || selectedPerson.Name,
       Vehicle_Type: form.Vehicle_Type, Plate_No: form.Plate_No, Color: form.Color, Brand: form.Brand, Remark: form.Remark, Status: form.Status, Registered_By: user.Name || user.username
     };
@@ -83,7 +83,7 @@ export default function ManagementVehiclesDashboard() {
     if (!confirm('ဒီမှတ်တမ်းကို အမှန်တကယ် ဖျက်မှာလား?')) return;
     setLoading(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({ action: 'deleteVehicle', Reg_ID: regId }) });
+      const res = await fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({ action: 'deleteVehicle', userRole:'management', Reg_ID: regId }) });
       if ((await res.json()).success) { showMsg('ဖျက်ပြီးပါပြီ'); fetchData(); } 
       else showMsg('Error deleting', 'error');
     } catch {}

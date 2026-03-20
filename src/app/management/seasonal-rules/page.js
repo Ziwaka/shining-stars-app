@@ -19,10 +19,11 @@ const S = {
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
 const gas = async (action, payload = {}) => {
+  const _u = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
   const res = await fetch(WEB_APP_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action, ...payload }),
+    body: JSON.stringify({ action, userRole: _u?.userRole || 'management', ...payload }),
   });
   return res.json();
 };

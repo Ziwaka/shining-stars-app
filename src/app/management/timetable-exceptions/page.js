@@ -25,9 +25,10 @@ const TYPE_COLOR  = { holiday:'#f87171', special:'#60a5fa', custom:'#a78bfa' };
 const TYPE_LABEL  = { holiday:'🔴 Holiday', special:'🔵 Special', custom:'🟣 Custom' };
 
 const gas = async (action, payload = {}) => {
+  const _u = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
   const r = await fetch(WEB_APP_URL, {
     method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({ action, ...payload }),
+    body: JSON.stringify({ action, userRole: _u?.userRole || 'management', ...payload }),
   });
   return r.json();
 };

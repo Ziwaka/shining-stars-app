@@ -44,15 +44,15 @@ const EnhancedWatchlistGroup = ({ title, users, icon, color, onViewDetails }) =>
 
           <div className="grid grid-cols-3 gap-2 mt-3">
             <div className="bg-white p-2 rounded-lg text-center">
-              <p className="text-sm font-black text-rose-600">{u.stats?.consecutiveMax || 0}</p>
+              <p className="text-sm font-black text-rose-600">{u.consecutiveMax || 0}</p>
               <p className="text-[7px] text-slate-400 uppercase">Max Consec</p>
             </div>
             <div className="bg-white p-2 rounded-lg text-center">
-              <p className="text-sm font-black text-amber-600">{u.stats?.weekCount || 0}</p>
+              <p className="text-sm font-black text-amber-600">{u.weekCount || 0}</p>
               <p className="text-[7px] text-slate-400 uppercase">This Week</p>
             </div>
             <div className="bg-white p-2 rounded-lg text-center">
-              <p className="text-sm font-black text-emerald-600">{u.stats?.monthCount || 0}</p>
+              <p className="text-sm font-black text-emerald-600">{u.monthCount || 0}</p>
               <p className="text-[7px] text-slate-400 uppercase">This Month</p>
             </div>
           </div>
@@ -64,7 +64,10 @@ const EnhancedWatchlistGroup = ({ title, users, icon, color, onViewDetails }) =>
                 {u.reasons.slice(0, 2).map((r, ri) => (
                   <div key={ri} className="bg-white p-2 rounded-lg text-[10px]">
                     <span className="text-slate-500 block mb-1">📅 {formatDateDisplay(r.start)}</span>
-                    <span className="text-slate-700 italic">"{r.text.substring(0, 50)}..."</span>
+                    <span className="text-slate-700 italic">"{(r.text||'').substring(0, 50)}{(r.text||'').length>50?'...':''}"</span>
+                    {r.remark && r.remark !== '-' && r.remark !== '' && (
+                      <span className="text-amber-600 block text-[9px] font-bold mt-0.5">✏️ {r.remark.substring(0,40)}</span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -357,7 +360,7 @@ export default function AnalysisPage() {
                   <div 
                     key={i} 
                     className="bg-slate-50 border border-slate-100 p-5 rounded-[1.8rem] shadow-sm hover:shadow-md transition-all cursor-pointer"
-                    onClick={() => userForModal && setSelectedUser(userForModal)}
+                    onClick={() => { if(userForModal) { const full = statsList.find(s => s.id === l.User_ID || s.name === l.Name); setSelectedUser(full || userForModal); } }}
                   >
                     <div className="flex justify-between items-start mb-3">
                       <p className="font-black text-slate-900 text-[16px] italic uppercase tracking-tighter">{l.Name}</p>
@@ -497,7 +500,10 @@ export default function AnalysisPage() {
               <div
                 key={idx}
                 className="bg-white/90 backdrop-blur-sm rounded-2xl p-4 border border-rose-200 shadow-md hover:shadow-lg transition-all cursor-pointer"
-                onClick={() => setSelectedUser(user)}
+                onClick={() => {
+                  const fullStats = statsList.find(s => s.id === user.id || s.name === user.name);
+                  setSelectedUser(fullStats || user);
+                }}
               >
                 <div className="flex justify-between items-start mb-2">
                   <div>

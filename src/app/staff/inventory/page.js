@@ -413,7 +413,7 @@ export default function InventoryPage() {
     if(!requestReason) return showMsg('Reason ထည့်ပါ','error');
     setSaving(true);
     try {
-      const res=await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'submitPurchaseRequest',Item_Name:requestModal.Item_Name,Category:requestModal.Category,Qty:requestQty,Unit:requestModal.Unit,Reason:requestReason,Requested_By:user?.Name||user?.username||''})});
+      const res=await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'submitPurchaseRequest', userRole:'staff', staffId: user?.Staff_ID||user?.username||'',Item_Name:requestModal.Item_Name,Category:requestModal.Category,Qty:requestQty,Unit:requestModal.Unit,Reason:requestReason,Requested_By:user?.Name||user?.username||''})});
       const r=await res.json();
       if(r.success){showMsg(r.message||'Request တင်ပြီးပါပြီ ✓');setRequestModal(null);setRequestQty('');setRequestReason('');fetchAll();}
       else showMsg(r.message||'Error','error');

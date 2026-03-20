@@ -234,7 +234,7 @@ export default function StaffLeave() {
       Approved_By:'-', Status:'Pending',
     }];
     try {
-      const res = await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'recordNote',sheetName:'Leave_Records',data:entry})});
+      const res = await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'recordNote',sheetName:'Leave_Records', userRole:'staff', staffId: user?.Staff_ID||user?.username||'',data:entry})});
       const r = await res.json();
       if (r.success) {
         showMsg('Leave တင်ပြီးပါပြီ ✓');
