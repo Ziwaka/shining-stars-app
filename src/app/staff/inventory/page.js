@@ -257,19 +257,22 @@ export default function InventoryPage() {
     if (!saved) { router.push('/login'); return; }
     const u = JSON.parse(saved);
     if (u.userRole !== 'staff' && u.userRole !== 'management') { router.push('/login'); return; }
-    const checkPerm = (k) => {
-      if (u.userRole==='management') return true;
+    // ✅ FIX: checkPerm ကို userObj parameter လက်ခံအောင် ပြင်ထားသည်
+    //    fresh data (up) ကိုစစ်ဆေးနိုင်မည် — old closure "u" မဟုတ်
+    const checkPerm = (k, userObj) => {
+      const target_u = userObj || u;
+      if (target_u.userRole==='management') return true;
       // tolerate common key variants
       const variants = [k, k.replace(/_/g,' '), k.replace(/_/g,'').toLowerCase()];
       for (const key of variants) {
-        const v = u[key];
+        const v = target_u[key];
         if (v===true || String(v||'').trim().toUpperCase()==='TRUE') return true;
       }
       // also scan keys loosely
       const target = k.toLowerCase().replace(/_/g,'');
-      for (const kk of Object.keys(u||{})) {
+      for (const kk of Object.keys(target_u||{})) {
         if (kk.toLowerCase().replace(/_/g,'')===target) {
-          const v=u[kk];
+          const v=target_u[kk];
           if (v===true || String(v||'').trim().toUpperCase()==='TRUE') return true;
         }
       }
@@ -287,7 +290,8 @@ export default function InventoryPage() {
         if(fresh){
           const up={...u,...fresh};
           localStorage.setItem('user',JSON.stringify(up));
-          if(!checkPerm('Can_Manage_Inventory')){router.push('/staff');return;}
+          // ✅ FIX: up (fresh merged data) ကို checkPerm ထဲ pass လိုက်သည်
+          if(!checkPerm('Can_Manage_Inventory', up)){router.push('/staff');return;}
           setUser(up);fetchAll();return;
         }
         router.push('/staff');
