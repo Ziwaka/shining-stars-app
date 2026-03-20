@@ -1,11 +1,18 @@
 /**
- * Shining Stars - Master API Config (v8.0 Fixed)
+ * Shining Stars - Master API Config (v9.0 Proxy)
  * ROLE: Permanent Data Bridge
+ *
+ * ── CORS Fix ──────────────────────────────────────────────────────
+ * GAS (ContentService) မှာ Access-Control-Allow-Origin header ထည့်မရ
+ * ဒါကြောင့် Vercel/browser မှ တိုက်ရိုက် GAS ခေါ်လျှင် CORS error ဖြစ်တယ်
+ *
+ * Solution: /api/gas proxy route မှတဆင့် ခေါ် (server-to-server = no CORS)
+ *   Browser → /api/gas (same Vercel origin) → GAS script
+ *
+ * Local dev မှာ /api/gas route ကို Next.js ကိုင်ပေးလို့ CORS မပြဿနာ
+ * ─────────────────────────────────────────────────────────────────
  */
-// Prefer env var for dev/staging/prod separation
-export const WEB_APP_URL =
-  process.env.NEXT_PUBLIC_WEB_APP_URL ||
-  "https://script.google.com/macros/s/AKfycbwebk9Jh15hK4ioWmbHySroAU5mc8gRFeyHwvIHQTIX7_os13S6qQR4cXz5DtDPHVM5/exec";
+export const WEB_APP_URL = "/api/gas";
 
 export const GIDS = {
   MANAGEMENT_LOGIN: 1500101923,
