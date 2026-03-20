@@ -71,8 +71,8 @@ export default function StaffMyLeavePage() {
     setLoading(true);
     try {
       const calls = [
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getStaffLeaveBalance', Staff_ID: auth.Staff_ID||'', Name: auth.Name||auth['Name (ALL CAPITAL)']||'' }) }),
-        ...(can ? [fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getInitialData' }) })] : [])
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getStaffLeaveBalance', Staff_ID: auth.Staff_ID||'', Name: auth.Name||auth['Name (ALL CAPITAL)']||'' }) }),
+        ...(can ? [fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getInitialData' }) })] : [])
       ];
       const results = await Promise.all(calls);
       const balRes = await results[0].json();
@@ -95,7 +95,7 @@ export default function StaffMyLeavePage() {
   };
 
   const showMsg = (text, type='success') => { setMsg({text,type}); setTimeout(()=>setMsg(null),3500); };
-  const calcDays = (s,e) => { if(!s||!e) return 0; const d=Math.ceil((new Date(e)-new Date(s))/86400000)+1; return d>0?d:0; };
+  const calcDays = (s,e) => { if(!s||!e) return 0; const d=Math.ceil((new Date(e+'T12:00:00')-new Date(s+'T12:00:00'))/86400000)+1; return d>0?d:0; };
 
   const handleMySubmit = async () => {
     if (!myForm.Leave_Type)    return showMsg('Leave Type ရွေးပါ','error');
@@ -111,14 +111,27 @@ export default function StaffMyLeavePage() {
     if (lt && days > lt.balance) return showMsg(`${myForm.Leave_Type}: balance ${lt.balance} days ကျန်သည်`,'error');
     setSaving(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({
-        action:'submitStaffLeave', Staff_ID:user.Staff_ID||'',
-        Name:user.Name||user['Name (ALL CAPITAL)']||'',
-        Leave_Type:myForm.Leave_Type, Start_Date:myForm.Start_Date,
-        End_Date:myForm.End_Date, Total_Days:days, Reason:myForm.Reason.trim(),
-        Leave_Mode: myForm.Leave_Mode,
-        Leave_Detail: myForm.Time_Detail.trim(),
-        Attachment_Link: myForm.Attachment_Link || '-',
+      // ✅ FIXED: recordNote preserves correct User_Type (STUDENT/STAFF)
+      const _isStudent = (user.userRole === 'student');
+      const _entry = [{
+        Date_Applied: new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'}),
+        User_Type:    _isStudent ? 'STUDENT' : 'STAFF',
+        User_ID:      _isStudent ? (user.Student_ID||user['Enrollment No.']||user.username||'') : (user.Staff_ID||user.username||''),
+        Name:         user.Name||user['Name (ALL CAPITAL)']||user.username||'',
+        Leave_Type:   myForm.Leave_Type,
+        Start_Date:   myForm.Start_Date,
+        End_Date:     myForm.End_Date,
+        Total_Days:   days,
+        Reason:       myForm.Reason.trim(),
+        Leave_Mode:   myForm.Leave_Mode,
+        Leave_Detail: myForm.Time_Detail.trim()||'-',
+        Attachment_Link: myForm.Attachment_Link||'-',
+        Grade:        user.Grade||'', Section: user.Section||'',
+        Reporter_Name:'-', Relationship:'-', Phone:'-', Method:'Self',
+        Approved_By:'-', Status:'Pending',
+      }];
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({
+        action:'recordNote', sheetName:'Leave_Records', data: _entry,
       })});
       const r = await res.json();
       if (r.success) { 
@@ -157,7 +170,7 @@ export default function StaffMyLeavePage() {
     try {
       const isStaff = otherTarget === 'STAFF';
       const entry = [{
-        Date_Applied: new Date().toLocaleDateString('en-CA'),
+        Date_Applied: new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'}),
         User_Type: otherTarget,
         User_ID: otherSel['Enrollment No.'] || otherSel.Student_ID || otherSel.Staff_ID || '',
         Name: getDisplayName(otherSel),
@@ -175,7 +188,7 @@ export default function StaffMyLeavePage() {
         Method: isStaff ? 'Direct' : otherForm.Method,
         Approved_By: '-', Status: 'Pending'
       }];
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'recordNote', sheetName:'Leave_Records', data: entry }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'recordNote', sheetName:'Leave_Records', data: entry }) });
       const r = await res.json();
       if (r.success) {
         showMsg('Leave Form တင်ပြီး ✓');
@@ -224,10 +237,11 @@ export default function StaffMyLeavePage() {
     if (!confirmCancel) return;
     setCancellingKey(key);
     try {
+      const _cs = (user.userRole === 'student');
       const entry = [{
-        Date_Applied: new Date().toLocaleDateString('en-CA'),
-        User_Type: 'STAFF',
-        User_ID: user.Staff_ID || '',
+        Date_Applied: new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'}),
+        User_Type: _cs ? 'STUDENT' : 'STAFF',
+        User_ID: _cs ? (user.Student_ID||user['Enrollment No.']||user.username||'') : (user.Staff_ID||user.username||''),
         Name: user.Name || user['Name (ALL CAPITAL)'] || '',
         Leave_Type: record.Leave_Type,
         Start_Date: record.Start_Date,

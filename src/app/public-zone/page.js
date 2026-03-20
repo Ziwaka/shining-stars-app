@@ -8,7 +8,7 @@ export default function PublicZoneMenu() {
   const [urgent, setUrgent] = useState([]);
 
   useEffect(() => {
-    fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getPublicData' }) })
+    fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getPublicData' }) })
       .then(r => r.json()).then(d => {
         if (d.success) {
           const all = d.announcements || [];

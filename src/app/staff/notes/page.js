@@ -6,7 +6,7 @@ import { WEB_APP_URL } from '@/lib/api';
 const MM_TZ = 'Asia/Yangon';
 const getTodayMM = () => {
   try { return new Date().toLocaleDateString('en-CA', { timeZone: MM_TZ }); }
-  catch(e) { return new Date().toISOString().split('T')[0]; }
+  catch(e) { return new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'}); }
 };
 const formatMMDate = (d) => {
   if (!d || d === '-') return '-';
@@ -61,8 +61,8 @@ export default function RegistryNotes() {
     setLoading(true);
     try {
       const [initRes, notesRes] = await Promise.all([
-        fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getInitialData' }) }).then(r => r.json()),
-        fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getData', sheetName: 'Student_Notes_Log' }) }).then(r => r.json())
+        fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({ action: 'getInitialData' }) }).then(r => r.json()),
+        fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({ action: 'getData', sheetName: 'Student_Notes_Log' }) }).then(r => r.json())
       ]);
       if (initRes.success) {
         const active = s => String(s.Status).toUpperCase() !== 'FALSE';
@@ -93,7 +93,7 @@ export default function RegistryNotes() {
     }];
 
     try {
-      const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'recordNote', sheetName: 'Student_Notes_Log', data: payload, userRole: user?.userRole||'staff', staffId: user?.Staff_ID||user?.username||'' }) });
+      const res = await fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({ action: 'recordNote', sheetName: 'Student_Notes_Log', data: payload, userRole: user?.userRole||'staff', staffId: user?.Staff_ID||user?.username||'' }) });
       const r = await res.json();
       if (r.success) {
         showMsg('မှတ်တမ်း သိမ်းဆည်းပြီးပါပြီ (Saved successfully)');

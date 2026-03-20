@@ -1,3 +1,4 @@
+"use client";
 ﻿const LEAVE_DEFAULTS = ['Casual Leave','Medical Leave','Emergency Leave','Personal Leave', 'Sick Leave', 'Funeral', 'Personal Affair'];
 
 export default function AdvancedFilter({ filters, onFilterChange }) {

@@ -59,7 +59,7 @@ const EMPTY_FORM = {
   Bulk_Quantity: 1
 };
 
-const daysUntil = (d) => { if (!d) return null; return Math.ceil((new Date(d)-new Date())/(864e5)); };
+const daysUntil = (d) => { if (!d) return null; const today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'}); return Math.ceil((new Date(d+'T12:00:00')-new Date(today+'T12:00:00'))/(864e5)); };
 const depreciatedValue = (price, purchaseDate, usefulYears) => {
   if (!price||!purchaseDate||!usefulYears) return null;
   const age = (new Date()-new Date(purchaseDate))/(864e5*365);
@@ -249,7 +249,7 @@ export default function InventoryPage() {
     const checkPerm = (k) => u.userRole==='management'||u[k]===true||String(u[k]||'').toUpperCase()==='TRUE';
     if (u.userRole==='management') { setUser(u); fetchAll(); return; }
     if (checkPerm('Can_Manage_Inventory')) { setUser(u); fetchAll(); return; }
-    fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getStaffPermissions'})})
+    fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getStaffPermissions'})})
       .then(r=>r.json()).then(res=>{
         const fresh=res.success&&res.data?.find(s=>
           (s.Staff_ID&&s.Staff_ID.toString()===u.Staff_ID?.toString())||
@@ -269,10 +269,10 @@ export default function InventoryPage() {
     setLoading(true);
     try {
       const [invRes,logRes,cfgRes,reqRes] = await Promise.all([
-        fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getInventory'})}),
-        fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getInventoryLog'})}),
-        fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getInventoryConfig'})}),
-        fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getPurchaseRequests'})}),
+        fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getInventory'})}),
+        fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getInventoryLog'})}),
+        fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getInventoryConfig'})}),
+        fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getPurchaseRequests'})}),
       ]);
       const inv=await invRes.json(), log=await logRes.json(),
             cfg=await cfgRes.json(), req=await reqRes.json();
@@ -365,7 +365,7 @@ export default function InventoryPage() {
     setSaving(true);
     const qtyChange = usageAction==='Use' ? -Math.abs(Number(usageQty)) : Math.abs(Number(usageQty));
     try {
-      const res=await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'logInventoryUsage',Item_ID:usageModal.Item_ID,Item_Name:usageModal.Item_Name,Qty_Change:qtyChange,Action:usageAction,Done_By:user?.Name||user?.username,Note:usageNote,userRole:user?.userRole||'staff',staffId:user?.Staff_ID||user?.username||''})});
+      const res=await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'logInventoryUsage',Item_ID:usageModal.Item_ID,Item_Name:usageModal.Item_Name,Qty_Change:qtyChange,Action:usageAction,Done_By:user?.Name||user?.username,Note:usageNote,userRole:user?.userRole||'staff',staffId:user?.Staff_ID||user?.username||''})});
       const r=await res.json();
       if(r.success){showMsg('Log တင်ပြီးပါပြီ ✓');fetchAll();setUsageModal(null);setUsageQty('');setUsageNote('');}
       else showMsg(r.message||'Error','error');
@@ -377,7 +377,7 @@ export default function InventoryPage() {
     if(!transferLoc) return showMsg('Location ရွေးပါ','error');
     setSaving(true);
     try {
-      const res=await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'transferInventoryItem',Item_ID:transferModal.Item_ID,Item_Name:transferModal.Item_Name,New_Location:transferLoc,Done_By:user?.Name||user?.username||'',Note:transferNote})});
+      const res=await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'transferInventoryItem',Item_ID:transferModal.Item_ID,Item_Name:transferModal.Item_Name,New_Location:transferLoc,Done_By:user?.Name||user?.username||'',Note:transferNote})});
       const r=await res.json();
       if(r.success){showMsg('Transfer ပြီးပါပြီ ✓');setTransferModal(null);setTransferLoc('');setTransferNote('');fetchAll();}
       else showMsg(r.message||'Error','error');
@@ -390,7 +390,7 @@ export default function InventoryPage() {
     if(!requestReason) return showMsg('Reason ထည့်ပါ','error');
     setSaving(true);
     try {
-      const res=await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'submitPurchaseRequest',Item_Name:requestModal.Item_Name,Category:requestModal.Category,Qty:requestQty,Unit:requestModal.Unit,Reason:requestReason,Requested_By:user?.Name||user?.username||''})});
+      const res=await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'submitPurchaseRequest',Item_Name:requestModal.Item_Name,Category:requestModal.Category,Qty:requestQty,Unit:requestModal.Unit,Reason:requestReason,Requested_By:user?.Name||user?.username||''})});
       const r=await res.json();
       if(r.success){showMsg(r.message||'Request တင်ပြီးပါပြီ ✓');setRequestModal(null);setRequestQty('');setRequestReason('');fetchAll();}
       else showMsg(r.message||'Error','error');
@@ -401,7 +401,7 @@ export default function InventoryPage() {
   const openDetail = async (item) => {
     setDetailModal(item); setDetailHistory([]); setDetailLoading(true);
     try {
-      const res=await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getItemHistory',Item_ID:item.Item_ID})});
+      const res=await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getItemHistory',Item_ID:item.Item_ID})});
       const r=await res.json();
       if(r.success) setDetailHistory(r.data||[]);
     } catch {}
@@ -500,7 +500,7 @@ export default function InventoryPage() {
       const payload = editItem
         ? { ...form, Item_ID: editItem.Item_ID, Updated_By: user?.Name || user?.username || '' }
         : { ...form, Updated_By: user?.Name || user?.username || '' };
-      const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action, ...payload }) });
+      const res = await fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({ action, ...payload }) });
       const r = await res.json();
       if (r.success) {
         showMsg(editItem ? 'Update ပြီးပါပြီ ✓' : 'Item ထည့်ပြီးပါပြီ ✓');
@@ -522,7 +522,7 @@ export default function InventoryPage() {
     reader.onload=async(ev)=>{
       const base64=ev.target.result; setPhotoPreview(base64); setPhotoUploading(true);
       try {
-        const res=await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'uploadPhoto',base64,filename:'inventory_'+Date.now()+'.'+file.name.split('.').pop(),mimeType:file.type,folder:'inventory'})});
+        const res=await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'uploadPhoto',base64,filename:'inventory_'+Date.now()+'.'+file.name.split('.').pop(),mimeType:file.type,folder:'inventory'})});
         const r=await res.json();
         if(r.success){setForm(f=>({...f,Photo_URL:r.photoUrl}));showMsg('ဓာတ်ပုံ တင်ပြီးပါပြီ ✓');}
         else showMsg(r.message||'Upload failed','error');
@@ -539,7 +539,7 @@ export default function InventoryPage() {
       const isCat=configModal==='category';
       const updated=isCat?[...invCategories,val]:[...invLocations,val];
       const payload=isCat?{action:'saveInventoryConfig',categories:updated}:{action:'saveInventoryConfig',locations:updated};
-      const res=await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify(payload)});
+      const res=await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(payload)});
       const r=await res.json();
       if(r.success){isCat?setInvCategories(updated):setInvLocations(updated);showMsg(`"${val}" ထည့်ပြီးပါပြီ ✓`);setConfigModal(null);setConfigNew('');}
       else showMsg(r.message||'Error','error');
@@ -552,7 +552,7 @@ export default function InventoryPage() {
     const updated=type==='category'?invCategories.filter(c=>c!==val):invLocations.filter(l=>l!==val);
     try {
       const payload=type==='category'?{action:'saveInventoryConfig',categories:updated}:{action:'saveInventoryConfig',locations:updated};
-      const res=await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify(payload)});
+      const res=await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(payload)});
       const r=await res.json();
       if(r.success){type==='category'?setInvCategories(updated):setInvLocations(updated);showMsg(`"${val}" ဖျက်ပြီးပါပြီ`);}
       else showMsg(r.message||'Error','error');

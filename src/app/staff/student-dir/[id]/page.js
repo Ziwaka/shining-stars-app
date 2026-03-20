@@ -31,12 +31,18 @@ export default function StudentDetailPage() {
   };
 
   useEffect(() => {
+    // Auth check
+    const saved = localStorage.getItem('user') || sessionStorage.getItem('user');
+    if (!saved) { router.push('/login'); return; }
+    const _u = JSON.parse(saved || 'null');
+    if (!_u || (_u.userRole !== 'staff' && _u.userRole !== 'management')) { router.push('/login'); return; }
+
     const fetchStudentData = async () => {
       try {
         const headers = { 'Content-Type': 'text/plain;charset=utf-8' }; // FIXED CORS
         const [sRes, scRes, pRes, nRes, fRes, lRes, vRes] = await Promise.all([
           fetch(WEB_APP_URL, { method: 'POST', headers, body: JSON.stringify({ action: 'getData', sheetName: 'Student_Directory' }) }),
-          fetch(WEB_APP_URL, { method: 'POST', headers, body: JSON.stringify({ action: 'getData', sheetName: 'Score_Records' }) }),
+          fetch(WEB_APP_URL, { method: 'POST', headers, body: JSON.stringify({ action: 'getData', sheetName: 'Exam_Records' }) }),
           fetch(WEB_APP_URL, { method: 'POST', headers, body: JSON.stringify({ action: 'getData', sheetName: 'House_Points' }) }),
           fetch(WEB_APP_URL, { method: 'POST', headers, body: JSON.stringify({ action: 'getData', sheetName: 'Student_Notes_Log' }) }),
           fetch(WEB_APP_URL, { method: 'POST', headers, body: JSON.stringify({ action: 'getData', sheetName: 'Fees_Management' }) }),

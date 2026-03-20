@@ -109,9 +109,9 @@ export default function CalendarTimetablePage() {
     setLoading(true);
     try {
       const [cfgRes, evtRes, staffRes] = await Promise.all([
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetableConfig' }) }),
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getEvents' }) }),
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getData', sheetName:'Staff_Directory' }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getTimetableConfig' }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getEvents' }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getData', sheetName:'Staff_Login' }) }),
       ]);
       const cfgData   = await cfgRes.json();
       const evtData   = await evtRes.json();
@@ -151,7 +151,7 @@ export default function CalendarTimetablePage() {
     const VDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetable', grade }) });
+        const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getTimetable', grade }) });
         const r = await res.json();
         if (r.success) {
           const rows = (r.data || []).filter(row => {
@@ -197,7 +197,7 @@ export default function CalendarTimetablePage() {
       const fetchGrade = async (g) => {
         for (let i=0; i<2; i++) {
           try {
-            const res = await fetch(WEB_APP_URL, {method:'POST', body:JSON.stringify({action:'getTimetable', grade:g})});
+            const res = await fetch(WEB_APP_URL, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getTimetable', grade:g})});
             const r = await res.json();
             if (r.success) return r.data || [];
           } catch {}
@@ -261,7 +261,7 @@ export default function CalendarTimetablePage() {
     if (!eventForm.Date || !eventForm.Title) return showMsg('Date နှင့် Title ထည့်ပါ', 'error');
     setSaving(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'saveEvent', ...eventForm, Created_By: user?.Name||user?.name||user?.username, userRole: 'management' }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'saveEvent', ...eventForm, Created_By: user?.Name||user?.name||user?.username, userRole: 'management' }) });
       const r = await res.json();
       if (r.success) {
         showMsg(r.message);
@@ -276,7 +276,7 @@ export default function CalendarTimetablePage() {
   const handleDeleteEvent = async (e) => {
     if (!confirm(`"${e.Title}" ဖျက်မှာ သေချာပါသလား?`)) return;
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'deleteEvent', Date:e.Date, Title:e.Title, userRole: 'management' }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'deleteEvent', Date:e.Date, Title:e.Title, userRole: 'management' }) });
       const r = await res.json();
       if (r.success) { showMsg(r.message); fetchAll(user); }
     } catch {}
@@ -303,7 +303,7 @@ export default function CalendarTimetablePage() {
       }
     });
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({
         action:'saveTimetable', grade:selGrade, section:selSection, allDays:true,
         cells:allCells, Updated_By: user?.Name||user?.name||user?.username
       })});
@@ -318,7 +318,7 @@ export default function CalendarTimetablePage() {
     if (!silent) setCfgSaving('saving');
     try {
       const snapshotCfg = JSON.parse(JSON.stringify(editCfg));
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'saveTimetableConfig', ...snapshotCfg, periods_by_grade: snapshotCfg.periods_by_grade||{default: snapshotCfg.periods||[]} }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'saveTimetableConfig', ...snapshotCfg, periods_by_grade: snapshotCfg.periods_by_grade||{default: snapshotCfg.periods||[]} }) });
       const r = await res.json();
       if (!silent) setCfgSaving('ok');
       setTimeout(() => {
@@ -362,7 +362,7 @@ export default function CalendarTimetablePage() {
         let rdata = [];
         for (let attempt=0; attempt<2; attempt++) {
           try {
-            const res = await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getTimetable',grade:g})});
+            const res = await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getTimetable',grade:g})});
             const r = await res.json();
             if (r.success) { rdata = r.data||[]; break; }
           } catch { if (attempt===0) await new Promise(res=>setTimeout(res,800)); }
@@ -395,7 +395,7 @@ export default function CalendarTimetablePage() {
         let rdata = [];
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
-            const res = await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getTimetable',grade:g})});
+            const res = await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getTimetable',grade:g})});
             const r = await res.json();
             if (r.success) { rdata = r.data||[]; break; }
           } catch { if (attempt===0) await new Promise(res=>setTimeout(res,800)); }
@@ -462,8 +462,8 @@ export default function CalendarTimetablePage() {
       const _rng = (s,e) => s ? _12(s)+' – '+_12(e) : '';
       const _gcfg = (g,sec) => { const pbg=cfg.periods_by_grade||{}; return _fx(pbg['Grade '+g+(sec||'')]||pbg['Grade '+g]||pbg[g]||pbg['default']||cfg.periods||[]); };
 
-      const pGrades = [...new Set(printData.rows.map(r=>String(r.grade)))];
-      const rowsWT = printData.rows.map(r => {
+      const pGrades = [...new Set((printData.rows||[]).map(r=>String(r.grade)))];
+      const rowsWT = (printData.rows||[]).map(r => {
         const gc = _gcfg(String(r.grade),r.section);
         const pc = gc.find(p=>p.no===String(r.period));
         const start=pc?.start||''; const end=pc?.end||'';
@@ -926,7 +926,7 @@ export default function CalendarTimetablePage() {
                       const _pFramePeriods = _pfixBrk(getGradePeriods(cfg, selGrade, selSection));
 
                       // Map teacher rows with time from their own grade config
-                      const _pRowsWT = printData.rows.map(r => {
+                      const _pRowsWT = (printData.rows||[]).map(r => {
                         const gc = _pGetGradeCfg(String(r.grade),r.section);
                         const pc = gc.find(p=>p.no===String(r.period));
                         const start=pc?.start||''; const end=pc?.end||'';

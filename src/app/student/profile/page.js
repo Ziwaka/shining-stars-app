@@ -63,7 +63,7 @@ export default function UltimateMaThweProfile() {
 
         if (result.success && Array.isArray(result.data)) {
           // NORMALIZER: Trim spaces from keys
-          const normalizedData = result.data.map(obj => {
+          const normalizedData = (result.data || []).map(obj => {
             const cleanObj = {};
             Object.keys(obj).forEach(k => { cleanObj[k.trim()] = obj[k]; });
             return cleanObj;

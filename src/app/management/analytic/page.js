@@ -148,7 +148,7 @@ export default function AnalyticsPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body:JSON.stringify({ action:'getAnalytics' }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({ action:'getAnalytics' }) });
       const r   = await res.json();
       if (r.success) { setData(r); setUpdated(new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})); }
     } catch {}
@@ -286,7 +286,7 @@ export default function AnalyticsPage() {
                       <CardLabel icon="📈">Grade Distribution</CardLabel>
                       {s.gradeBreakdown?.length > 0 ? (
                         <div style={{display:'flex',alignItems:'flex-end',gap:'6px',height:'150px',marginTop:'20px',overflowX:'auto',paddingBottom:'10px'}}>
-                          {s.gradeBreakdown.map((g,i) => {
+                          {(s.gradeBreakdown||[]).map((g,i) => {
                             const hPct = Math.max((g.count/maxGradeCount)*100, 5);
                             return (
                               <div key={i} style={{flex:'1',minWidth:'30px',display:'flex',flexDirection:'column',alignItems:'center',gap:'8px'}}>
@@ -373,7 +373,7 @@ export default function AnalyticsPage() {
                     {sc.subjectAvg?.length > 0 ? (
                       <Card accent={C.purple}>
                         <CardLabel icon="📚">Subject Performance</CardLabel>
-                        {sc.subjectAvg.map((s,i) => (
+                        {(sc.subjectAvg||[]).map((s,i) => (
                           <HBar key={i} label={s.subject} count={s.avg} max={100} color={scoreColor(s.avg)}/>
                         ))}
                       </Card>

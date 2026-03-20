@@ -33,7 +33,7 @@ export default function StaffVendorsDirectory() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getVendors' }) });
+      const res = await fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({ action: 'getVendors' }) });
       const r = await res.json();
       if (r.success) setVendors(r.data || []);
     } catch {}
@@ -50,7 +50,7 @@ export default function StaffVendorsDirectory() {
       const base64 = ev.target.result;
       setUploading(true);
       try {
-        const res = await fetch(WEB_APP_URL, { method:'POST', body:JSON.stringify({ action:'uploadPhoto', base64, filename: file.name, mimeType: file.type, folder: 'vendors' }) }).then(r=>r.json());
+        const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({ action:'uploadPhoto', base64, filename: file.name, mimeType: file.type, folder: 'vendors' }) }).then(r=>r.json());
         if(res.success) { setForm(f => ({...f, Photo_URL: res.photoUrl})); showMsg('Photo uploaded ✓'); }
         else showMsg('Upload failed', 'error');
       } catch(err) { showMsg('Upload error', 'error'); }
@@ -65,7 +65,7 @@ export default function StaffVendorsDirectory() {
     setSaving(true);
     try {
       const payload = { action: 'saveVendor', ...form, Updated_By: user.Name || user.username };
-      const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+      const res = await fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify(payload) });
       const r = await res.json();
       if (r.success) { showMsg(r.message); setIsModalOpen(false); fetchData(); } 
       else showMsg(r.message || 'Error', 'error');
@@ -77,7 +77,7 @@ export default function StaffVendorsDirectory() {
     if (!confirm('ဒီ Contact ကို အမှန်တကယ် ဖျက်မှာလား?')) return;
     setLoading(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteVendor', Vendor_ID: vid }) });
+      const res = await fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({ action: 'deleteVendor', Vendor_ID: vid }) });
       if ((await res.json()).success) { showMsg('ဖျက်ပြီးပါပြီ'); fetchData(); }
     } catch {}
     setLoading(false);

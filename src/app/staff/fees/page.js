@@ -23,14 +23,14 @@ export default function FeesManagementHub() {
   const [btnState, setBtnState]         = useState('idle');
   const [activeDue, setActiveDue]       = useState(null);
   const [form, setForm] = useState({
-    category:'', amount:'', date: new Date().toISOString().split('T')[0],
+    category:'', amount:'', date: new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'}),
     nextAmount:'0', dueDate:'', remark:''
   });
 
   const [bulkGrade, setBulkGrade]     = useState('');
   const [bulkSection, setBulkSection] = useState('');
   const [bulkCat, setBulkCat]         = useState('');
-  const [bulkDate, setBulkDate]       = useState(new Date().toISOString().split('T')[0]);
+  const [bulkDate, setBulkDate]       = useState(new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'}));
   const [bulkData, setBulkData]       = useState({});
 
   const initRef = useRef(false);
@@ -43,7 +43,7 @@ export default function FeesManagementHub() {
     const checkPerm = (key) => u.userRole==='management' || u[key]===true || String(u[key]||'').toUpperCase()==='TRUE';
     if (u.userRole === 'management') { setStaff(u); fetchAll(); return; }
     if (checkPerm('Can_Manage_Fees')) { setStaff(u); fetchAll(); return; }
-    fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getStaffPermissions' }) })
+    fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getStaffPermissions' }) })
       .then(r=>r.json()).then(res => {
         const fresh = res.success && res.data && res.data.find(s =>
           (s.Staff_ID && s.Staff_ID.toString()===u.Staff_ID?.toString()) ||
@@ -62,9 +62,9 @@ export default function FeesManagementHub() {
     setLoading(true);
     try {
       const [catRes, stuRes, feeRes] = await Promise.all([
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getFeeConfig' }) }),
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getData', sheetName:'Student_Directory' }) }),
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getData', sheetName:'Fees_Management' }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getFeeConfig' }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getData', sheetName:'Student_Directory' }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getData', sheetName:'Fees_Management' }) }),
       ]);
       const catData = await catRes.json();
       const stuData = await stuRes.json();
@@ -77,7 +77,7 @@ export default function FeesManagementHub() {
       } else {
         // Fallback: try old getConfig endpoint
         try {
-          const fallbackRes = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getConfig', category:'Fee_Categories' }) });
+          const fallbackRes = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getConfig', category:'Fee_Categories' }) });
           const fallbackData = await fallbackRes.json();
           if (fallbackData.success && fallbackData.data?.length > 0) {
             const cats = fallbackData.data.map(r => ({ name: r.Setting_Name||r.Category||r.Name||'', amount: Number(r.Value_1||r.Amount||0) })).filter(c=>c.name);
@@ -126,7 +126,7 @@ export default function FeesManagementHub() {
       Status:'PAID', Recorded_By: staff?.Name||'', Remark: form.remark
     }];
     try {
-      const res  = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'recordNote', sheetName:'Fees_Management', data:payload[0], userRole: staff?.userRole||'staff', staffId: staff?.Staff_ID||staff?.username||'' }) });
+      const res  = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'recordNote', sheetName:'Fees_Management', data:payload[0], userRole: staff?.userRole||'staff', staffId: staff?.Staff_ID||staff?.username||'' }) });
       const r    = await res.json();
       if (r.success) {
         setFeeLogs(prev => [...prev, payload[0]]);
@@ -135,7 +135,7 @@ export default function FeesManagementHub() {
         setTimeout(() => {
           setBtnState('idle');
           const first = categories[0];
-          setForm({ category:first?.name||'', amount:String(first?.amount||''), date:new Date().toISOString().split('T')[0], nextAmount:'0', dueDate:'', remark:'' });
+          setForm({ category:first?.name||'', amount:String(first?.amount||''), date:new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'}), nextAmount:'0', dueDate:'', remark:'' });
         }, 1500);
       } else { setBtnState('idle'); showMsg(r.message||'Error','error'); }
     } catch { setBtnState('idle'); showMsg('Network error','error'); }
@@ -183,7 +183,7 @@ export default function FeesManagementHub() {
     if (!entries.length) return showMsg('Amount မထည့်ရသေးပါ','error');
     setSaving(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({
         action:'recordFeesBulk', entries, Date:bulkDate, Recorded_By:staff?.Name||'',
         userRole: staff?.userRole || 'staff', staffId: staff?.Staff_ID || staff?.username || ''
       })});

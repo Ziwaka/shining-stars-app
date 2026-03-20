@@ -17,7 +17,7 @@ const FOLDERS = {
 // Sheet config per tab
 const SHEET_CONFIG = {
   students: { sheetName: 'Student_Directory', idField: 'Enrollment No.' },
-  staff:    { sheetName: 'Staff_Directory',   idField: 'Staff_ID' },
+  staff:    { sheetName: 'Staff_Login',      idField: 'Staff_ID' },
 };
 
 export default function PhotoUploadPage() {

@@ -18,12 +18,11 @@ export default function MgtUniversalLayout({ children }) {
   }, [router]);
 
   const navItems = [
-    { name:'Dashboard',   path:'/management/mgt-dashboard', icon:'📊' },
-    { name:'Leave Hub',   path:'/management/leave',         icon:'📄' },
-    { name:'Calendar',    path:'/management/calendar',      icon:'📅' },
-    { name:'Performance', path:'/management/performance',   icon:'🏆' },
-    { name:'Analytics',   path:'/management/analytic',      icon:'📈' },
-    { name:'Registry',    path:'/management/registry',      icon:'🗂️' },
+    { name:'Dashboard', path:'/management/mgt-dashboard', icon:'📊' },
+    { name:'Leave Hub', path:'/management/leave',         icon:'📄' },
+    { name:'Registry',  path:'/management/registry',      icon:'🗂️' },
+    { name:'Analytics', path:'/management/analytic',      icon:'📈' },
+    { name:'Comms',     path:'/management/communication', icon:'📢' },
   ];
 
   const handleLogout = () => {

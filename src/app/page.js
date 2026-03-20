@@ -11,7 +11,7 @@ export default function LandingPage() {
   useEffect(() => {
     setTimeout(() => setReady(true), 80);
     setTimeout(() => setZonesReady(true), 1200);
-    fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getData', sheetName:'Announcements' }) })
+    fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getData', sheetName:'Announcements' }) })
       .then(r=>r.json()).then(d=>{ if(d.data) localStorage.setItem('cached_announcements', JSON.stringify(d.data)); })
       .catch(()=>{});
   }, []);

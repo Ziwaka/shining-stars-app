@@ -28,7 +28,7 @@ export default function StaffContacts() {
     const fetchStaffData = async () => {
       try {
         const res = await fetch(WEB_APP_URL, { 
-          method: 'POST', body: JSON.stringify({ action: 'getData', sheetName: 'Staff_Directory' }) 
+          method: 'POST', body: JSON.stringify({ action: 'getData', sheetName: 'Staff_Login' }) 
         });
         const data = await res.json();
         if (data.success) {

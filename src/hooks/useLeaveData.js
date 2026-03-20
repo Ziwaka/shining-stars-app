@@ -28,7 +28,7 @@ export default function useLeaveData() {
       const data = await res.json();
       if (data.success) {
         // Format all dates using our central date utilities
-        const formattedLeaves = data.data.map(l => {
+        const formattedLeaves = (data.data || []).map(l => {
           const startDate = formatMMDate(l.Start_Date);
           const endDate = formatMMDate(l.End_Date || l.Start_Date);
           const dateApplied = formatMMDate(l.Date_Applied);
@@ -46,10 +46,11 @@ export default function useLeaveData() {
         
         setAllLeaves(formattedLeaves);
         
-        // Filter pending leaves
+        // ✅ FIXED: assign _rowIndex from FULL array BEFORE filtering
+        // index+2 = +1 for 0-based index, +1 for header row in sheet
         const pendingLeaves = formattedLeaves
-          .filter(l => l.Status === 'Pending')
-          .map((l, index) => ({ ...l, _rowIndex: index + 2 }));
+          .map((l, index) => ({ ...l, _rowIndex: index + 2 }))
+          .filter(l => l.Status === 'Pending');
         
         setPending(pendingLeaves);
       }
@@ -192,7 +193,7 @@ export default function useLeaveData() {
       if (l._startObj && l._endObj) {
         const currentDate = new Date(l._startObj);
         while (currentDate <= l._endObj) {
-          const dateStr = currentDate.toISOString().split('T')[0];
+          const dateStr = currentDate.toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'});
           user.leaveDates.push(dateStr);
           currentDate.setDate(currentDate.getDate() + 1);
         }
@@ -204,7 +205,7 @@ export default function useLeaveData() {
           const start = new Date(Date.UTC(startParts[0], startParts[1] - 1, startParts[2]));
           const end = new Date(Date.UTC(endParts[0], endParts[1] - 1, endParts[2]));
           for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-            const dateStr = d.toISOString().split('T')[0];
+            const dateStr = d.toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'});
             user.leaveDates.push(dateStr);
           }
         }
@@ -244,9 +245,9 @@ export default function useLeaveData() {
       threeMonthsAgo.setMonth(todayObj.getMonth() - 3);
 
       // Convert to YYYY-MM-DD for comparison
-      const weekAgoStr = oneWeekAgo.toISOString().split('T')[0];
-      const monthAgoStr = oneMonthAgo.toISOString().split('T')[0];
-      const quarterAgoStr = threeMonthsAgo.toISOString().split('T')[0];
+      const weekAgoStr = oneWeekAgo.toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'});
+      const monthAgoStr = oneMonthAgo.toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'});
+      const quarterAgoStr = threeMonthsAgo.toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'});
 
       user.weekCount = user.reasons.filter(r => 
         compareMMDates(r.start, weekAgoStr) >= 0

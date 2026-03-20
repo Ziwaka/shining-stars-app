@@ -74,8 +74,8 @@ export default function StaffTimetablePage() {
     setUser(u);
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Yangon' });
     setSelectedDate(today);
-    setSelDay(VDAYS[new Date().getDay()]);
-    fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getTimetableConfig'})})
+    setSelDay(VDAYS[(() => { const d=new Date(); const p=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Yangon',weekday:'short'}).format(d); return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(p); })()]);
+    fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getTimetableConfig'})})
       .then(r=>r.json()).then(data=>{
         if (!data.success) return;
         let raw = data.config;

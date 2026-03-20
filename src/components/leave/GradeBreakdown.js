@@ -1,3 +1,4 @@
+"use client";
 import { formatDateDisplay } from './DateHelpers';
 
 export default function GradeBreakdown({ data, title, onPrint, onViewDetails }) {

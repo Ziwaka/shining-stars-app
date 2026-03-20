@@ -7,7 +7,7 @@ import CompactWatchlistFilter from '@/components/leave/CompactWatchlistFilter';
 const MM_TZ = 'Asia/Yangon';
 const getTodayMM = () => {
   try { return new Date().toLocaleDateString('en-CA', { timeZone: MM_TZ }); }
-  catch(e) { return new Date().toISOString().split('T')[0]; }
+  catch(e) { return new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'}); }
 };
 const formatMMDate = (d) => {
   if (!d || d === '-') return '-';
@@ -144,7 +144,7 @@ export default function StaffLeave() {
     const checkPerm = k => u.userRole==='management' || u[k]===true || String(u[k]||'').toUpperCase()==='TRUE';
     if (u.userRole==='management') { setUser(u); fetchData(); return; }
     if (checkPerm('Can_Record_Attendance_&_Leave')) { setUser(u); fetchData(); return; }
-    fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getStaffPermissions'})})
+    fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getStaffPermissions'})})
       .then(r=>r.json()).then(res=>{
         const fresh = res.success && res.data && res.data.find(s=>(s.Staff_ID&&s.Staff_ID.toString()===u.Staff_ID?.toString())||(s.Name&&(s.Name===u['Name (ALL CAPITAL)']||s.Name===u.Name)));
         if (fresh) {
@@ -160,7 +160,7 @@ export default function StaffLeave() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getInitialData'})});
+      const res = await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getInitialData'})});
       const r = await res.json();
       if (r.success) {
         const isActive = u => u.Status?.toString().toUpperCase() !== 'FALSE';
@@ -186,7 +186,7 @@ export default function StaffLeave() {
       const base64 = ev.target.result;
       setUploading(true);
       try {
-        const res = await fetch(WEB_APP_URL, { method:'POST', body:JSON.stringify({ action:'uploadPhoto', base64, filename: file.name, mimeType: file.type, folder: 'documents' }) }).then(r=>r.json());
+        const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({ action:'uploadPhoto', base64, filename: file.name, mimeType: file.type, folder: 'documents' }) }).then(r=>r.json());
         if(res.success) { setF('attachment', res.photoUrl); showMsg('File uploaded ✓'); }
         else showMsg('Upload failed','error');
       } catch(e) { showMsg('Upload error','error'); }
@@ -234,7 +234,7 @@ export default function StaffLeave() {
       Approved_By:'-', Status:'Pending',
     }];
     try {
-      const res = await fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'recordNote',sheetName:'Leave_Records',data:entry})});
+      const res = await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'recordNote',sheetName:'Leave_Records',data:entry})});
       const r = await res.json();
       if (r.success) {
         showMsg('Leave တင်ပြီးပါပြီ ✓');

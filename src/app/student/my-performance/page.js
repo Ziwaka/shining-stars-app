@@ -38,13 +38,14 @@ export default function MyPerformanceRegistry() {
         try {
           const res = await fetch(WEB_APP_URL, {
             method: 'POST',
+            headers: {'Content-Type':'text/plain;charset=utf-8'},
             body: JSON.stringify({ action: 'getData', sheetName: name }),
           });
           const text = await res.text();
           try {
             const json = JSON.parse(text);
             if (json.success && Array.isArray(json.data)) {
-               json.data = json.data.map(obj => {
+               json.data = (json.data || []).map(obj => {
                   const cleanObj = {};
                   Object.keys(obj).forEach(k => { cleanObj[k.trim()] = obj[k]; });
                   return cleanObj;
@@ -57,7 +58,7 @@ export default function MyPerformanceRegistry() {
 
       try {
         const [scRes, pRes, nRes, fRes, lRes, dirRes] = await Promise.all([
-          fetchSheet('Score_Records'), fetchSheet('House_Points'),
+          fetchSheet('Exam_Records'), fetchSheet('House_Points'),
           fetchSheet('Student_Notes_Log'), fetchSheet('Fees_Management'),
           fetchSheet('Leave_Records'), fetchSheet('Student_Directory') 
         ]);
@@ -76,7 +77,7 @@ export default function MyPerformanceRegistry() {
 
         const filterMyRecords = (result) => {
           if (!result.success || !Array.isArray(result.data)) return [];
-          return result.data.filter(x => {
+          return (result.data||[]).filter(x => {
              const rowID = String(x.Student_ID || x.User_ID || x['Enrollment No.'] || x['Student ID'] || "").trim();
              return rowID === myID;
           });

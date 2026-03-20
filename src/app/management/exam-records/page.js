@@ -89,16 +89,16 @@ export default function ExamRecordsPage() {
             const updated = { ...u, ...fresh };
             localStorage.setItem('user', JSON.stringify(updated));
             const hasFreshPerm = updated['Can_Record_Exam']===true || String(updated['Can_Record_Exam']||'').toUpperCase()==='TRUE';
-            if (!hasFreshPerm) { router.push('/staff'); return; }
+            if (!hasFreshPerm) { router.push('/management/mgt-dashboard'); return; }
             setUser(updated);
             setCanEdit(true);
             fetchConfig(updated);
             return;
           }
         }
-        router.push('/staff');
+        router.push('/management/mgt-dashboard');
       })
-      .catch(() => router.push('/staff'));
+      .catch(() => router.push('/management/mgt-dashboard'));
   }, []);
 
   const fetchConfig = async (u) => {

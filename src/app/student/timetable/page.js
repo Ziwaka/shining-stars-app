@@ -82,7 +82,7 @@ export default function StudentTimetablePage() {
     setUser(u);
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Yangon' });
     setSelectedDate(today);
-    setSelDay(DAYS[new Date().getDay()]);
+    setSelDay(DAYS[(() => { const d=new Date(); const p=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Yangon',weekday:'short'}).format(d); return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(p); })()]);
     fetchAll(u);
   }, []);
 
@@ -108,8 +108,8 @@ export default function StudentTimetablePage() {
       const { g, sec } = extractGradeSection(u);
       setGrade(g); setSection(sec);
       const [cfgRes, ttRes] = await Promise.all([
-        fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getTimetableConfig'})}),
-        fetch(WEB_APP_URL,{method:'POST',body:JSON.stringify({action:'getTimetable',grade:g,section:sec})}),
+        fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getTimetableConfig'})}),
+        fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getTimetable',grade:g,section:sec})}),
       ]);
       const cfgData=await cfgRes.json(), ttData=await ttRes.json();
       if (cfgData.success) setCfg(cfgData.config);
@@ -158,7 +158,7 @@ export default function StudentTimetablePage() {
   }, [cfg, grade, section, selectedDate]);
 
   // ── Derived ──────────────────────────────────────────────────────────────
-  const todayDay   = DAYS[new Date().getDay()];
+  const todayDay   = DAYS[(() => { const d=new Date(); const p=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Yangon',weekday:'short'}).format(d); return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(p); })()];
   const activeDays = cfg?.days || DAYS.slice(1,6);
   const periods    = getGradeCfg(cfg, grade, section);
 

@@ -68,7 +68,7 @@ export default function StudentSchoolDashboard() {
           try {
             const json = JSON.parse(text);
             if (json.success && Array.isArray(json.data)) {
-               json.data = json.data.map(obj => {
+               json.data = (json.data || []).map(obj => {
                   const cleanObj = {};
                   Object.keys(obj).forEach(k => { cleanObj[k.trim()] = obj[k]; });
                   return cleanObj;
@@ -89,7 +89,7 @@ export default function StudentSchoolDashboard() {
         const annRes = await fetchSheet("Announcements");
 
         // Fetch house config from System_Config via GAS
-        const cfgRes = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getHouseConfig' }) });
+        const cfgRes = await fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({ action: 'getHouseConfig' }) });
         const cfgData = await cfgRes.json();
         const configHouseNames = cfgData.success && cfgData.houses?.length > 0
           ? cfgData.houses
@@ -154,7 +154,7 @@ export default function StudentSchoolDashboard() {
 
         // 3. Process Announcements 
         if (annRes.success && Array.isArray(annRes.data)) {
-          const studentAnns = annRes.data.filter(a => Object.keys(a).some(k => k.toLowerCase().includes('student') && isTruthy(a[k])));
+          const studentAnns = (annRes.data||[]).filter(a => Object.keys(a).some(k => k.toLowerCase().includes('student') && isTruthy(a[k])));
           const priorities = studentAnns.filter(a => Object.keys(a).some(k => k.toLowerCase().includes('priority') && isTruthy(a[k])));
 
           setPriorityAnns(priorities);

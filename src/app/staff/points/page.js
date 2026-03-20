@@ -57,9 +57,9 @@ export default function StaffHousePointsPage() {
     setLoading(true);
     try {
       const [cfgRes, ptRes, stuRes] = await Promise.all([
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getHouseConfig' }) }),
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getHousePoints', recordedBy: u?.Name||u?.name }) }),
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getData', sheetName:'Student_Directory' }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getHouseConfig' }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getHousePoints', recordedBy: u?.Name||u?.name }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getData', sheetName:'Student_Directory' }) }),
       ]);
       const cfg = await cfgRes.json();
       const pt  = await ptRes.json();
@@ -106,7 +106,7 @@ export default function StaffHousePointsPage() {
         Recorded_By:user?.Name||user?.name||user?.username,
         userRole: user?.userRole || 'staff', staffId: user?.Staff_ID || user?.username || '',
       };
-      const res = await fetch(WEB_APP_URL, { method:'POST', body:JSON.stringify(payload) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(payload) });
       const r = await res.json();
       if (r.success) { showMsg(r.message||'Points မှတ်တမ်းတင်ပြီး'); resetForm(); fetchAll(user); }
       else showMsg(r.message||'Error','error');

@@ -35,9 +35,9 @@ export default function MgtPerformanceHub() {
   const loadData = async () => {
     try {
       const [initRes, scoreRes, ptRes] = await Promise.all([
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getInitialData' }) }),
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getData', sheetName:'Score_Records' }) }),
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getData', sheetName:'House_Points' }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getInitialData' }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getData', sheetName:'Exam_Records' }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getData', sheetName:'House_Points' }) }),
       ]);
       const init  = await initRes.json();
       const score = await scoreRes.json();

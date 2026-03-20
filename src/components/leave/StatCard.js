@@ -1,3 +1,4 @@
+"use client";
 ﻿export default function StatCard({ title, value, subtitle, icon, color, trend, onClick }) {
   return (
     <div 

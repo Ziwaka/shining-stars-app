@@ -28,7 +28,7 @@ export default function MasterStaffDirectory() {
     const checkPerm = (key) => u.userRole==='management' || u[key]===true || String(u[key]||'').toUpperCase()==='TRUE';
     if (u.userRole === 'management') return;
     if (checkPerm('Can_View_Staff')) return;
-    fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getStaffPermissions' }) })
+    fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getStaffPermissions' }) })
       .then(r=>r.json()).then(res => {
         const fresh = res.success && res.data && res.data.find(s =>
           (s.Staff_ID && s.Staff_ID.toString()===u.Staff_ID?.toString()) ||
@@ -46,7 +46,7 @@ export default function MasterStaffDirectory() {
     const fetchStaffData = async () => {
       try {
         const res  = await fetch(WEB_APP_URL, { method: 'POST',
-          body: JSON.stringify({ action: 'getData', sheetName: 'Staff_Directory' }) });
+          body: JSON.stringify({ action: 'getData', sheetName: 'Staff_Login' }) });
         const data = await res.json();
         if (data.success) {
           setStaffList(data.data.sort((a, b) => (a.Name || "").localeCompare(b.Name || "")));

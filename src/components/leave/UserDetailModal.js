@@ -1,3 +1,4 @@
+"use client";
 import DurationBadge from './DurationBadge';
 import { formatDateDisplay } from './DateHelpers';
 

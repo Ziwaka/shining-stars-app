@@ -1,3 +1,4 @@
+"use client";
 ﻿export default function DurationBadge({ leave, big }) {
   const dt = leave.Duration_Type || (leave.Leave_Mode === 'Half Day' ? 'HALF' : leave.Leave_Mode === 'Period-wise' ? 'PERIOD' : 'FULL');
   const days = Number(leave.Total_Days || 0);

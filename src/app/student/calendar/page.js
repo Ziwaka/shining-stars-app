@@ -28,7 +28,7 @@ export default function StudentTimetablePage() {
     setUser(u);
 
     // Default to today's day
-    const todayDay = DAYS[new Date().getDay()];
+    const todayDay = DAYS[(() => { const d=new Date(); const p=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Yangon',weekday:'short'}).format(d); return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(p); })()];
     setSelDay(todayDay);
     fetchAll(u);
   }, []);
@@ -58,8 +58,8 @@ export default function StudentTimetablePage() {
       }
       console.log('[Student TT] grade='+grade+' section='+section, u);
       const [cfgRes, ttRes] = await Promise.all([
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetableConfig' }) }),
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetable', grade, section }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getTimetableConfig' }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getTimetable', grade, section }) }),
       ]);
       const cfgData = await cfgRes.json();
       const ttData  = await ttRes.json();
@@ -97,7 +97,7 @@ export default function StudentTimetablePage() {
     setLoading(false);
   };
 
-  const todayDay = DAYS[new Date().getDay()];
+  const todayDay = DAYS[(() => { const d=new Date(); const p=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Yangon',weekday:'short'}).format(d); return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(p); })()];
   const activeDays = cfg?.days || DAYS.slice(0,5);
   // Use periods_by_grade: try 'default', then first available key, then cfg.periods
   const _pbg = cfg?.periods_by_grade || {};

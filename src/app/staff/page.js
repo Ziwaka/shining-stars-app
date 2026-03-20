@@ -38,8 +38,8 @@ const formatDateDisplay = (d) => {
 // ── 2. ATTENDANCE CALENDAR (with fallback to absent count) ──
 
 const AttendanceCalendar = ({ trendData, onDayClick }) => {
-  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
-  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Yangon',month:'numeric'}).format(new Date())-1|0);
+  const [currentYear, setCurrentYear] = useState(parseInt(new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Yangon',year:'numeric'}).format(new Date()),10));
 
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -141,8 +141,8 @@ const AttendanceCalendar = ({ trendData, onDayClick }) => {
 // ── 3. EVENT CALENDAR ──────────────────────────────────
 
 const EventCalendar = () => {
-  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
-  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Yangon',month:'numeric'}).format(new Date())-1|0);
+  const [currentYear, setCurrentYear] = useState(parseInt(new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Yangon',year:'numeric'}).format(new Date()),10));
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -466,7 +466,7 @@ export default function StaffAccessHub() {
     if (auth.userRole === 'management') { router.push('/management/mgt-dashboard'); return; }
 
     // Fetch staff permissions (optional, but keeps consistency)
-    fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getStaffPermissions' }) })
+    fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getStaffPermissions' }) })
       .then(r => r.json())
       .then(res => {
         if (res.success && res.data) {
@@ -480,8 +480,8 @@ export default function StaffAccessHub() {
 
     const today = new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Yangon' });
     Promise.all([
-      fetch(WEB_APP_URL, { method:'POST', body:JSON.stringify({ action:'getAttendance', date:today }) }).then(r=>r.json()),
-      fetch(WEB_APP_URL, { method:'POST', body:JSON.stringify({ action:'getAttendanceTrend' }) }).then(r=>r.json())
+      fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({ action:'getAttendance', date:today }) }).then(r=>r.json()),
+      fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({ action:'getAttendanceTrend' }) }).then(r=>r.json())
     ]).then(([attRes, trendRes]) => {
       if (attRes.success) setAtt(attRes);
       if (trendRes.success) {

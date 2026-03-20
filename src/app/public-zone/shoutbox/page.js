@@ -13,7 +13,7 @@ export default function PublicShoutbox() {
 
   const fetchMsgs = async () => {
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getShoutbox' }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getShoutbox' }) });
       const r = await res.json();
       if (r.success) setMessages(r.data || []);
     } catch {} setLoading(false);
@@ -29,7 +29,7 @@ export default function PublicShoutbox() {
     if (form.message.length > 300) return showMsg('300 လုံးထက် မကျော်ပါနှင့်', 'error');
     setSending(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'postShoutbox', ...form }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'postShoutbox', ...form }) });
       const r = await res.json();
       if (r.success) {
         showMsg('Message ပို့ပြီးပါပြီ ✓');

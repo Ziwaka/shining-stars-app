@@ -18,7 +18,7 @@ export default function LeaveEntryForm({ userRole, staffName }) {
     setBtnState('saving');
 
     const payload = [{
-      Date: new Date().toISOString().split('T')[0],
+      Date: new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'}),
       Student_ID: formData.studentId,
       Leave_Type: formData.leaveType,
       Start_Date: formData.startDate,

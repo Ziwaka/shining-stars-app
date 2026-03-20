@@ -46,8 +46,8 @@ export default function StudentHome() {
     const myID = (u.Student_ID || u['Enrollment No.'] || '').toString().trim();
     try {
       const [annRes, feeRes] = await Promise.all([
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getAnnouncements' }) }),
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getData', sheetName:'Fees_Management' }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getAnnouncements' }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getData', sheetName:'Fees_Management' }) }),
       ]);
       const ann = await annRes.json();
       const fee = await feeRes.json();

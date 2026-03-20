@@ -5,311 +5,432 @@ import DurationBadge from '@/components/leave/DurationBadge';
 import { formatDateDisplay, formatMMDate } from '@/components/leave/DateHelpers';
 import { WEB_APP_URL } from '@/lib/api';
 
+// ── helpers ──────────────────────────────────────────────────────
+const STATUS_STYLE = {
+  Approved: { bg:'#dcfce7', color:'#16a34a', label:'Approved' },
+  Rejected:  { bg:'#fee2e2', color:'#dc2626', label:'Rejected' },
+  Pending:   { bg:'#fef3c7', color:'#d97706', label:'Pending'  },
+};
+
 export default function ApprovalPage() {
   const { allLeaves, pending, loading, fetchLeaves } = useLeaveData();
-  const [proc, setProc] = useState(false);
+  const [proc, setProc]           = useState(false);
   const [selectedLeave, setSelectedLeave] = useState(null);
-  const [showDetail, setShowDetail] = useState(false);
-  const [user, setUser] = useState(() => {
+  const [histTab, setHistTab]     = useState('detail'); // 'detail' | 'history'
+  const [user] = useState(() => {
     if (typeof window !== 'undefined') {
       return JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
     }
     return null;
   });
 
+  // ── Get leave history for a person ───────────────────────────
+  const getPersonHistory = (leave) => {
+    if (!leave || !allLeaves?.length) return [];
+    return allLeaves
+      .filter(l => {
+        const sameId   = leave.User_ID && l.User_ID === leave.User_ID;
+        const sameName = leave.Name && l.Name === leave.Name;
+        const isThisOne = formatMMDate(l.Start_Date) === formatMMDate(leave.Start_Date)
+                       && l.Name === leave.Name && l.Status === 'Pending';
+        return (sameId || sameName) && !isThisOne;
+      })
+      .sort((a, b) => (b.Start_Date > a.Start_Date ? 1 : -1));
+  };
+
+  // ── Approve / Reject ─────────────────────────────────────────
   const handleAction = async (leave, status) => {
     if (!user?.Name) return alert('Session Expired.');
-    if (!confirm(`Are you sure you want to ${status} this request?`)) return;
+    if (!confirm(`${status} လုပ်မှာ သေချာပါသလား?`)) return;
     setProc(true);
     try {
-      const cleanDate = formatMMDate(leave.Start_Date);
       const res = await fetch(WEB_APP_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
-          action: 'updateLeave',
-          rowIndex: leave._rowIndex,
-          userId: leave.User_ID,
-          name: leave.Name,
-          startDate: cleanDate,
+          action:     'updateLeave',
+          rowIndex:   leave._rowIndex,
+          userId:     leave.User_ID,
+          name:       leave.Name,
+          startDate:  formatMMDate(leave.Start_Date),
           status,
-          approvedBy: user.Name,
-          userRole: 'management',
-        })
+          approvedBy: user?.Name || user?.username || "Management",
+          userRole:   'management',
+        }),
       });
       const r = await res.json();
       if (r.success) {
-        alert(`Request ${status} successfully!`);
+        setSelectedLeave(null);
         fetchLeaves();
-      } else alert('FAIL: ' + r.message);
+      } else {
+        alert('မအောင်မြင်ပါ: ' + r.message);
+      }
     } catch {
-      alert('Network Error');
+      alert('Network Error — GAS connection စစ်ဆေးပါ');
     } finally {
       setProc(false);
-      setSelectedLeave(null);
-      setShowDetail(false);
     }
   };
 
-  const viewDetails = (leave) => {
+  // ── Open detail modal ─────────────────────────────────────────
+  const openDetail = (leave) => {
     setSelectedLeave(leave);
-    setShowDetail(true);
-  };
-
-  const closeDetails = () => {
-    setSelectedLeave(null);
-    setShowDetail(false);
+    setHistTab('detail');
   };
 
   if (loading || proc) {
     return (
-      <div className="min-h-[200px] flex items-center justify-center">
-        <div className="text-2xl text-amber-500 animate-pulse">⌛ Loading...</div>
+      <div style={{ minHeight:200, display:'flex', alignItems:'center', justifyContent:'center' }}>
+        <span style={{ fontSize:24, color:'#d97706' }}>⌛</span>
+        <span style={{ marginLeft:8, color:'#94a3b8', fontSize:13 }}>
+          {proc ? 'Processing...' : 'Loading...'}
+        </span>
       </div>
     );
   }
 
+  const history = selectedLeave ? getPersonHistory(selectedLeave) : [];
+
   return (
-    <div className="space-y-3 pb-4 relative">
-      {showDetail && selectedLeave && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-slate-100 p-4 flex justify-between items-center">
-              <h2 className="font-black text-lg">ခွင့်တိုင်ကြားစာ အသေးစိတ်</h2>
-              <button onClick={closeDetails} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xl">✕</button>
-            </div>
-            <div className="p-5 space-y-4">
-              {/* Header Badges */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="bg-indigo-50 text-indigo-700 text-[10px] px-3 py-1 rounded-full font-black">{selectedLeave.Category || 'Leave'}</span>
-                <span className={`text-[10px] px-3 py-1 rounded-full font-black ${selectedLeave.User_Type === 'STUDENT' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>
-                  {selectedLeave.User_Type}
-                </span>
-                <DurationBadge leave={selectedLeave} />
-                <span className="bg-slate-100 text-slate-600 text-[10px] px-3 py-1 rounded-full">
-                  {formatDateDisplay(selectedLeave.Date_Applied)} (တင်ရက်)
-                </span>
-              </div>
+    <div style={{ paddingBottom:24 }}>
 
-              {/* Requester Info */}
-              <div className="bg-slate-50 p-4 rounded-2xl">
-                <h3 className="text-xs font-bold text-slate-400 mb-3">တိုင်ကြားသူ အချက်အလက်</h3>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <p className="text-[10px] text-slate-400">အမည်</p>
-                    <p className="font-bold">{selectedLeave.Name}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-slate-400">ID</p>
-                    <p className="font-bold">{selectedLeave.User_ID || '-'}</p>
-                  </div>
-                  {selectedLeave.User_Type === 'STUDENT' ? (
-                    <>
-                      <div>
-                        <p className="text-[10px] text-slate-400">အတန်း</p>
-                        <p className="font-bold">{selectedLeave.Grade || '-'} {selectedLeave.Section || ''}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-slate-400">အိပ်ဆောင်</p>
-                        <p className="font-bold">{selectedLeave.Hostel || '-'}</p>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div>
-                        <p className="text-[10px] text-slate-400">ရာထူး</p>
-                        <p className="font-bold">{selectedLeave.Position || 'Staff'}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-slate-400">ဌာန</p>
-                        <p className="font-bold">{selectedLeave.Department || '-'}</p>
-                      </div>
-                    </>
-                  )}
+      {/* ── Detail / History Modal ─────────────────────────── */}
+      {selectedLeave && (
+        <div style={{
+          position:'fixed', inset:0, zIndex:9999,
+          background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)',
+          display:'flex', alignItems:'center', justifyContent:'center', padding:16,
+        }} onClick={() => setSelectedLeave(null)}>
+          <div style={{
+            background:'#fff', borderRadius:24,
+            width:'100%', maxWidth:520,
+            maxHeight:'92vh', display:'flex', flexDirection:'column',
+            boxShadow:'0 8px 40px rgba(0,0,0,0.25)',
+          }} onClick={e => e.stopPropagation()}>
+
+            {/* Modal header */}
+            <div style={{
+              padding:'16px 20px 0',
+              borderBottom:'1px solid #f1f5f9',
+              flexShrink:0,
+            }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                <div>
+                  <p style={{ fontSize:9, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.15em', fontWeight:900, margin:'0 0 2px' }}>
+                    Leave Request
+                  </p>
+                  <p style={{ fontSize:17, fontWeight:900, color:'#1a1a2e', margin:0 }}>
+                    {selectedLeave.Name}
+                  </p>
+                  <p style={{ fontSize:10, color:'#64748b', margin:'2px 0 0' }}>
+                    {selectedLeave.User_Type} · {selectedLeave.Leave_Type} · {selectedLeave.Total_Days || 1} day(s)
+                  </p>
                 </div>
+                <button onClick={() => setSelectedLeave(null)} style={{
+                  background:'#f1f5f9', border:'none', borderRadius:10,
+                  width:34, height:34, cursor:'pointer', fontSize:14, color:'#64748b',
+                }}>✕</button>
               </div>
 
-              {/* Contact Info */}
-              {(selectedLeave.Phone || selectedLeave.Email || selectedLeave.Reporter_Name || selectedLeave.Relationship) && (
-                <div className="bg-slate-50 p-4 rounded-2xl">
-                  <h3 className="text-xs font-bold text-slate-400 mb-3">ဆက်သွယ်ရန် အချက်အလက်</h3>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    {selectedLeave.Phone && (
+              {/* Tab switch */}
+              <div style={{ display:'flex', gap:4, paddingBottom:0 }}>
+                {[
+                  { id:'detail',  label:'📋 အချက်အလက်' },
+                  { id:'history', label:`📅 Leave History (${history.length})` },
+                ].map(t => (
+                  <button key={t.id} onClick={() => setHistTab(t.id)} style={{
+                    border:'none', cursor:'pointer',
+                    padding:'8px 14px', borderRadius:'10px 10px 0 0',
+                    fontSize:11, fontWeight:900,
+                    background: histTab===t.id ? '#fff' : 'transparent',
+                    color:      histTab===t.id ? '#1a1a2e' : '#94a3b8',
+                    borderBottom: histTab===t.id ? '2px solid #4338ca' : '2px solid transparent',
+                  }}>{t.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Modal body */}
+            <div style={{ overflowY:'auto', flex:1, padding:'16px 20px' }}>
+
+              {/* ── Detail tab ─────────────────────────────── */}
+              {histTab === 'detail' && (
+                <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+
+                  {/* Person info */}
+                  <div style={{ background:'#f8fafc', borderRadius:16, padding:'14px 16px' }}>
+                    <p style={{ fontSize:9, fontWeight:900, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:10 }}>
+                      တိုင်ကြားသူ
+                    </p>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, fontSize:12 }}>
                       <div>
-                        <p className="text-[10px] text-slate-400">ဖုန်းနံပါတ်</p>
-                        <p className="font-bold">{selectedLeave.Phone}</p>
+                        <p style={{ fontSize:9, color:'#94a3b8' }}>ID</p>
+                        <p style={{ fontWeight:700 }}>{selectedLeave.User_ID || '-'}</p>
                       </div>
-                    )}
-                    {selectedLeave.Email && (
+                      {selectedLeave.User_Type === 'STUDENT' ? (
+                        <div>
+                          <p style={{ fontSize:9, color:'#94a3b8' }}>Grade / Section</p>
+                          <p style={{ fontWeight:700 }}>{selectedLeave.Grade || '-'} {selectedLeave.Section || ''}</p>
+                        </div>
+                      ) : (
+                        <div>
+                          <p style={{ fontSize:9, color:'#94a3b8' }}>ရာထူး</p>
+                          <p style={{ fontWeight:700 }}>{selectedLeave.Position || 'Staff'}</p>
+                        </div>
+                      )}
+                      {selectedLeave.Phone && (
+                        <div>
+                          <p style={{ fontSize:9, color:'#94a3b8' }}>ဖုန်း</p>
+                          <p style={{ fontWeight:700 }}>📞 {selectedLeave.Phone}</p>
+                        </div>
+                      )}
+                      {selectedLeave.Reporter_Name && selectedLeave.Reporter_Name !== '-' && (
+                        <div>
+                          <p style={{ fontSize:9, color:'#94a3b8' }}>သတင်းပို့သူ</p>
+                          <p style={{ fontWeight:700 }}>{selectedLeave.Reporter_Name} ({selectedLeave.Relationship || ''})</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Leave dates */}
+                  <div style={{ background:'#f8fafc', borderRadius:16, padding:'14px 16px' }}>
+                    <p style={{ fontSize:9, fontWeight:900, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:10 }}>
+                      ခွင့်အချက်အလက်
+                    </p>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, fontSize:12, marginBottom:10 }}>
                       <div>
-                        <p className="text-[10px] text-slate-400">Email</p>
-                        <p className="font-bold">{selectedLeave.Email}</p>
+                        <p style={{ fontSize:9, color:'#94a3b8' }}>ခွင့်အမျိုးအစား</p>
+                        <p style={{ fontWeight:700 }}>{selectedLeave.Leave_Type || '-'}</p>
                       </div>
-                    )}
-                    {selectedLeave.Reporter_Name && (
                       <div>
-                        <p className="text-[10px] text-slate-400">သတင်းပို့သူ</p>
-                        <p className="font-bold">{selectedLeave.Reporter_Name}</p>
+                        <p style={{ fontSize:9, color:'#94a3b8' }}>ရက်ရေ</p>
+                        <p style={{ fontWeight:700 }}>{selectedLeave.Total_Days || 1} ရက်</p>
                       </div>
-                    )}
-                    {selectedLeave.Relationship && (
                       <div>
-                        <p className="text-[10px] text-slate-400">ဆက်သွယ်ရာ</p>
-                        <p className="font-bold">{selectedLeave.Relationship}</p>
+                        <p style={{ fontSize:9, color:'#94a3b8' }}>စတင်ရက်</p>
+                        <p style={{ fontWeight:700 }}>{formatDateDisplay(selectedLeave.Start_Date)}</p>
+                      </div>
+                      <div>
+                        <p style={{ fontSize:9, color:'#94a3b8' }}>ပြီးဆုံးရက်</p>
+                        <p style={{ fontWeight:700 }}>{formatDateDisplay(selectedLeave.End_Date || selectedLeave.Start_Date)}</p>
+                      </div>
+                    </div>
+                    <div>
+                      <p style={{ fontSize:9, color:'#94a3b8', marginBottom:4 }}>အကြောင်းပြချက်</p>
+                      <p style={{ fontSize:12, fontStyle:'italic', background:'#fff', padding:'10px 12px', borderRadius:10, border:'1px solid #e2e8f0', color:'#334155' }}>
+                        "{selectedLeave.Reason || '—'}"
+                      </p>
+                    </div>
+                    {selectedLeave.Remark && selectedLeave.Remark !== '-' && selectedLeave.Remark !== '' && (
+                      <div style={{ marginTop:8 }}>
+                        <p style={{ fontSize:9, color:'#94a3b8', marginBottom:4 }}>မှတ်ချက်</p>
+                        <p style={{ fontSize:12, background:'#fffbeb', padding:'10px 12px', borderRadius:10, border:'1px solid #fde68a' }}>
+                          ✏️ {selectedLeave.Remark}
+                        </p>
                       </div>
                     )}
                   </div>
+
+                  {/* Quick history summary */}
+                  {history.length > 0 && (
+                    <div style={{
+                      background: history.filter(h=>h.Status==='Approved').length >= 3 ? '#fff7ed' : '#f0fdf4',
+                      border: `1px solid ${history.filter(h=>h.Status==='Approved').length >= 3 ? '#fed7aa' : '#bbf7d0'}`,
+                      borderRadius:12, padding:'10px 14px',
+                      display:'flex', alignItems:'center', gap:10,
+                    }}>
+                      <span style={{ fontSize:20 }}>
+                        {history.filter(h=>h.Status==='Approved').length >= 5 ? '⚠️' :
+                         history.filter(h=>h.Status==='Approved').length >= 3 ? '🟡' : '✅'}
+                      </span>
+                      <div>
+                        <p style={{ fontSize:11, fontWeight:900, color:'#1a1a2e', margin:0 }}>
+                          ယခင် leave history: {history.length} ကြိမ်
+                        </p>
+                        <p style={{ fontSize:10, color:'#64748b', margin:'2px 0 0' }}>
+                          Approved: {history.filter(h=>h.Status==='Approved').length} ·
+                          Rejected: {history.filter(h=>h.Status==='Rejected').length} ·
+                          Pending: {history.filter(h=>h.Status==='Pending').length}
+                          &nbsp;— History tab တွင် အသေးစိတ် ကြည့်ပါ
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Leave Details */}
-              <div className="bg-slate-50 p-4 rounded-2xl">
-                <h3 className="text-xs font-bold text-slate-400 mb-3">ခွင့်အချက်အလက်</h3>
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-[10px] text-slate-400">ခွင့်အမျိုးအစား</p>
-                      <p className="font-bold">{selectedLeave.Leave_Type || '-'}</p>
+              {/* ── History tab ─────────────────────────────── */}
+              {histTab === 'history' && (
+                <div>
+                  {history.length === 0 ? (
+                    <div style={{ textAlign:'center', padding:'30px 0', color:'#94a3b8', fontSize:13 }}>
+                      ယခင် leave record မရှိပါ
                     </div>
-                    <div>
-                      <p className="text-[10px] text-slate-400">စုစုပေါင်းရက်</p>
-                      <p className="font-bold">{selectedLeave.Total_Days || 1} ရက်</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-slate-400">စတင်ရက်</p>
-                      <p className="font-bold">{formatDateDisplay(selectedLeave.Start_Date)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-slate-400">ပြီးဆုံးရက်</p>
-                      <p className="font-bold">{formatDateDisplay(selectedLeave.End_Date || selectedLeave.Start_Date)}</p>
-                    </div>
-                  </div>
-                  
-                  {/* Reason */}
-                  <div>
-                    <p className="text-[10px] text-slate-400">အကြောင်းပြချက်</p>
-                    <p className="text-sm italic bg-white p-3 rounded-xl border border-slate-100 mt-1">
-                      "{selectedLeave.Reason || '—'}"
-                    </p>
-                  </div>
-
-                  {/* Remark (ခွင့်တင်စဉ် မှတ်ချက်) */}
-                  {selectedLeave.Remark && selectedLeave.Remark !== '-' && selectedLeave.Remark !== '' && (
-                    <div>
-                      <p className="text-[10px] text-slate-400">မှတ်ချက်</p>
-                      <p className="text-sm bg-amber-50 p-3 rounded-xl border border-amber-200 mt-1">
-                        ✏️ {selectedLeave.Remark}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Attachment */}
-                  {selectedLeave.Attachment_Link && selectedLeave.Attachment_Link !== '-' && (
-                    <div>
-                      <p className="text-[10px] text-slate-400">ပူးတွဲဖိုင်</p>
-                      <a href={selectedLeave.Attachment_Link} target="_blank" rel="noopener noreferrer" 
-                         className="inline-block mt-1 text-sm text-sky-600 underline break-all">
-                        {selectedLeave.Attachment_Link}
-                      </a>
+                  ) : (
+                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                      {history.map((h, i) => {
+                        const st = STATUS_STYLE[h.Status] || STATUS_STYLE.Pending;
+                        return (
+                          <div key={i} style={{
+                            background:'#f8fafc', borderRadius:14,
+                            padding:'12px 14px',
+                            borderLeft: `4px solid ${st.color}`,
+                          }}>
+                            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6 }}>
+                              <div>
+                                <span style={{ fontSize:11, fontWeight:900, color:'#1a1a2e' }}>
+                                  {h.Leave_Type || 'Leave'}
+                                </span>
+                                <span style={{
+                                  fontSize:9, fontWeight:900,
+                                  background: st.bg, color: st.color,
+                                  padding:'2px 8px', borderRadius:20,
+                                  marginLeft:6,
+                                }}>{st.label}</span>
+                              </div>
+                              <span style={{ fontSize:10, color:'#94a3b8', fontWeight:600 }}>
+                                {h.Total_Days || 1} day(s)
+                              </span>
+                            </div>
+                            <p style={{ fontSize:10, color:'#64748b', margin:'0 0 4px' }}>
+                              📅 {formatDateDisplay(h.Start_Date)}
+                              {h.End_Date && formatMMDate(h.End_Date) !== formatMMDate(h.Start_Date)
+                                ? ` → ${formatDateDisplay(h.End_Date)}`
+                                : ''}
+                            </p>
+                            {h.Reason && h.Reason !== '-' && (
+                              <p style={{ fontSize:11, color:'#475569', fontStyle:'italic', margin:0 }}>
+                                "{h.Reason}"
+                              </p>
+                            )}
+                            {h.Approved_By && h.Approved_By !== '-' && h.Status === 'Approved' && (
+                              <p style={{ fontSize:9, color:'#94a3b8', margin:'4px 0 0' }}>
+                                ✓ Approved by {h.Approved_By}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
-              </div>
+              )}
+            </div>
 
-              {/* Action Buttons */}
-              <div className="flex gap-3 pt-2">
-                <button 
-                  onClick={() => handleAction(selectedLeave, 'Approved')} 
-                  className="flex-1 py-3 bg-emerald-500 text-white rounded-xl font-black text-sm uppercase shadow-md"
-                >
+            {/* Action buttons - sticky bottom */}
+            {selectedLeave.Status === 'Pending' && (
+              <div style={{
+                padding:'14px 20px', borderTop:'1px solid #f1f5f9',
+                display:'flex', gap:10, flexShrink:0,
+              }}>
+                <button
+                  onClick={() => handleAction(selectedLeave, 'Approved')}
+                  style={{
+                    flex:1, padding:'13px', background:'#22c55e',
+                    color:'#fff', border:'none', borderRadius:14,
+                    fontSize:13, fontWeight:900, cursor:'pointer',
+                    textTransform:'uppercase', letterSpacing:'0.05em',
+                  }}>
                   ✓ Approve
                 </button>
-                <button 
-                  onClick={() => handleAction(selectedLeave, 'Rejected')} 
-                  className="flex-1 py-3 bg-rose-500 text-white rounded-xl font-black text-sm uppercase shadow-md"
-                >
+                <button
+                  onClick={() => handleAction(selectedLeave, 'Rejected')}
+                  style={{
+                    flex:1, padding:'13px', background:'#ef4444',
+                    color:'#fff', border:'none', borderRadius:14,
+                    fontSize:13, fontWeight:900, cursor:'pointer',
+                    textTransform:'uppercase', letterSpacing:'0.05em',
+                  }}>
                   ✗ Decline
                 </button>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}
 
+      {/* ── Pending list ─────────────────────────────────────── */}
       {pending.length === 0 ? (
-        <div className="py-16 text-center bg-white rounded-2xl border border-dashed border-slate-200">
-          <p className="text-5xl mb-3">🥂</p>
-          <p className="font-black text-slate-400 text-xl">All Caught Up!</p>
+        <div style={{
+          padding:'60px 20px', textAlign:'center',
+          background:'#fff', borderRadius:20,
+          border:'2px dashed #e2e8f0',
+        }}>
+          <p style={{ fontSize:40, marginBottom:8 }}>🥂</p>
+          <p style={{ fontSize:18, fontWeight:900, color:'#94a3b8' }}>All Caught Up!</p>
+          <p style={{ fontSize:12, color:'#cbd5e1', marginTop:4 }}>Pending leave မရှိပါ</p>
         </div>
       ) : (
-        pending.map((l, i) => (
-          <div 
-            key={i} 
-            className="bg-white p-4 rounded-2xl border-l-8 border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer"
-            onClick={() => viewDetails(l)}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="bg-indigo-50 text-indigo-700 text-[8px] px-2 py-0.5 rounded-full font-black">{l.Category || 'Leave'}</span>
-                <span className={`text-[8px] px-2 py-0.5 rounded-full font-black ${l.User_Type === 'STUDENT' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>
-                  {l.User_Type}
-                </span>
-                <DurationBadge leave={l} />
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          {pending.map((l, i) => (
+            <div
+              key={i}
+              onClick={() => openDetail(l)}
+              style={{
+                background:'#fff', borderRadius:20,
+                borderLeft:'6px solid #f59e0b',
+                boxShadow:'0 2px 12px rgba(0,0,0,0.07)',
+                padding:'14px 16px', cursor:'pointer',
+                transition:'box-shadow 0.15s',
+              }}
+            >
+              {/* Top row */}
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
+                <div>
+                  <p style={{ fontSize:14, fontWeight:900, color:'#1a1a2e', margin:'0 0 2px' }}>{l.Name}</p>
+                  <p style={{ fontSize:10, color:'#64748b', margin:0 }}>
+                    {l.User_Type} · {l.Leave_Type}
+                  </p>
+                </div>
+                <div style={{ textAlign:'right' }}>
+                  <p style={{ fontSize:18, fontWeight:900, color:'#1a1a2e', margin:0 }}>{l.Total_Days || 1}d</p>
+                  <p style={{ fontSize:9, color:'#94a3b8' }}>days</p>
+                </div>
               </div>
-              <span className="text-[8px] text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full">{formatDateDisplay(l.Date_Applied)}</span>
-            </div>
 
-            {/* User Info */}
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-xl shrink-0">
-                {l.User_Type === 'STUDENT' ? '🎓' : '👔'}
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="font-black text-base uppercase truncate">{l.Name}</h3>
-                <p className="text-[9px] text-slate-400">ID: {l.User_ID || '-'} · {l.Leave_Type}</p>
-                {l.Phone && <p className="text-[9px] text-slate-400 mt-0.5">📞 {l.Phone}</p>}
-                {/* Show remark preview if exists */}
-                {l.Remark && l.Remark !== '-' && l.Remark !== '' && (
-                  <p className="text-[9px] text-amber-600 mt-0.5 truncate">✏️ {l.Remark}</p>
-                )}
-              </div>
-              <div className="text-right">
-                <p className="text-lg font-black text-slate-800">{l.Total_Days || 1}d</p>
-              </div>
-            </div>
-
-            {/* Reason Preview */}
-            <div className="bg-slate-50 p-3 rounded-xl text-xs italic text-slate-600 mb-2 line-clamp-2">
-              "{l.Reason || '—'}"
-            </div>
-
-            {/* Dates & Actions */}
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <p className="text-[8px] text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-100">
+              {/* Dates */}
+              <p style={{ fontSize:10, color:'#64748b', marginBottom:6 }}>
                 📅 {formatDateDisplay(l.Start_Date)}
-                {l.End_Date && formatMMDate(l.End_Date) !== formatMMDate(l.Start_Date) ? ` – ${formatDateDisplay(l.End_Date)}` : ''}
+                {l.End_Date && formatMMDate(l.End_Date) !== formatMMDate(l.Start_Date)
+                  ? ` → ${formatDateDisplay(l.End_Date)}`
+                  : ''}
               </p>
-              <div className="flex gap-2">
-                {l.Attachment_Link && l.Attachment_Link !== '-' && (
-                  <a href={l.Attachment_Link} target="_blank" rel="noopener noreferrer" className="text-[8px] text-sky-500 underline">📎</a>
-                )}
-                <button 
-                  onClick={(e) => { e.stopPropagation(); handleAction(l, 'Approved'); }} 
-                  className="px-3 py-1 bg-emerald-500 text-white rounded-full text-[8px] font-black uppercase shadow-sm"
-                >
+
+              {/* Reason preview */}
+              <p style={{
+                fontSize:11, fontStyle:'italic', color:'#475569',
+                background:'#f8fafc', padding:'8px 10px', borderRadius:10,
+                marginBottom:10,
+                overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+              }}>
+                "{l.Reason || '—'}"
+              </p>
+
+              {/* Inline approve/decline */}
+              <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+                <button
+                  onClick={e => { e.stopPropagation(); handleAction(l, 'Approved'); }}
+                  style={{
+                    padding:'7px 16px', background:'#22c55e', color:'#fff',
+                    border:'none', borderRadius:20, fontSize:10,
+                    fontWeight:900, cursor:'pointer', textTransform:'uppercase',
+                  }}>
                   ✓ Approve
                 </button>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); handleAction(l, 'Rejected'); }} 
-                  className="px-3 py-1 bg-rose-500 text-white rounded-full text-[8px] font-black uppercase shadow-sm"
-                >
+                <button
+                  onClick={e => { e.stopPropagation(); handleAction(l, 'Rejected'); }}
+                  style={{
+                    padding:'7px 16px', background:'#ef4444', color:'#fff',
+                    border:'none', borderRadius:20, fontSize:10,
+                    fontWeight:900, cursor:'pointer', textTransform:'uppercase',
+                  }}>
                   ✗ Decline
                 </button>
               </div>
             </div>
-          </div>
-        ))
+          ))}
+        </div>
       )}
     </div>
   );

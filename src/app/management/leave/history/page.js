@@ -32,7 +32,7 @@ export default function HistoryPage() {
       const last = new Date(maxEnd);
       
       while (current <= last) {
-        const dateStr = current.toISOString().split('T')[0];
+        const dateStr = current.toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'});
         expanded.push({
           ...leave,
           displayDate: dateStr,

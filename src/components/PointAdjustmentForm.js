@@ -14,7 +14,7 @@ export default function PointAdjustmentForm({ originalRecord, staffName }) {
     setBtnState('saving');
 
     const payload = [{
-      Date: new Date().toISOString().split('T')[0],
+      Date: new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'}),
       Student_ID: originalRecord?.studentId || '',
       Student_Name: originalRecord?.studentName || '',
       Original_Points: originalRecord?.oldPoints || 0,

@@ -64,12 +64,12 @@ export default function CalendarTimetablePage() {
     setLoading(true);
     try {
       const [cfgRes, evtRes] = await Promise.all([
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetableConfig' }) }),
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getEvents' }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getTimetableConfig' }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getEvents' }) }),
       ]);
       const cfgData = await cfgRes.json();
       const evtData = await evtRes.json();
-      if (cfgData.success) { setCfg(cfgData.config); setEditCfg(JSON.parse(JSON.stringify(cfgData.config))); if (cfgData.config.grades?.[0]) setSelGrade(cfgData.config.grades[0]); if (cfgData.config.days?.[0]) setSelDay(cfgData.config.days[0]); }
+      if (cfgData.success) { setCfg(cfgData.config); setEditCfg(JSON.parse(JSON.stringify(cfgData.config))); if (cfgData.config.grades) { const gKeys=Object.keys(cfgData.config.grades); if(gKeys[0]) setSelGrade(gKeys[0]); } if (cfgData.config.days?.[0]) setSelDay(cfgData.config.days[0]); }
       if (evtData.success) setEvents(evtData.data || []);
     } catch {}
     setLoading(false);
@@ -78,11 +78,11 @@ export default function CalendarTimetablePage() {
   const fetchTimetable = useCallback(async (grade) => {
     if (!grade) return;
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getTimetable', grade }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getTimetable', grade }) });
       const r = await res.json();
       if (r.success) {
         const cells = {};
-        r.data.forEach(row => { cells[`${row.Day}_${row.Period_No}`] = { subject: row.Subject, teacher: row.Teacher, room: row.Room }; });
+        (r.data||[]).forEach(row => { cells[`${row.Day}_${row.Period_No}`] = { subject: row.Subject, teacher: row.Teacher, room: row.Room }; });
         setTtCells(cells);
         setTimetable(r.data);
       }
@@ -109,7 +109,7 @@ export default function CalendarTimetablePage() {
     if (!eventForm.Date || !eventForm.Title) return showMsg('Date နှင့် Title ထည့်ပါ', 'error');
     setSaving(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'saveEvent', ...eventForm, Created_By: user?.Name||user?.name||user?.username, userRole: 'management' }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'saveEvent', ...eventForm, Created_By: user?.Name||user?.name||user?.username, userRole: 'management' }) });
       const r = await res.json();
       if (r.success) {
         showMsg(r.message);
@@ -124,7 +124,7 @@ export default function CalendarTimetablePage() {
   const handleDeleteEvent = async (e) => {
     if (!confirm(`"${e.Title}" ဖျက်မှာ သေချာပါသလား?`)) return;
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'deleteEvent', Date:e.Date, Title:e.Title, userRole: 'management' }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'deleteEvent', Date:e.Date, Title:e.Title, userRole: 'management' }) });
       const r = await res.json();
       if (r.success) { showMsg(r.message); fetchAll(user); }
     } catch {}
@@ -151,7 +151,7 @@ export default function CalendarTimetablePage() {
       const days = cfg?.days || [];
       for (const day of days) {
         const dayCells = cells.filter(c => c.Day === day);
-        const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'saveTimetable', grade:selGrade, day, cells:dayCells, Updated_By:user?.Name||user?.name||user?.username }) });
+        const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'saveTimetable', grade:selGrade, day, cells:dayCells, Updated_By:user?.Name||user?.name||user?.username }) });
         await res.json();
       }
       showMsg('Timetable သိမ်းပြီးပါပြီ');
@@ -163,7 +163,7 @@ export default function CalendarTimetablePage() {
   const handleSaveConfig = async () => {
     setSaving(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'saveTimetableConfig', ...editCfg }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'saveTimetableConfig', ...editCfg }) });
       const r = await res.json();
       if (r.success) { showMsg(r.message); setCfg(JSON.parse(JSON.stringify(editCfg))); }
       else showMsg(r.message||'Error','error');
@@ -308,7 +308,7 @@ export default function CalendarTimetablePage() {
                     <div style={{flex:1,minWidth:'100px'}}>
                       <label style={S.label}>Grade</label>
                       <select value={selGrade} onChange={e=>{setSelGrade(e.target.value);setEditMode(false);}} style={S.select}>
-                        {(cfg.grades||[]).map(g=><option key={g} value={g} style={{background:'#1a1030'}}>Grade {g}</option>)}
+                        {Object.keys(cfg.grades||{}).map(g=><option key={g} value={g} style={{background:'#1a1030'}}>Grade {g}</option>)}
                       </select>
                     </div>
                     <div style={{flex:1,minWidth:'100px'}}>
@@ -462,8 +462,8 @@ export default function CalendarTimetablePage() {
                 {cfgTab==='grades' && (
                   <div style={{display:'flex',flexWrap:'wrap',gap:'8px'}}>
                     {['KG','1','2','3','4','5','6','7','8','9','10','11','12'].map(g=>(
-                      <button key={g} onClick={()=>{ const inc=editCfg.grades.includes(g); setEditCfg(c=>({...c,grades:inc?c.grades.filter(x=>x!==g):[...c.grades,g]})); }}
-                        style={{padding:'10px 18px',borderRadius:'10px',border:'none',cursor:'pointer',fontWeight:900,fontSize:'13px',background:editCfg.grades.includes(g)?'#fbbf24':'rgba(255,255,255,0.06)',color:editCfg.grades.includes(g)?'#0f172a':'rgba(255,255,255,0.4)'}}>
+                      <button key={g} onClick={()=>{ const gKeys=Object.keys(editCfg.grades||{}); const inc=gKeys.includes(g); const newG=inc?Object.fromEntries(Object.entries(editCfg.grades||{}).filter(([k])=>k!==g)):{...editCfg.grades,[g]:['A']}; setEditCfg(c=>({...c,grades:newG})); }}
+                        style={{padding:'10px 18px',borderRadius:'10px',border:'none',cursor:'pointer',fontWeight:900,fontSize:'13px',background:Object.keys(editCfg.grades||{}).includes(g)?'#fbbf24':'rgba(255,255,255,0.06)',color:Object.keys(editCfg.grades||{}).includes(g)?'#0f172a':'rgba(255,255,255,0.4)'}}>
                         G{g}
                       </button>
                     ))}

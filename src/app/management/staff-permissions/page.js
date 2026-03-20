@@ -41,7 +41,7 @@ export default function StaffPermissionsPage() {
   const fetchStaff = async () => {
     setLoading(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getStaffPermissions' }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getStaffPermissions' }) });
       const r   = await res.json();
       if (r.success) setStaff(r.data || []);
     } catch {}
@@ -65,7 +65,7 @@ export default function StaffPermissionsPage() {
     if (!selected) return;
     setSaving(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({
         action:      'updateStaffPermissions',
         Staff_ID:    selected.Staff_ID,
         Name:        selected.Name,

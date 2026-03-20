@@ -37,7 +37,7 @@ export default function CommunicationPage() {
     const checkPerm = (key) => u.userRole==='management' || u[key]===true || String(u[key]||'').toUpperCase()==='TRUE';
     if (u.userRole === 'management') { setCanPost(true); fetchAnn(); return; }
     if (checkPerm('Can_Post_Announcement')) { setCanPost(true); fetchAnn(); return; }
-    fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getStaffPermissions' }) })
+    fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getStaffPermissions' }) })
       .then(r=>r.json()).then(res => {
         const fresh = res.success && res.data && res.data.find(s =>
           (s.Staff_ID && s.Staff_ID.toString()===u.Staff_ID?.toString()) ||
@@ -49,14 +49,14 @@ export default function CommunicationPage() {
             setCanPost(true); fetchAnn(); return;
           }
         }
-        router.push('/staff');
-      }).catch(()=>router.push('/staff'));
+        router.push('/login');
+      }).catch(()=>router.push('/login'));
   }, []);
 
   const fetchAnn = async () => {
     setLoading(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getAnnouncements' }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getAnnouncements' }) });
       const r = await res.json();
       if (r.success) setAnnouncements(r.data || []);
     } catch {}
@@ -72,7 +72,7 @@ export default function CommunicationPage() {
       return showMsg('Target အနည်းဆုံး ၁ ခု ရွေးပါ', 'error');
     setSaving(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({
         action:'postAnnouncement', ...form,
         Posted_By: user?.Name || user?.name || user?.username,
         userRole: 'management',
@@ -88,7 +88,7 @@ export default function CommunicationPage() {
     if (!confirm(`"${ann.Title}" ကို ဖျက်မှာ သေချာပါသလား?`)) return;
     setDeleting(ann.Title);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({
         action:'deleteAnnouncement',
         Title: ann.Title, Posted_By: ann.Posted_By, Date: ann.Date,
         userRole: 'management',

@@ -201,7 +201,7 @@ function HistoricalTrend() {
     for (let i = 0; i < dates.length; i++) {
       const dt = dates[i];
       try {
-        const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getAttendance', date:dt }) });
+        const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getAttendance', date:dt }) });
         const r   = await res.json();
         if (r.success) {
           results.push({
@@ -514,7 +514,7 @@ export default function AttendancePage() {
   const fetchData = useCallback(async (targetDate) => {
     setLoading(true); setError(null);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getAttendance', date:targetDate }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getAttendance', date:targetDate }) });
       const r   = await res.json();
       if (r.success) setData(normalizeAttendancePayload(r));
       else setError(r.message || 'Error fetching data');

@@ -36,7 +36,7 @@ export default function StaffLostFoundPage() {
   const fetchItems = async () => {
     setLoading(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getLostFound' }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getLostFound' }) });
       const r = await res.json();
       if (r.success) setItems(r.data || []);
     } catch {}
@@ -61,7 +61,7 @@ export default function StaffLostFoundPage() {
     if (!form.Item_Name) return showMsg('Item name ထည့်ပါ', 'error');
     setSaving(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({
         action:'submitLostFound', ...form,
         Reported_By: user?.name, Reporter_Type: 'Staff'
       })});
@@ -75,7 +75,7 @@ export default function StaffLostFoundPage() {
   const handleStatusUpdate = async (lfId, status) => {
     setSaving(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({
         action:'updateLostFound', LF_ID: lfId, Status: status,
         Claimed_By: status === 'Claimed' ? claimName : '', Note: ''
       })});

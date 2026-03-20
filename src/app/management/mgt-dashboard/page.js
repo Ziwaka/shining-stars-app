@@ -18,34 +18,48 @@ const fmtDate = (d) => {
 // Inventory လမ်းကြောင်းကို /staff/inventory ဆီပြောင်းထားသည် (Management အတွက် သီးသန့်မထားတော့)
 const TOOL_SECTIONS = [
   {
-    label: 'Students & Campus',
+    label: '👤 ကျောင်းသား & ဝန်ထမ်း',
+    color: '#4338CA',
     tools: [
-      { name:'Student Directory', path:'/staff/student-dir',         desc:'View & manage students', bg:'linear-gradient(135deg,#EEF2FF,#C7D2FE)', icon:'🎓' },
-      { name:'Hostel',            path:'/staff/hostel',              desc:'Hostel management',      bg:'linear-gradient(135deg,#F0FDF4,#BBF7D0)', icon:'🏠' },
-      { name:'House Points',      path:'/staff/points',              desc:'Award & track points',   bg:'linear-gradient(135deg,#FFFBEB,#FDE68A)', icon:'⭐' },
-      { name:'Registry Notes',    path:'/staff/notes',               desc:'Student notes log',      bg:'linear-gradient(135deg,#F0F9FF,#BAE6FD)', icon:'📒' },
+      { name:'Registry',          path:'/management/registry',          desc:'Student & Staff CRUD',   bg:'linear-gradient(135deg,#EEF2FF,#C7D2FE)', icon:'🗂️' },
+      { name:'Student Directory', path:'/staff/student-dir',            desc:'ကျောင်းသားစာရင်း ကြည့်',  bg:'linear-gradient(135deg,#F0F9FF,#BAE6FD)', icon:'🎓' },
+      { name:'Staff Directory',   path:'/staff/staff-dir',              desc:'ဝန်ထမ်းစာရင်း ကြည့်',    bg:'linear-gradient(135deg,#FDF4FF,#E9D5FF)', icon:'👔' },
+      { name:'Staff Permissions', path:'/management/staff-permissions', desc:'Access control',         bg:'linear-gradient(135deg,#FDF4FF,#E9D5FF)', icon:'🔐' },
+      { name:'Photo Upload',      path:'/management/photo-upload',      desc:'Bulk photo upload',      bg:'linear-gradient(135deg,#F0FDF4,#BBF7D0)', icon:'📷' },
     ],
   },
   {
-    label: 'Staff & Finance',
+    label: '📚 Academic',
+    color: '#0369A1',
     tools: [
-      { name:'Staff Directory',  path:'/staff/staff-dir',            desc:'All staff records',      bg:'linear-gradient(135deg,#FDF4FF,#E9D5FF)', icon:'👔' },
-      { name:'Fee Collection',   path:'/staff/fees',                 desc:'Record fee payments',    bg:'linear-gradient(135deg,#F0FDF4,#A7F3D0)', icon:'💰' },
-      { name:'Performance',      path:'/management/performance',     desc:'Exam results & ranks',   bg:'linear-gradient(135deg,#FFFBEB,#FCD34D)', icon:'🏆' },
-      { name:'Analytics',        path:'/management/analytic',        desc:'School-wide data',       bg:'linear-gradient(135deg,#EFF6FF,#BFDBFE)', icon:'📈' },
+      { name:'Exam Records',      path:'/management/exam-records',      desc:'Score entry & edit',     bg:'linear-gradient(135deg,#F0F9FF,#BAE6FD)', icon:'📝' },
+      { name:'Performance',       path:'/management/performance',       desc:'Exam results & ranks',   bg:'linear-gradient(135deg,#FFFBEB,#FCD34D)', icon:'🏆' },
+      { name:'Control Center',    path:'/management/management',        desc:'Timetable & calendar',   bg:'linear-gradient(135deg,#EEF2FF,#C7D2FE)', icon:'⚙️'  },
+      { name:'Timetable Rules',   path:'/management/timetable-exceptions', desc:'ကျောင်းပိတ်ရက် exceptions', bg:'linear-gradient(135deg,#FFF1F2,#FECDD3)', icon:'🗓️' },
+      { name:'Seasonal Rules',    path:'/management/seasonal-rules',    desc:'ရာသီပိတ်ရက် rules',      bg:'linear-gradient(135deg,#F0FDF4,#A7F3D0)', icon:'🌤️' },
+      { name:'House Points',      path:'/staff/points',                 desc:'Award & track points',   bg:'linear-gradient(135deg,#FFFBEB,#FDE68A)', icon:'⭐' },
+      { name:'Notes',             path:'/staff/notes',                  desc:'Student notes log',      bg:'linear-gradient(135deg,#F0F9FF,#BAE6FD)', icon:'📒' },
     ],
   },
   {
-    label: 'Operations & Facilities',
+    label: '💰 Finance & Admin',
+    color: '#047857',
     tools: [
-      { name:'Leave Hub',        path:'/management/leave',           desc:'Leave approvals',        bg:'linear-gradient(135deg,#FFF1F2,#FECDD3)', icon:'📄' },
-      { name:'Calendar',         path:'/management/calendar',        desc:'Events & timetable',     bg:'linear-gradient(135deg,#EEF2FF,#C7D2FE)', icon:'📅' },
-      { name:'Vehicle Registry', path:'/management/vehicles',        desc:'Monitor vehicles',       bg:'linear-gradient(135deg,#F0F9FF,#BAE6FD)', icon:'🛵' },
-      // ⬇️ ဒီနေရာမှာ path ကို /staff/inventory ဆီပြောင်းထားသည်
-      { name:'Inventory',        path:'/staff/inventory',            desc:'Stock & assets',         bg:'linear-gradient(135deg,#FEFCE8,#FEF08A)', icon:'📦' },
-      { name:'Vendors Directory',path:'/management/vendors',         desc:'Partners Contacts',      bg:'linear-gradient(135deg,#FDF4FF,#E9D5FF)', icon:'🤝' },
-      { name:'Communication',    path:'/management/communication',   desc:'Announcements',          bg:'linear-gradient(135deg,#F0FDF4,#BBF7D0)', icon:'📢' },
-      { name:'Permissions',      path:'/management/staff-permissions', desc:'Staff access control',   bg:'linear-gradient(135deg,#FDF4FF,#E9D5FF)', icon:'🔐' },
+      { name:'Fee Collection',    path:'/staff/fees',                   desc:'ကျောင်းလခ မှတ်ရန်',      bg:'linear-gradient(135deg,#F0FDF4,#A7F3D0)', icon:'💰' },
+      { name:'Analytics',         path:'/management/analytic',          desc:'School-wide data',       bg:'linear-gradient(135deg,#EFF6FF,#BFDBFE)', icon:'📈' },
+      { name:'Communication',     path:'/management/communication',     desc:'Announcements',          bg:'linear-gradient(135deg,#F0FDF4,#BBF7D0)', icon:'📢' },
+      { name:'Calendar',          path:'/management/calendar',          desc:'Events & schedule',      bg:'linear-gradient(135deg,#EEF2FF,#C7D2FE)', icon:'📅' },
+    ],
+  },
+  {
+    label: '🏫 Facilities',
+    color: '#B45309',
+    tools: [
+      { name:'Hostel',            path:'/staff/hostel',                 desc:'Hostel management',      bg:'linear-gradient(135deg,#F0FDF4,#BBF7D0)', icon:'🏠' },
+      { name:'Inventory',         path:'/staff/inventory',              desc:'Stock & assets',         bg:'linear-gradient(135deg,#FEFCE8,#FEF08A)', icon:'📦' },
+      { name:'Lost & Found',      path:'/staff/lost-found',             desc:'Lost items tracking',    bg:'linear-gradient(135deg,#FFF1F2,#FECDD3)', icon:'🔍' },
+      { name:'Vehicles',          path:'/management/vehicles',          desc:'ယာဉ်မှတ်ပုံတင်',         bg:'linear-gradient(135deg,#F0F9FF,#BAE6FD)', icon:'🚗' },
+      { name:'Vendors',           path:'/management/vendors',           desc:'Partners & contacts',    bg:'linear-gradient(135deg,#FDF4FF,#E9D5FF)', icon:'🤝' },
     ],
   },
 ];
@@ -138,7 +152,7 @@ export default function ManagementDashboard() {
     const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
     if (!auth || auth.userRole !== 'management') { router.push('/login'); return; }
     setUser(auth);
-    fetch(WEB_APP_URL, { method:'POST', body:JSON.stringify({ action:'getDashboardData' }) })
+    fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({ action:'getDashboardData' }) })
       .then(r => r.json())
       .then(res => { if (res.success) setDash(res); })
       .catch(e => console.error('getDashboardData error:', e))
@@ -151,7 +165,7 @@ export default function ManagementDashboard() {
 
   const fetchAttendance = useCallback(() => {
     setAttLoading(true);
-    fetch(WEB_APP_URL, { method:'POST', body:JSON.stringify({ action:'getAttendance', date:todayMM }) })
+    fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({ action:'getAttendance', date:todayMM }) })
       .then(r => r.json())
       .then(res => { if (res.success) setAtt(res); })
       .catch(e => console.error('attendance error:', e))

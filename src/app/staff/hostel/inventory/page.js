@@ -532,8 +532,8 @@ export default function HostelInventoryPage() {
     setError(null);
     try {
       const [assetsRes, logRes] = await Promise.all([
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getHostelInventory' }) }),
-        fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getHostelInventoryLog' }) })
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getHostelInventory' }) }),
+        fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getHostelInventoryLog' }) })
       ]);
       
       const assetsData = await assetsRes.json();
@@ -561,7 +561,7 @@ export default function HostelInventoryPage() {
 
   const fetchConfig = async () => {
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getInventoryConfig' }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getInventoryConfig' }) });
       const data = await res.json();
       if (data.success) {
         if (data.categories?.length) setInvCategories(data.categories);
@@ -654,7 +654,7 @@ export default function HostelInventoryPage() {
       const isCat = configModal === 'category';
       const updated = isCat ? [...invCategories, val] : [...invLocations, val];
       const payload = isCat ? { action:'saveInventoryConfig', categories: updated } : { action:'saveInventoryConfig', locations: updated };
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify(payload) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(payload) });
       const data = await res.json();
       if (data.success) {
         if (isCat) setInvCategories(updated);
@@ -676,7 +676,7 @@ export default function HostelInventoryPage() {
     const updated = type === 'category' ? invCategories.filter(c => c !== val) : invLocations.filter(l => l !== val);
     try {
       const payload = type === 'category' ? { action:'saveInventoryConfig', categories: updated } : { action:'saveInventoryConfig', locations: updated };
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify(payload) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(payload) });
       const data = await res.json();
       if (data.success) {
         if (type === 'category') setInvCategories(updated);
@@ -736,7 +736,7 @@ export default function HostelInventoryPage() {
       } else {
         const action = editItem ? 'updateHostelItem' : 'addHostelItem';
         const payload = editItem ? { ...form, Asset_ID: editItem.Asset_ID, Updated_By: user?.Name } : { ...form, Updated_By: user?.Name };
-        const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action, ...payload, userRole: user?.userRole||'staff', staffId: user?.Staff_ID||user?.username||'' }) });
+        const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action, ...payload, userRole: user?.userRole||'staff', staffId: user?.Staff_ID||user?.username||'' }) });
         const data = await res.json();
         if (data.success) {
           showMsg(editItem ? 'Updated' : 'Added');
@@ -767,7 +767,7 @@ export default function HostelInventoryPage() {
         userRole: user?.userRole||'staff', staffId: user?.Staff_ID||user?.username||'',
         ...updateForm
       };
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify(payload) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(payload) });
       const data = await res.json();
       if (data.success) {
         showMsg('Asset updated');

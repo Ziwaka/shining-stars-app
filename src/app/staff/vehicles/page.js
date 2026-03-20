@@ -33,8 +33,8 @@ export default function StaffVehiclesDashboard() {
     setLoading(true);
     try {
       const [vRes, initRes] = await Promise.all([
-        fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getVehicles' }) }).then(r => r.json()),
-        fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'getInitialData' }) }).then(r => r.json())
+        fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({ action: 'getVehicles' }) }).then(r => r.json()),
+        fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({ action: 'getInitialData' }) }).then(r => r.json())
       ]);
       
       if (initRes.success) {
@@ -74,7 +74,7 @@ export default function StaffVehiclesDashboard() {
       Vehicle_Type: form.Vehicle_Type, Plate_No: form.Plate_No, Color: form.Color, Brand: form.Brand, Remark: form.Remark, Status: form.Status, Registered_By: user.Name || user.username
     };
     try {
-      const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
+      const res = await fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify(payload) });
       const r = await res.json();
       if (r.success) { showMsg(r.message); setIsModalOpen(false); fetchData(); } 
       else showMsg(r.message || 'Error', 'error');
@@ -86,7 +86,7 @@ export default function StaffVehiclesDashboard() {
     if (!confirm('ဒီမှတ်တမ်းကို အမှန်တကယ် ဖျက်မှာလား?')) return;
     setLoading(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify({ action: 'deleteVehicle', Reg_ID: regId }) });
+      const res = await fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({ action: 'deleteVehicle', Reg_ID: regId }) });
       if ((await res.json()).success) { showMsg('ဖျက်ပြီးပါပြီ'); fetchData(); } 
       else showMsg('Error deleting', 'error');
     } catch {}

@@ -51,7 +51,7 @@ export default function HostelResidentRegistryV2() {
         const result = JSON.parse(text);
         
         if (result.success && Array.isArray(result.data)) {
-          const hostelOnly = result.data.filter(s => 
+          const hostelOnly = (result.data||[]).filter(s => 
             s && String(s['School/Hostel'] || '').toLowerCase().trim() === "hostel"
           );
           setResidents(hostelOnly);

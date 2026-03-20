@@ -35,7 +35,7 @@ export default function StudentLostFoundPage() {
   const fetchItems = async () => {
     setLoading(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({ action:'getLostFound' }) });
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({ action:'getLostFound' }) });
       const r = await res.json();
       if (r.success) setItems(r.data || []);
     } catch {}
@@ -60,7 +60,7 @@ export default function StudentLostFoundPage() {
     if (!form.Item_Name) return showMsg('Item name ထည့်ပါ', 'error');
     setSaving(true);
     try {
-      const res = await fetch(WEB_APP_URL, { method:'POST', body: JSON.stringify({
+      const res = await fetch(WEB_APP_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify({
         action:'submitLostFound', ...form,
         Reported_By: user?.name, Reporter_Type: 'Student'
       })});

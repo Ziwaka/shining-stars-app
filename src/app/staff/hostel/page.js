@@ -67,7 +67,7 @@ const MaintenanceModal = ({ isOpen, onClose, onSubmit, user }) => {
     onSubmit({
       ...form,
       requested_by: user?.Name || 'Unknown',
-      requested_date: new Date().toISOString().split('T')[0]
+      requested_date: new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'})
     });
     setForm({ type: 'water', description: '', priority: 'medium', location: '', estimated_cost: '', completed_note: '', status: 'pending' });
   };
@@ -216,7 +216,7 @@ const MaintenanceLogModal = ({ isOpen, onClose, request, onSubmit, user }) => {
       ...request,
       ...form,
       completed_by: user?.Name || 'Unknown',
-      completed_date: new Date().toISOString().split('T')[0]
+      completed_date: new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'})
     });
   };
 
@@ -425,7 +425,7 @@ export default function HostelMasterDashboard() {
         const data = await res.json();
         
         if (data.success) {
-          const match = data.data.find(s =>
+          const match = (data.data||[]).find(s =>
             s.Staff_ID?.toString() === currentUser.Staff_ID?.toString() ||
             s.Name === currentUser.Name
           );
