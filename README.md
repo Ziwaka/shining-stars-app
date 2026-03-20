@@ -1,6 +1,26 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
 
-## Getting Started
+## Getting Started (Shining Stars)
+
+### 1) Install
+
+```bash
+npm install
+```
+
+### 2) Configure GAS Web App URL
+
+Create `.env.local` based on `.env.example` and set:
+
+- `NEXT_PUBLIC_WEB_APP_URL`
+
+### 3) Run
+
+```bash
+npm run dev
+```
+
+
 
 First, run the development server:
 

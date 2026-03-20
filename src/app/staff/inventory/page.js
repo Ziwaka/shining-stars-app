@@ -48,8 +48,18 @@ const LOG_ACTIONS = ['Use','Restock','Transfer','Repair','Write-off','Other'];
 const REQ_STATUSES = ['All','Pending','Approved','Rejected'];
 
 const resolveType = (item) => {
-  if (item.Item_Type && ['Expense','Capital','Tool'].includes(item.Item_Type)) return item.Item_Type;
+  const raw = (item?.Item_Type ?? '').toString().trim();
+  const low = raw.toLowerCase();
+
+  // tolerate common casing + typos from sheet/manual edits
+  if (['expense','exp'].includes(low) || low.includes('expense')) return 'Expense';
+  if (['capital','cap','captial'].includes(low) || low.includes('capital') || low.includes('captial')) return 'Capital';
+  if (['tool','tools'].includes(low) || low.includes('tool')) return 'Tool';
+
+  // legacy flag
   if (item.Is_Tool === 'TRUE' || item.Is_Tool === true) return 'Tool';
+
+  // safe default
   return 'Expense';
 };
 
@@ -858,7 +868,7 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
                 </div>
               ) : (
                 listItems.map((item,idx)=>(
-                  <ItemCard key={item.Item_ID||idx} item={item}
+                  <ItemCard key={(item.Item_ID||'ROW')+'-'+idx} item={item}
                     onDetail={openDetail}
                     onEdit={startEdit}
                     onUsage={(i,action)=>{setUsageModal(i);setUsageAction(action);setUsageQty('');setUsageNote('');}}
