@@ -257,41 +257,18 @@ export default function InventoryPage() {
     if (!saved) { router.push('/login'); return; }
     const u = JSON.parse(saved);
     if (u.userRole !== 'staff' && u.userRole !== 'management') { router.push('/login'); return; }
-    // ✅ FIX: checkPerm ကို userObj parameter လက်ခံအောင် ပြင်ထားသည်
-    //    fresh data (up) ကိုစစ်ဆေးနိုင်မည် — old closure "u" မဟုတ်
-    const checkPerm = (k, userObj) => {
-      const target_u = userObj || u;
-      if (target_u.userRole==='management') return true;
-      // tolerate common key variants
-      const variants = [k, k.replace(/_/g,' '), k.replace(/_/g,'').toLowerCase()];
-      for (const key of variants) {
-        const v = target_u[key];
-        if (v===true || String(v||'').trim().toUpperCase()==='TRUE') return true;
-      }
-      // also scan keys loosely
-      const target = k.toLowerCase().replace(/_/g,'');
-      for (const kk of Object.keys(target_u||{})) {
-        if (kk.toLowerCase().replace(/_/g,'')===target) {
-          const v=target_u[kk];
-          if (v===true || String(v||'').trim().toUpperCase()==='TRUE') return true;
-        }
-      }
-      return false;
-    };
+    const checkPerm = (key) => u.userRole==='management' || u[key]===true || String(u[key]||'').toUpperCase()==='TRUE';
     if (u.userRole==='management') { setUser(u); fetchAll(); return; }
     if (checkPerm('Can_Manage_Inventory')) { setUser(u); fetchAll(); return; }
-    fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({
-      action:'getMyStaffPermissions',
-      staffId: u?.Staff_ID || u?.username || u?.Username || '',
-      name: u?.Name || u?.['Name (ALL CAPITAL)'] || ''
-    })})
+    fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getStaffPermissions'})})
       .then(r=>r.json()).then(res=>{
-        const fresh = res.success ? res.data : null;
+        const fresh = res.success && res.data && res.data.find(s =>
+          (s.Staff_ID && s.Staff_ID.toString()===(u.Staff_ID?.toString()||'')) ||
+          (s.Name && (s.Name===u['Name (ALL CAPITAL)']||s.Name===u.Name)));
         if(fresh){
           const up={...u,...fresh};
           localStorage.setItem('user',JSON.stringify(up));
-          // ✅ FIX: up (fresh merged data) ကို checkPerm ထဲ pass လိုက်သည်
-          if(!checkPerm('Can_Manage_Inventory', up)){router.push('/staff');return;}
+          if(!(up['Can_Manage_Inventory']===true||String(up['Can_Manage_Inventory']||'').toUpperCase()==='TRUE')){router.push('/staff');return;}
           setUser(up);fetchAll();return;
         }
         router.push('/staff');
