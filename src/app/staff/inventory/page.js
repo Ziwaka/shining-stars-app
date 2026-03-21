@@ -747,7 +747,7 @@ ${expiring.map(i=>`<tr><td>${i.Item_Name}</td><td>${i.Serial_No||'—'}</td><td>
 
       <div style={{padding:'12px 16px 80px'}}>
         {loading ? (
-          <InventorySkeleton title="School Inventory" accent="#fbbf24" tabs={[0,1,2,3,4,5,6]} />
+          <InventorySkeleton title="School Inventory" accent="#fbbf24" done={!loading} tabs={[0,1,2,3,4,5,6]} />
         ) : (<>
 
           {tab==='dashboard'&&(

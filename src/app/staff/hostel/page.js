@@ -594,7 +594,7 @@ export default function HostelMasterDashboard() {
   const totalEstimatedCost = maintenance.reduce((sum, m) => sum + (Number(m.estimated_cost) || 0), 0);
   const totalActualCost = maintenance.reduce((sum, m) => sum + (Number(m.actual_cost) || 0), 0);
 
-  if (loading) return <HostelSkeleton />;
+  if (loading) return <HostelSkeleton done={!loading} />;
   if (error) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="bg-white rounded-3xl p-8 shadow-xl max-w-md text-center">

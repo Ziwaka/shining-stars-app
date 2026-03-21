@@ -194,7 +194,7 @@ export default function ManagementDashboard() {
 
   useEffect(() => { fetchAttendance(); }, [fetchAttendance]);
 
-  if (loading) return <DashboardSkeleton />;
+  if (loading) return <DashboardSkeleton done={!loading} />;
 
   const name     = user?.Name || user?.name || user?.['Name (ALL CAPITAL)'] || user?.username || 'Admin';
   const dateStr  = new Date().toLocaleDateString('en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric' });

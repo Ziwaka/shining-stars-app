@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
+import CacheControl from '@/components/CacheControl';
 
 export default function MgtUniversalLayout({ children }) {
   const router   = useRouter();
@@ -104,7 +105,10 @@ export default function MgtUniversalLayout({ children }) {
         {children}
       </main>
 
-      {/* ── Bottom Nav: dark with lavender accents ── */}
+      {/* ── Cache Control (Testing) — Production မသွားခင် ဖျက်ရန် ── */}
+      <CacheControl />
+
+      {/* ── Bottom Nav ── */}
       <nav style={{
         flexShrink:0,
         background:'#1A1830',

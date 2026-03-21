@@ -86,3 +86,130 @@ body {
 input, select, textarea {
   font-family: inherit;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE OVERRIDES  (max-width: 767px)
+   Page တွေကို တစ်ခုချင်း မပြင်ဘဲ globals မှတဆင့် fix လုပ်တယ်
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Table horizontal scroll ──────────────────────────────────────────────
+   table တွေ mobile မှာ overflow ဖြစ်တာကို auto scroll နဲ့ ဖြေ           */
+@media (max-width: 767px) {
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+}
+
+/* ── Grid collapse ────────────────────────────────────────────────────────
+   grid-cols-3 ↑ တွေကို mobile မှာ 1 column ပြောင်း                      */
+@media (max-width: 767px) {
+  .grid-cols-3,
+  .grid-cols-4,
+  .grid-cols-5,
+  .grid-cols-6,
+  .grid-cols-7 {
+    grid-template-columns: 1fr !important;
+  }
+  /* 2-col grids — ငယ်တဲ့ card တွေအတွက် keep လုပ်ထားတယ် */
+  /* .grid-cols-2 မပြင်ဘူး — side-by-side stat cards အတွက် ကောင်းတယ် */
+}
+
+/* ── Wide fixed-width containers ─────────────────────────────────────────
+   w-[1400px], w-[1200px], w-[1000px] တွေ mobile မှာ 100% ပြောင်း       */
+@media (max-width: 767px) {
+  [class*="w-[1400px]"],
+  [class*="w-[1200px]"],
+  [class*="w-[1000px]"],
+  [class*="w-[900px]"],
+  [class*="w-[800px]"],
+  [class*="w-[700px]"],
+  [class*="w-[600px]"],
+  [class*="w-[550px]"],
+  [class*="w-[520px]"],
+  [class*="w-[500px]"] {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+/* ── Overflow x auto for content wrappers ─────────────────────────────────
+   wide content တွေ scroll ဖြစ်နိုင်အောင်                               */
+@media (max-width: 767px) {
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Main content area scroll fix */
+  main {
+    overflow-x: hidden;
+  }
+}
+
+/* ── Padding reduction on mobile ──────────────────────────────────────────
+   Desktop padding ကြီးတာတွေ mobile မှာ လျော့ချ                         */
+@media (max-width: 767px) {
+  .p-12 { padding: 1rem !important; }
+  .p-10 { padding: 0.875rem !important; }
+  .p-8  { padding: 0.75rem !important; }
+  .px-12 { padding-left: 1rem !important; padding-right: 1rem !important; }
+  .px-10 { padding-left: 0.875rem !important; padding-right: 0.875rem !important; }
+  .px-8  { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+}
+
+/* ── Typography scale-down ────────────────────────────────────────────────
+   Desktop font size ကြီးတာတွေ mobile မှာ သင့်တင့်အောင်               */
+@media (max-width: 767px) {
+  .text-4xl { font-size: 1.5rem !important; }
+  .text-5xl { font-size: 1.75rem !important; }
+  .text-6xl { font-size: 2rem !important; }
+}
+
+/* ── Flex wrap on mobile ──────────────────────────────────────────────────
+   flex row တွေ mobile မှာ wrap ဖြစ်အောင်                              */
+@media (max-width: 767px) {
+  .mobile-wrap { flex-wrap: wrap !important; }
+  .mobile-col  { flex-direction: column !important; }
+  .mobile-full { width: 100% !important; }
+  .mobile-hide { display: none !important; }
+  .mobile-show { display: block !important; }
+}
+
+/* ── Scrollable content utility class ────────────────────────────────────
+   .scroll-x ထည့်ရုံနဲ့ horizontal scroll ရတယ်                         */
+.scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Modal/Dialog mobile fix ──────────────────────────────────────────────
+   modal တွေ mobile screen မှာ full-width ဖြစ်အောင်                    */
+@media (max-width: 767px) {
+  [style*="maxWidth:'520px'"],
+  [style*="maxWidth: '520px'"],
+  [style*="maxWidth:'480px'"],
+  [style*="maxWidth: '480px'"],
+  [style*="maxWidth:'420px'"],
+  [style*="maxWidth: '420px'"] {
+    max-width: calc(100vw - 32px) !important;
+    width: calc(100vw - 32px) !important;
+  }
+}
+
+/* ── Safe area for bottom nav (iOS notch/home bar) ────────────────────────
+   iPhone bottom home bar နဲ့ bottom nav မထပ်အောင်                     */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  nav[style*="zIndex:110"],
+  nav[style*="zIndex: 110"] {
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+}
+
+/* ── Touch target minimum size ────────────────────────────────────────────
+   Button တွေ mobile မှာ နှိပ်ရလွယ်အောင် min 44px                     */
+@media (max-width: 767px) {
+  button, a[href], [role="button"] {
+    min-height: 36px;
+  }
+}

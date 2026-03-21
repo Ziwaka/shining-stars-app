@@ -919,7 +919,7 @@ export default function HostelInventoryPage() {
   }, [assets, filters]);
 
   // ── Loading / Error ──
-  if (loading) return <InventorySkeleton title="Hostel Inventory" accent="#a78bfa" tabs={[0,1,2,3,4]} />;
+  if (loading) return <InventorySkeleton title="Hostel Inventory" accent="#a78bfa" done={!loading} tabs={[0,1,2,3,4]} />;
   if (error) return (
     <div style={{...styles.page, alignItems:'center', justifyContent:'center', gap:12}}>
       <div style={{fontSize:32}}>⚠️</div>
