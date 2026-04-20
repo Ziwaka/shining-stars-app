@@ -1,6 +1,8 @@
 "use client";
-import { useEffect, useState } from 'react';
+import React from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useDebounce } from 'use-debounce';
 import { WEB_APP_URL } from '@/lib/api';
 import CompactWatchlistFilter from '@/components/leave/CompactWatchlistFilter';
 
@@ -48,7 +50,7 @@ const LEAVE_TYPES = ['Sick Leave','Medical Leave','Personal Leave','Urgent Affai
 const METHODS     = ['Phone Call','Telegram','Viber','Directly'];
 const getDisplayName = s => s['Name (ALL CAPITAL)'] || s['အမည်'] || s.Name || '';
 
-function DurationBadge({ leave }) {
+const DurationBadge = React.memo(({ leave }) => {
   const dt   = leave.Duration_Type || (leave.Leave_Mode === 'Half Day' ? 'HALF' : leave.Leave_Mode === 'Period-wise' ? 'PERIOD' : 'FULL');
   const days = Number(leave.Total_Days || 0);
   if (dt === 'HALF') {
@@ -60,15 +62,9 @@ function DurationBadge({ leave }) {
     return <span style={{background:'#ede9fe',color:'#6d28d9',fontSize:'9px',fontWeight:900,padding:'3px 8px',borderRadius:'99px',textTransform:'uppercase',whiteSpace:'nowrap'}}>⏱️ {subj}</span>;
   }
   return <span style={{background:'#f0fdf4',color:'#16a34a',fontSize:'9px',fontWeight:900,padding:'3px 8px',borderRadius:'99px',textTransform:'uppercase',whiteSpace:'nowrap'}}>📅 {days} Day{days!==1?'s':''}</span>;
-}
+});
 
-const DUR_TYPES = [
-  { id:'FULL',   label:'Full Day', icon:'📅' },
-  { id:'HALF',   label:'½ Day',    icon:'🌗' },
-  { id:'PERIOD', label:'Subject',  icon:'⏱️' },
-];
-
-const WatchlistGroup = ({ title, users, icon, color, bg }) => (
+const WatchlistGroup = React.memo(({ title, users, icon, color, bg }) => (
   <div style={{background:bg||'#ffffff',border:'1px solid #e2e8f0',padding:'20px',borderRadius:'24px',display:'flex',flexDirection:'column',maxHeight:'450px',boxShadow:'0 2px 10px rgba(0,0,0,0.02)'}}>
     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px',borderBottom:'1px solid #f1f5f9',paddingBottom:'12px',flexShrink:0}}>
       <p style={{fontSize:'13px',fontWeight:900,textTransform:'uppercase',letterSpacing:'0.05em',color:color,margin:0}}>{icon} {title}</p>
@@ -103,7 +99,13 @@ const WatchlistGroup = ({ title, users, icon, color, bg }) => (
       ))}
     </div>
   </div>
-);
+));
+
+const DUR_TYPES = [
+  { id:'FULL',   label:'Full Day', icon:'📅' },
+  { id:'HALF',   label:'½ Day',    icon:'🌗' },
+  { id:'PERIOD', label:'Subject',  icon:'⏱️' },
+];
 
 export default function StaffLeave() {
   const router = useRouter();
@@ -116,13 +118,13 @@ export default function StaffLeave() {
   const [view, setView]         = useState('NEW'); 
   const [target, setTarget]     = useState('STUDENT');
   const [selected, setSelected] = useState(null);
-  const [search, setSearch]     = useState('');
+  const [searchRaw, setSearchRaw] = useState('');
+  const [search] = useDebounce(searchRaw, 150);
   const [msg, setMsg]           = useState(null);
   
   const [rangeFilter, setRangeFilter] = useState("ALL");
   const [typeFilter,  setTypeFilter]  = useState("ALL");
   const [watchFilter, setWatchFilter] = useState("TODAY");
-  const [historySearchQuery, setHistorySearchQuery] = useState("");
   
   const [histSearch, setHistSearch] = useState("");
   const [histFilter, setHistFilter] = useState("ALL");
@@ -137,6 +139,25 @@ export default function StaffLeave() {
     reporter:'', relation:'', phone:'', method:'Phone Call',
   });
   const setF = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getInitialData'})});
+      const r = await res.json();
+      if (r.success) {
+        const isActive = u => u.Status?.toString().toUpperCase() !== 'FALSE';
+        setRegistry({
+          students:(r.students||[]).filter(isActive),
+          staff:(r.staffList||r.staff||[]).filter(isActive),
+          allLeaves: r.leaves || [],
+          pending:(r.leaves||[]).filter(x=>x.Status==='Pending'),
+          history:(r.leaves||[]).filter(x=>x.Status!=='Pending').reverse(),
+        });
+      }
+    } catch {}
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
     const u = JSON.parse(localStorage.getItem('user')||sessionStorage.getItem('user')||'null');
@@ -155,26 +176,7 @@ export default function StaffLeave() {
         }
         router.push('/staff');
       }).catch(()=>router.push('/staff'));
-  },[]);
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action:'getInitialData'})});
-      const r = await res.json();
-      if (r.success) {
-        const isActive = u => u.Status?.toString().toUpperCase() !== 'FALSE';
-        setRegistry({
-          students:(r.students||[]).filter(isActive),
-          staff:(r.staffList||r.staff||[]).filter(isActive),
-          allLeaves: r.leaves || [],
-          pending:(r.leaves||[]).filter(x=>x.Status==='Pending'),
-          history:(r.leaves||[]).filter(x=>x.Status!=='Pending').reverse(),
-        });
-      }
-    } catch {}
-    setLoading(false);
-  };
+  }, [router, fetchData]);
 
   const showMsg = (text,type='success') => { setMsg({text,type}); setTimeout(()=>setMsg(null),3000); };
 
@@ -195,13 +197,13 @@ export default function StaffLeave() {
     reader.readAsDataURL(file);
   };
 
-  const calcDays = () => {
+  const calcDays = useCallback(() => {
     if (form.durType === 'HALF')   return 0.5;
     if (form.durType === 'PERIOD') return 0;
     if (!form.start || !form.end)  return 0;
     const d = Math.ceil(Math.abs(new Date(form.end)-new Date(form.start))/86400000)+1;
     return d > 0 ? d : 0;
-  };
+  }, [form.durType, form.start, form.end]);
   const endDateForSave  = () => (form.durType !== 'FULL') ? form.start : form.end;
   const durationSummary = () => {
     const d = calcDays();
@@ -239,142 +241,140 @@ export default function StaffLeave() {
       if (r.success) {
         showMsg('Leave တင်ပြီးပါပြီ ✓');
         setForm({category:'School',type:'Sick Leave',durType:'FULL',start:getTodayMM(),end:getTodayMM(),halfPart:'AM',subject:'',reason:'',remark:'',attachment:'',reporter:'',relation:'',phone:'',method:'Phone Call'});
-        setSelected(null); setSearch(''); fetchData();
+        setSelected(null); setSearchRaw(''); fetchData();
       } else showMsg(r.message||'Error','error');
     } catch { showMsg('Network error','error'); }
     setSaving(false);
   };
 
-  const filtered = (target==='STUDENT'?registry.students:registry.staff).filter(u=>{
-    if (!search) return false;
-    const s=search.toLowerCase();
-    return (u['Name (ALL CAPITAL)']||u['Name']||'').toLowerCase().includes(s)||(u['Enrollment No.']||u['Staff_ID']||'').toString().includes(s);
-  });
-  const getName = u => u['Name (ALL CAPITAL)']||u['Name']||'';
-  const getID   = u => u['Enrollment No.']||u['Staff_ID']||'';
+  const filtered = useMemo(() => {
+    if (!search) return [];
+    const list = target==='STUDENT' ? registry.students : registry.staff;
+    const s = search.toLowerCase();
+    return list.filter(u => 
+      (u['Name (ALL CAPITAL)']||u['Name']||'').toLowerCase().includes(s) ||
+      (u['Enrollment No.']||u['Staff_ID']||'').toString().includes(s)
+    );
+  }, [search, target, registry.students, registry.staff]);
 
-  const getStudentInfo = (userId, name) => {
+  const getStudentInfo = useCallback((userId, name) => {
     const st = registry.students.find(s => s.Student_ID === userId || s['Enrollment No.'] === userId || s['Name (ALL CAPITAL)'] === name || s.Name === name);
     return st ? { grade: st.Grade || '', section: st.Section || st.Class || '' } : { grade:'', section:'' };
-  };
+  }, [registry.students]);
 
-  const filteredHistory = registry.history.filter(h => {
-    const matchSearch = (h.Name||'').toLowerCase().includes(histSearch.toLowerCase()) || (h.Leave_Type||'').toLowerCase().includes(histSearch.toLowerCase());
-    const matchType = histFilter === 'ALL' || h.User_Type === histFilter;
-    return matchSearch && matchType;
-  });
-
-  const groupedHistory = filteredHistory.reduce((acc, l) => {
-    const date = formatMMDate(l.Start_Date);
-    if (!acc[date]) acc[date] = [];
-    acc[date].push(l);
-    return acc;
-  }, {});
-  const sortedHistoryDates = Object.keys(groupedHistory).sort((a,b) => new Date(b) - new Date(a));
-
-  const now = new Date();
-  const analysisLeaves = registry.allLeaves.filter(l=>{
-    const days=(now-new Date(formatMMDate(l.Start_Date)))/86400000;
-    if (rangeFilter==="7D") return days<=7; if (rangeFilter==="30D") return days<=30; if (rangeFilter==="90D") return days<=90;
-    return true;
-  }).filter(l=>typeFilter==="ALL"||l.User_Type===typeFilter);
-
-  const userStats = {};
-  const todayStr = getTodayMM(); 
-
-  registry.allLeaves.filter(l => l.Status === 'Approved').forEach(l => {
-    const k = l.User_ID || l.Name;
-    if (!userStats[k]) userStats[k] = { name: l.Name, type: l.User_Type, id: l.User_ID || '-', grade: '', section: '', totalDays: 0, last7: 0, last30: 0, last90: 0, periods: [], isAbsentToday: false, reasons: [] };
+  const analysisData = useMemo(() => {
+    if (view !== 'ANALYSIS') return { userStats: {}, statsList: [], watchMap: {}, watchTabs: [], calCells: [], analysisLeaves: [] };
     
-    const cleanS = formatMMDate(l.Start_Date);
-    const cleanE = formatMMDate(l.End_Date) || cleanS;
-    const days = Number(l.Total_Days) || 0;
-    userStats[k].totalDays += days;
-    
-    if (todayStr >= cleanS && todayStr <= cleanE) {
-        userStats[k].isAbsentToday = true;
-    }
-    
-    const sdMs = new Date(cleanS).getTime();
-    const diffDays = (now.getTime() - sdMs) / 86400000;
-    if (diffDays <= 7) userStats[k].last7 += days; 
-    if (diffDays <= 30) userStats[k].last30 += days; 
-    if (diffDays <= 90) userStats[k].last90 += days;
-    
-    userStats[k].periods.push({ start: sdMs, days });
-    if (l.Reason && l.Reason !== '-') userStats[k].reasons.push({ start: cleanS, end: cleanE, text: l.Reason, type: l.Leave_Type, attachment: l.Attachment_Link });
-  });
-
-  Object.values(userStats).forEach(u => {
-    if (u.type === 'STUDENT') {
-      const stInfo = getStudentInfo(u.id, u.name);
-      u.grade = stInfo.grade; u.section = stInfo.section;
-    }
-    u.reasons.sort((a,b) => new Date(b.start) - new Date(a.start));
-    u.periods.sort((a,b) => a.start - b.start);
-    let maxC = 0, currC = 0, lastEnd = 0;
-    u.periods.forEach(p => {
-      if (lastEnd === 0) currC = p.days;
-      else { const diffDays = (p.start - lastEnd) / 86400000; if (diffDays <= 3) currC += p.days; else currC = p.days; }
-      if (currC > maxC) maxC = currC; lastEnd = p.start + (p.days * 86400000);
+    const stats = {};
+    registry.allLeaves.filter(l => l.Status === 'Approved').forEach(l => {
+      const k = l.User_ID || l.Name;
+      if (!stats[k]) stats[k] = { name: l.Name, type: l.User_Type, id: l.User_ID || '-', grade: '', section: '', totalDays: 0, last7: 0, last30: 0, last90: 0, periods: [], isAbsentToday: false, reasons: [] };
+      const cleanS = formatMMDate(l.Start_Date);
+      const cleanE = formatMMDate(l.End_Date) || cleanS;
+      const days = Number(l.Total_Days) || 0;
+      stats[k].totalDays += days;
+      const todayStr = getTodayMM();
+      if (todayStr >= cleanS && todayStr <= cleanE) stats[k].isAbsentToday = true;
+      const sdMs = new Date(cleanS).getTime();
+      const now = new Date();
+      const diffDays = (now.getTime() - sdMs) / 86400000;
+      if (diffDays <= 7) stats[k].last7 += days; 
+      if (diffDays <= 30) stats[k].last30 += days; 
+      if (diffDays <= 90) stats[k].last90 += days;
+      stats[k].periods.push({ start: sdMs, days });
+      if (l.Reason && l.Reason !== '-') stats[k].reasons.push({ start: cleanS, end: cleanE, text: l.Reason, type: l.Leave_Type, attachment: l.Attachment_Link });
     });
-    u.maxConsecutive = maxC;
-  });
+    Object.values(stats).forEach(u => {
+      if (u.type === 'STUDENT') {
+        const stInfo = getStudentInfo(u.id, u.name);
+        u.grade = stInfo.grade; u.section = stInfo.section;
+      }
+      u.reasons.sort((a,b) => new Date(b.start) - new Date(a.start));
+      u.periods.sort((a,b) => a.start - b.start);
+      let maxC = 0, currC = 0, lastEnd = 0;
+      u.periods.forEach(p => {
+        if (lastEnd === 0) currC = p.days;
+        else { const diffDays = (p.start - lastEnd) / 86400000; if (diffDays <= 3) currC += p.days; else currC = p.days; }
+        if (currC > maxC) maxC = currC; lastEnd = p.start + (p.days * 86400000);
+      });
+      u.maxConsecutive = maxC;
+    });
+    const statsList = Object.values(stats);
+    
+    const watchMap = {
+      'TODAY': { title: 'ယနေ့ ပျက်သူ', users: statsList.filter(u => u.isAbsentToday), icon: '📍', color: 'text-sky-600' },
+      'C2':    { title: '၂ ရက်ဆက်တိုက်', users: statsList.filter(u => u.maxConsecutive >= 2 && u.maxConsecutive < 3), icon: '⚠️', color: 'text-amber-600' },
+      'C3':    { title: '၃ ရက်ဆက်တိုက်', users: statsList.filter(u => u.maxConsecutive >= 3 && u.maxConsecutive < 5), icon: '🔥', color: 'text-orange-600' },
+      'C5':    { title: '၅ ရက်ဆက်တိုက်', users: statsList.filter(u => u.maxConsecutive >= 5), icon: '🚨', color: 'text-rose-600' },
+      'W3':    { title: '၁ ပတ် (≥ ၃ ရက်)', users: statsList.filter(u => u.last7 >= 3), icon: '📅', color: 'text-indigo-600' },
+      'M3':    { title: '၁ လ (≥ ၃ ရက်)', users: statsList.filter(u => u.last30 >= 3), icon: '📆', color: 'text-purple-600' },
+      'M5':    { title: '၃ လ (≥ ၅ ရက်)', users: statsList.filter(u => u.last90 >= 5), icon: '📊', color: 'text-pink-600' },
+      'ALL5':  { title: 'All Time (≥ ၅ ရက်)', users: statsList.filter(u => u.totalDays >= 5), icon: '🏆', color: 'text-slate-600' }
+    };
+    const watchTabs = [
+      { id: 'TODAY', label: 'ယနေ့', count: watchMap['TODAY'].users.length },
+      { id: 'C2', label: '၂ ရက်ဆက်', count: watchMap['C2'].users.length },
+      { id: 'C3', label: '၃ ရက်ဆက်', count: watchMap['C3'].users.length },
+      { id: 'C5', label: '≥ ၅ ရက်ဆက်', count: watchMap['C5'].users.length },
+      { id: 'W3', label: '၁ ပတ် (၃)', count: watchMap['W3'].users.length },
+      { id: 'M3', label: '၁ လ (၃)', count: watchMap['M3'].users.length },
+      { id: 'M5', label: '၃ လ (၅)', count: watchMap['M5'].users.length },
+      { id: 'ALL5', label: 'All Time (၅)', count: watchMap['ALL5'].users.length }
+    ];
 
-  const statsList = Object.values(userStats);
-  const watchMap = {
-    'TODAY': { title: 'ယနေ့ ပျက်သူ', users: statsList.filter(u => u.isAbsentToday), icon: '📍', color: 'text-sky-600' },
-    'C2':    { title: '၂ ရက်ဆက်တိုက်', users: statsList.filter(u => u.maxConsecutive >= 2 && u.maxConsecutive < 3), icon: '⚠️', color: 'text-amber-600' },
-    'C3':    { title: '၃ ရက်ဆက်တိုက်', users: statsList.filter(u => u.maxConsecutive >= 3 && u.maxConsecutive < 5), icon: '🔥', color: 'text-orange-600' },
-    'C5':    { title: '၅ ရက်ဆက်တိုက်', users: statsList.filter(u => u.maxConsecutive >= 5), icon: '🚨', color: 'text-rose-600' },
-    'W3':    { title: '၁ ပတ် (≥ ၃ ရက်)', users: statsList.filter(u => u.last7 >= 3), icon: '📅', color: 'text-indigo-600' },
-    'M3':    { title: '၁ လ (≥ ၃ ရက်)', users: statsList.filter(u => u.last30 >= 3), icon: '📆', color: 'text-purple-600' },
-    'M5':    { title: '၃ လ (≥ ၅ ရက်)', users: statsList.filter(u => u.last90 >= 5), icon: '📊', color: 'text-pink-600' },
-    'ALL5':  { title: 'All Time (≥ ၅ ရက်)', users: statsList.filter(u => u.totalDays >= 5), icon: '🏆', color: 'text-slate-600' }
-  };
+    const cYear = calDate.getFullYear();
+    const cMonth = calDate.getMonth();
+    const daysInMonth = new Date(cYear, cMonth + 1, 0).getDate();
+    const firstDay = new Date(cYear, cMonth, 1).getDay();
+    const cells = [];
+    for(let i=0; i<firstDay; i++) cells.push(null);
+    for(let i=1; i<=daysInMonth; i++) {
+      const dStr = `${cYear}-${String(cMonth+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+      const dayLeaves = registry.allLeaves.filter(l => l.Status === 'Approved' && formatMMDate(l.Start_Date) <= dStr && (formatMMDate(l.End_Date) || formatMMDate(l.Start_Date)) >= dStr);
+      let totalAbs = 0;
+      dayLeaves.forEach(l => { totalAbs++; });
+      cells.push({ day: i, dateStr: dStr, total: totalAbs, grades: {} });
+    }
 
-  const watchTabs = [
-    { id: 'TODAY', label: 'ယနေ့', count: watchMap['TODAY'].users.length },
-    { id: 'C2', label: '၂ ရက်ဆက်', count: watchMap['C2'].users.length },
-    { id: 'C3', label: '၃ ရက်ဆက်', count: watchMap['C3'].users.length },
-    { id: 'C5', label: '≥ ၅ ရက်ဆက်', count: watchMap['C5'].users.length },
-    { id: 'W3', label: '၁ ပတ် (၃)', count: watchMap['W3'].users.length },
-    { id: 'M3', label: '၁ လ (၃)', count: watchMap['M3'].users.length },
-    { id: 'M5', label: '၃ လ (၅)', count: watchMap['M5'].users.length },
-    { id: 'ALL5', label: 'All Time (၅)', count: watchMap['ALL5'].users.length }
-  ];
+    const now = new Date();
+    const leavesFiltered = registry.allLeaves.filter(l => {
+      const days = (now - new Date(formatMMDate(l.Start_Date))) / 86400000;
+      if (rangeFilter === "7D") return days <= 7;
+      if (rangeFilter === "30D") return days <= 30;
+      if (rangeFilter === "90D") return days <= 90;
+      return true;
+    }).filter(l => typeFilter === "ALL" || l.User_Type === typeFilter);
+
+    return { userStats: stats, statsList, watchMap, watchTabs, calCells: cells, analysisLeaves: leavesFiltered };
+  }, [view, registry.allLeaves, calDate, rangeFilter, typeFilter, getStudentInfo]);
+
+  const historyData = useMemo(() => {
+    if (view !== 'HISTORY') return { filteredHistory: [], groupedHistory: {}, sortedDates: [] };
+    const filtered = registry.history.filter(h => {
+      const matchSearch = (h.Name||'').toLowerCase().includes(histSearch.toLowerCase()) || (h.Leave_Type||'').toLowerCase().includes(histSearch.toLowerCase());
+      const matchType = histFilter === 'ALL' || h.User_Type === histFilter;
+      return matchSearch && matchType;
+    });
+    const grouped = filtered.reduce((acc, l) => {
+      const date = formatMMDate(l.Start_Date);
+      if (!acc[date]) acc[date] = [];
+      acc[date].push(l);
+      return acc;
+    }, {});
+    const sorted = Object.keys(grouped).sort((a,b) => new Date(b) - new Date(a));
+    return { filteredHistory: filtered, groupedHistory: grouped, sortedDates: sorted };
+  }, [view, registry.history, histSearch, histFilter]);
 
   const [historySearchQueryAnalysis, setHistorySearchQueryAnalysis] = useState("");
-  const searchedUsersAnalysis = historySearchQueryAnalysis.trim().length >= 2 ? statsList.filter(u => u.name.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase()) || u.id.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase())) : [];
+  const searchedUsersAnalysis = useMemo(() => {
+    if (view !== 'ANALYSIS') return [];
+    const query = historySearchQueryAnalysis.trim();
+    if (query.length < 2) return [];
+    return analysisData.statsList.filter(u => u.name.toLowerCase().includes(query.toLowerCase()) || u.id.toLowerCase().includes(query.toLowerCase()));
+  }, [view, analysisData.statsList, historySearchQueryAnalysis]);
 
-  const cYear = calDate.getFullYear();
-  const cMonth = calDate.getMonth();
-  const daysInMonth = new Date(cYear, cMonth + 1, 0).getDate();
-  const firstDay = new Date(cYear, cMonth, 1).getDay();
-  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-  
-  const calCells = [];
-  for(let i=0; i<firstDay; i++) calCells.push(null);
-  for(let i=1; i<=daysInMonth; i++) {
-     const dStr = `${cYear}-${String(cMonth+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
-     const dayLeaves = registry.allLeaves.filter(l => l.Status === 'Approved' && formatMMDate(l.Start_Date) <= dStr && (formatMMDate(l.End_Date) || formatMMDate(l.Start_Date)) >= dStr);
-     
-     const gradeMap = {};
-     let totalAbs = 0;
-     dayLeaves.forEach(l => {
-         let g = 'Staff';
-         if(l.User_Type==='STUDENT') {
-            const st = getStudentInfo(l.User_ID, l.Name);
-            g = st.grade ? `G-${st.grade}${st.section ? ` - ${st.section}` : ''}` : 'Unknown';
-         }
-         gradeMap[g] = (gradeMap[g]||0)+1;
-         totalAbs++;
-     });
-     calCells.push({ day: i, dateStr: dStr, total: totalAbs, grades: gradeMap });
-  }
-
-  const prevMonth = () => setCalDate(new Date(cYear, cMonth - 1, 1));
-  const nextMonth = () => setCalDate(new Date(cYear, cMonth + 1, 1));
+  const prevMonth = () => setCalDate(new Date(calDate.getFullYear(), calDate.getMonth() - 1, 1));
+  const nextMonth = () => setCalDate(new Date(calDate.getFullYear(), calDate.getMonth() + 1, 1));
 
   if (loading || saving || uploading) return (
     <div className="min-h-[50vh] flex items-center justify-center font-black text-[#4c1d95] animate-pulse uppercase italic tracking-widest text-lg">
@@ -385,7 +385,6 @@ export default function StaffLeave() {
   return (
     <div style={S.page}>
       
-      {/* ★ CALENDAR MODAL ★ */}
       {selectedCalDate && (
         <div className="fixed inset-0 z-[99] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setSelectedCalDate(null)}>
            <div className="bg-white w-full max-w-[520px] rounded-[24px] p-6 shadow-2xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
@@ -429,7 +428,6 @@ export default function StaffLeave() {
         </div>
       )}
 
-      {/* Header */}
       <div style={S.header}>
         <button onClick={()=>router.push('/staff')} style={{background:'#fbbf24',color:'#020617',border:'none',borderRadius:'10px',width:'36px',height:'36px',cursor:'pointer',fontSize:'16px',fontWeight:900}}>←</button>
         <div style={{flex:1,marginLeft:'10px'}}>
@@ -444,7 +442,6 @@ export default function StaffLeave() {
       <div style={S.body}>
         <div style={{maxWidth:'600px',margin:'0 auto',padding:'16px',display:'flex',flexDirection:'column',gap:'12px'}}>
 
-          {/* ── Tabs ── */}
           <div style={{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'8px'}}>
             <button onClick={()=>setView('NEW')}     style={view==='NEW'     ?S.tabOn:S.tabOff}>✏️ New</button>
             <button onClick={()=>setView('PENDING')} style={view==='PENDING' ?S.tabOn:S.tabOff}>⏳ Pending ({registry.pending.length})</button>
@@ -452,8 +449,7 @@ export default function StaffLeave() {
             <button onClick={()=>setView('ANALYSIS')} style={view==='ANALYSIS' ?S.tabOn:S.tabOff}>📊 Analysis</button>
           </div>
 
-          {/* ── NEW ── */}
-          {view==='NEW'&&!selected&&(
+          {view==='NEW' && !selected && (
             <>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'4px'}}>
                 {['School','Guide'].map(c=>(
@@ -468,21 +464,21 @@ export default function StaffLeave() {
               </div>
               <div style={{display:'flex',background:'rgba(0,0,0,0.04)',padding:'4px',borderRadius:'14px',gap:'4px'}}>
                 {['STUDENT','STAFF'].map(t=>(
-                  <button key={t} onClick={()=>{setTarget(t);setSearch('');}}
+                  <button key={t} onClick={()=>{setTarget(t);setSearchRaw('');}}
                     style={{flex:1,padding:'10px',borderRadius:'10px',border:'none',cursor:'pointer',fontWeight:900,fontSize:'11px',textTransform:'uppercase',letterSpacing:'0.05em',
                       background:target===t?'#020617':'transparent',color:target===t?'#fff':'#94a3b8'}}>{t}</button>
                 ))}
               </div>
               <div style={S.card}>
                 <label style={S.label}>နာမည် သို့ ID ရှာပါ</label>
-                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={target==='STUDENT'?'Student name or ID...':'Staff name or ID...'} style={S.input}/>
+                <input value={searchRaw} onChange={e=>setSearchRaw(e.target.value)} placeholder={target==='STUDENT'?'Student name or ID...':'Staff name or ID...'} style={S.input}/>
                 {filtered.length>0&&(
                   <div style={{marginTop:'8px',display:'flex',flexDirection:'column',gap:'6px',maxHeight:'300px',overflowY:'auto'}}>
                     {filtered.map((u,i)=>(
-                      <button key={i} onClick={()=>{setSelected(u);setSearch('');}} style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:'12px',padding:'12px 14px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',textAlign:'left'}}>
+                      <button key={i} onClick={()=>{setSelected(u);setSearchRaw('');}} style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:'12px',padding:'12px 14px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center',textAlign:'left'}}>
                         <div>
-                          <p style={{fontWeight:900,fontSize:'13px',color:'#020617',margin:0}}>{getName(u)}</p>
-                          <p style={{fontSize:'9px',color:'#94a3b8',margin:'2px 0 0',textTransform:'uppercase',letterSpacing:'0.1em'}}>ID: {getID(u)}</p>
+                          <p style={{fontWeight:900,fontSize:'13px',color:'#020617',margin:0}}>{getDisplayName(u)}</p>
+                          <p style={{fontSize:'9px',color:'#94a3b8',margin:'2px 0 0',textTransform:'uppercase',letterSpacing:'0.1em'}}>ID: {target==='STUDENT'?u['Enrollment No.']:u['Staff_ID']}</p>
                         </div>
                         <span style={{color:'#94a3b8',fontSize:'16px'}}>→</span>
                       </button>
@@ -493,13 +489,13 @@ export default function StaffLeave() {
             </>
           )}
 
-          {view==='NEW'&&selected&&(
+          {view==='NEW' && selected && (
             <>
               <div style={{background:'#fef9c3',border:'2px solid #fbbf24',borderRadius:'16px',padding:'14px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div>
                   <p style={{fontSize:'9px',color:'#92400e',textTransform:'uppercase',letterSpacing:'0.12em',margin:'0 0 3px',fontWeight:900}}>Target ({form.category})</p>
-                  <p style={{fontWeight:900,fontSize:'15px',color:'#020617',margin:0}}>{getName(selected)}</p>
-                  <p style={{fontSize:'9px',color:'#92400e',margin:'2px 0 0'}}>ID: {getID(selected)}</p>
+                  <p style={{fontWeight:900,fontSize:'15px',color:'#020617',margin:0}}>{getDisplayName(selected)}</p>
+                  <p style={{fontSize:'9px',color:'#92400e',margin:'2px 0 0'}}>ID: {target==='STUDENT'?selected['Enrollment No.']:selected['Staff_ID']}</p>
                 </div>
                 <button onClick={()=>setSelected(null)} style={{background:'#fff',border:'1px solid #e2e8f0',borderRadius:'10px',padding:'6px 12px',color:'#64748b',fontSize:'11px',fontWeight:900,cursor:'pointer'}}>✕ Change</button>
               </div>
@@ -596,7 +592,7 @@ export default function StaffLeave() {
                 <div style={{background:'#1e1b4b',borderRadius:'14px',padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:'10px',marginBottom:'14px'}}>
                   <div>
                     <p style={{fontSize:'8px',color:'rgba(255,255,255,0.4)',textTransform:'uppercase',letterSpacing:'0.12em',margin:'0 0 3px',fontWeight:900}}>Leave Summary</p>
-                    <p style={{fontSize:'12px',color:'#fff',fontWeight:900,margin:0}}>{getName(selected)}</p>
+                    <p style={{fontSize:'12px',color:'#fff',fontWeight:900,margin:0}}>{getDisplayName(selected)}</p>
                     <p style={{fontSize:'9px',color:'rgba(255,255,255,0.5)',margin:'2px 0 0'}}>{form.type} · {formatDateDisplay(form.start)}{form.end&&formatMMDate(form.end)!==formatMMDate(form.start)?` → ${formatDateDisplay(form.end)}`:''}</p>
                   </div>
                   <div style={{background:'#fbbf24',borderRadius:'10px',padding:'6px 14px',textAlign:'center',flexShrink:0}}>
@@ -611,8 +607,7 @@ export default function StaffLeave() {
             </>
           )}
 
-          {/* ── PENDING ── */}
-          {view==='PENDING'&&(
+          {view==='PENDING' && (
             <div style={{display:'flex',flexDirection:'column',gap:'10px'}}>
               {registry.pending.length===0?(
                 <div style={{textAlign:'center',padding:'50px 0',color:'#94a3b8'}}><div style={{fontSize:'32px',marginBottom:'8px'}}>✓</div><p style={{fontWeight:900}}>Pending leaves မရှိပါ</p></div>
@@ -629,7 +624,6 @@ export default function StaffLeave() {
                       <p style={{fontSize:'9px',color:'#94a3b8',flexShrink:0,marginLeft:'8px'}}>{formatDateDisplay(l.Date_Applied)}</p>
                     </div>
                     <p style={{fontWeight:900,fontSize:'15px',color:'#020617',margin:'0 0 2px'}}>{l.Name}</p>
-                    
                     <div style={{display:'flex', gap:'6px', marginBottom:'10px', flexWrap:'wrap'}}>
                       <span style={{fontSize:'9px',color:'#64748b',background:'#f1f5f9',padding:'2px 6px',borderRadius:'6px',fontWeight:900}}>ID: {l.User_ID}</span>
                       {l.User_Type === 'STUDENT' && (stInfo.grade || stInfo.section) && (
@@ -638,7 +632,6 @@ export default function StaffLeave() {
                          </span>
                       )}
                     </div>
-
                     <p style={{fontSize:'9px',color:'#94a3b8',margin:'0 0 10px',fontWeight:900}}><span style={{color:'#6366f1'}}>{l.Leave_Type}</span> · {formatDateDisplay(l.Start_Date)}{l.End_Date&&formatMMDate(l.End_Date)!==formatMMDate(l.Start_Date)?` → ${formatDateDisplay(l.End_Date)}`:''}</p>
                     <div style={{background:'#f8fafc',borderLeft:'3px solid #7c3aed',borderRadius:'10px',padding:'10px 12px',marginBottom:'8px'}}>
                       <p style={{fontSize:'9px',color:'#94a3b8',fontWeight:900,margin:'0 0 4px',textTransform:'uppercase',letterSpacing:'0.1em'}}>Reason:</p>
@@ -654,8 +647,7 @@ export default function StaffLeave() {
             </div>
           )}
 
-          {/* ── HISTORY ── */}
-          {view==='HISTORY'&&(
+          {view==='HISTORY' && (
             <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
               <div style={{display:'flex',gap:'8px',marginBottom:'4px',flexWrap:'wrap'}}>
                 <input placeholder="Search name..." value={histSearch} onChange={e=>setHistSearch(e.target.value)} style={{...S.input, flex:1, minWidth:'150px', background:'#fff', border:'1px solid #cbd5e1'}} />
@@ -664,16 +656,16 @@ export default function StaffLeave() {
                 </select>
               </div>
 
-              {sortedHistoryDates.length===0?(
+              {historyData.sortedDates.length===0?(
                 <div className="py-24 text-center"><p className="font-black uppercase italic text-slate-300 text-xl tracking-widest">No history yet</p></div>
-              ):sortedHistoryDates.map(date => (
+              ):historyData.sortedDates.map(date => (
                 <div key={date}>
                   <div className="flex items-center gap-2 mt-4 mb-2">
                      <span className="text-xs font-black bg-slate-200 px-3 py-1 rounded-lg">📅 {formatDateDisplay(date)}</span>
                      <div className="flex-1 h-0.5 bg-slate-100 rounded-full"/>
                   </div>
                   <div className="flex flex-col gap-3">
-                    {groupedHistory[date].map((l,i)=>{
+                    {historyData.groupedHistory[date].map((l,i)=>{
                       const stInfo = l.User_Type === 'STUDENT' ? getStudentInfo(l.User_ID, l.Name) : {grade:'',section:''};
                       return (
                         <div key={i} className={`bg-white p-5 rounded-[2rem] border-b-[6px] shadow-sm ${l.Status==='Approved'?'border-emerald-100':'border-rose-100'}`}>
@@ -686,7 +678,6 @@ export default function StaffLeave() {
                              <span className={`text-[8px] px-3 py-1 rounded-full font-black uppercase ${l.Status==="Approved"?"bg-emerald-100 text-emerald-700":"bg-rose-100 text-rose-700"}`}>{l.Status}</span>
                           </div>
                           <p className="font-black uppercase italic text-sm text-slate-950">{l.Name}</p>
-                          
                           <div className="flex gap-2 mb-2 flex-wrap">
                             <span className="text-[8px] color-[#64748b] bg-[#f1f5f9] px-2 py-0.5 rounded-md font-black">ID: {l.User_ID}</span>
                             {l.User_Type === 'STUDENT' && (stInfo.grade || stInfo.section) && (
@@ -695,7 +686,6 @@ export default function StaffLeave() {
                                </span>
                             )}
                           </div>
-
                           <p className="text-[9px] uppercase font-black text-slate-400 mt-1">{l.Leave_Type} · {formatDateDisplay(l.Start_Date)}{l.End_Date&&formatMMDate(l.End_Date)!==formatMMDate(l.Start_Date)?` → ${formatDateDisplay(l.End_Date)}`:''}</p>
                           <div className="bg-slate-50 border-l-2 border-slate-300 p-2 mt-2 rounded-r-lg"><p className="text-[10px] text-slate-500 italic m-0 word-break-word">"{l.Reason}"</p></div>
                           {l.Attachment_Link && l.Attachment_Link !== '-' && <a href={l.Attachment_Link} target="_blank" className="text-[10px] text-sky-500 underline font-bold mt-2 inline-block">📎 View Document</a>}
@@ -708,22 +698,20 @@ export default function StaffLeave() {
             </div>
           )}
 
-          {/* ── ANALYSIS ── */}
-          {view==='ANALYSIS'&&(
+          {view==='ANALYSIS' && (
             <div className="space-y-8">
               
-              {/* Calendar View for Leaves */}
               <div className="bg-white border border-slate-200 rounded-[2rem] p-5 shadow-xl">
                 <div className="flex justify-between items-center mb-4">
                   <button onClick={prevMonth} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 hover:bg-slate-200">‹</button>
-                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-900">{monthNames[cMonth]} {cYear}</h3>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-900">{new Date(calDate.getFullYear(), calDate.getMonth()).toLocaleString('default', { month: 'long' })} {calDate.getFullYear()}</h3>
                   <button onClick={nextMonth} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 hover:bg-slate-200">›</button>
                 </div>
                 <div className="grid grid-cols-7 gap-1 text-center mb-2">
                   {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className="text-[8px] font-black uppercase text-slate-400">{d}</div>)}
                 </div>
                 <div className="grid grid-cols-7 gap-1">
-                  {calCells.map((cell, idx) => {
+                  {analysisData.calCells.map((cell, idx) => {
                     if (!cell) return <div key={idx} className="aspect-square bg-slate-50 rounded-lg opacity-50"/>;
                     return (
                       <button key={idx} onClick={() => cell.total > 0 && setSelectedCalDate(cell.dateStr)} className={`aspect-square rounded-xl p-1 flex flex-col relative transition-all ${cell.dateStr===getTodayMM()?'ring-2 ring-sky-500 bg-sky-50':cell.total>0?'bg-rose-50 border border-rose-100 cursor-pointer hover:bg-rose-100':'bg-slate-50 cursor-default'}`}>
@@ -742,20 +730,17 @@ export default function StaffLeave() {
                   <div className="w-1 h-4 bg-sky-500 rounded-full"/>
                   <h3 className="text-[12px] text-slate-900 font-black uppercase tracking-widest m-0">Attendance Watchlist</h3>
                 </div>
-                
-                {/* Dropdown Filter ထည့်ထားသော နေရာ */}
                 <div className="flex items-center justify-between mb-4">
                   <CompactWatchlistFilter
-                    tabs={watchTabs}
+                    tabs={analysisData.watchTabs}
                     activeId={watchFilter}
                     onSelect={setWatchFilter}
                   />
                   <span className="text-xs text-slate-400 font-black">
-                    {watchMap[watchFilter]?.users.length || 0} individuals
+                    {analysisData.watchMap[watchFilter]?.users.length || 0} individuals
                   </span>
                 </div>
-
-                {watchMap[watchFilter] && <WatchlistGroup {...watchMap[watchFilter]} bg="#ffffff" color="#0f172a" />}
+                {analysisData.watchMap[watchFilter] && <WatchlistGroup {...analysisData.watchMap[watchFilter]} bg="#ffffff" color="#0f172a" />}
               </div>
 
               <div className="flex flex-wrap gap-3">
@@ -773,9 +758,9 @@ export default function StaffLeave() {
 
               <div className="grid grid-cols-3 gap-3">
                 {[
-                  {label:"Total Leaves", value:analysisLeaves.length,                                     icon:"📋", bg:'#eff6ff', color:'#2563eb'},
-                  {label:"Total Days",   value:analysisLeaves.reduce((s,l)=>s+Number(l.Total_Days||0),0), icon:"📅", bg:'#fef3c7', color:'#d97706'},
-                  {label:"Approved",     value:analysisLeaves.filter(l=>l.Status==="Approved").length,     icon:"✅", bg:'#f0fdf4', color:'#16a34a'},
+                  {label:"Total Leaves", value:analysisData.analysisLeaves.length,                                     icon:"📋", bg:'#eff6ff', color:'#2563eb'},
+                  {label:"Total Days",   value:analysisData.analysisLeaves.reduce((s,l)=>s+Number(l.Total_Days||0),0), icon:"📅", bg:'#fef3c7', color:'#d97706'},
+                  {label:"Approved",     value:analysisData.analysisLeaves.filter(l=>l.Status==="Approved").length,     icon:"✅", bg:'#f0fdf4', color:'#16a34a'},
                 ].map((s,i)=>(
                   <div key={i} style={{background:s.bg,padding:'16px 10px',borderRadius:'16px',textAlign:'center',border:`1px solid ${s.color}33`}}>
                     <div style={{fontSize:'20px',marginBottom:'4px'}}>{s.icon}</div>
@@ -831,7 +816,6 @@ export default function StaffLeave() {
                   </div>
                 )}
               </div>
-
             </div>
           )}
 
