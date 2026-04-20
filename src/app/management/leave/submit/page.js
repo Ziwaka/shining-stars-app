@@ -1,5 +1,6 @@
 "use client";
 import { useState, useMemo, useRef } from 'react';
+import { useDebounce } from 'use-debounce';
 import useLeaveData from '@/hooks/useLeaveData';
 import { getDisplayName, getTodayMM, formatMMDate } from '@/components/leave/DateHelpers';
 import { WEB_APP_URL } from '@/lib/api';
@@ -16,10 +17,11 @@ export default function SubmitPage() {
   });
 
   const [otherTarget, setOtherTarget] = useState('STAFF');
-  const [otherSearch, setOtherSearch] = useState('');
+  const [otherSearchRaw, setOtherSearchRaw] = useState('');
+  const [otherSearch] = useDebounce(otherSearchRaw, 300);
   const [otherSel, setOtherSel] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [isBackDate, setIsBackDate] = useState(false); // ခွင့်မဲ့ ဖြစ်ပြီးမှ ပြန်တိုင်ရန်
+  const [isBackDate, setIsBackDate] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [otherForm, setOtherForm] = useState({
@@ -150,7 +152,7 @@ export default function SubmitPage() {
       if (r.success) {
         alert('Submitted ✓');
         setOtherSel(null);
-        setOtherSearch('');
+        setOtherSearchRaw('');
         setAttachments([]);
         setOtherForm(f => ({ ...f, Start_Date: getTodayMM(), End_Date: getTodayMM(), Reason: '', Attachment_Link: '' }));
         fetchLeaves();
@@ -161,12 +163,11 @@ export default function SubmitPage() {
 
   return (
     <div className="space-y-4 pb-4">
-      {/* User Type Selector - ကျစ်လစ်အောင် */}
       <div className="grid grid-cols-2 gap-2">
         {[{ id: 'STAFF', icon: '👔', label: 'Staff' }, { id: 'STUDENT', icon: '🎓', label: 'Student' }].map(t => (
           <button
             key={t.id}
-            onClick={() => { setOtherTarget(t.id); setOtherSel(null); setOtherSearch(''); }}
+            onClick={() => { setOtherTarget(t.id); setOtherSel(null); setOtherSearchRaw(''); }}
             className={`py-3 rounded-xl font-black uppercase text-xs transition-all flex items-center justify-center gap-2 border-b-4 ${
               otherTarget === t.id ? 'bg-[#fbbf24] text-slate-950 border-amber-600 shadow-md' : 'bg-white text-slate-400 border-slate-200'
             }`}
@@ -176,7 +177,6 @@ export default function SubmitPage() {
         ))}
       </div>
 
-      {/* User Selection */}
       <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
         <label className="text-[9px] font-black uppercase text-slate-400 tracking-wider mb-2 block">
           Select {otherTarget === 'STAFF' ? 'Staff' : 'Student'}
@@ -190,13 +190,13 @@ export default function SubmitPage() {
                 <p className="text-[8px] text-amber-600">ID: {otherSel['Enrollment No.'] || otherSel.Staff_ID}</p>
               </div>
             </div>
-            <button onClick={() => { setOtherSel(null); setOtherSearch(''); }} className="w-6 h-6 rounded-full bg-amber-200 text-amber-800 text-xs">✕</button>
+            <button onClick={() => { setOtherSel(null); setOtherSearchRaw(''); }} className="w-6 h-6 rounded-full bg-amber-200 text-amber-800 text-xs">✕</button>
           </div>
         ) : (
           <div className="relative">
             <input
-              value={otherSearch}
-              onChange={e => setOtherSearch(e.target.value)}
+              value={otherSearchRaw}
+              onChange={e => setOtherSearchRaw(e.target.value)}
               placeholder="Search name or ID..."
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-amber-200"
             />
@@ -205,7 +205,7 @@ export default function SubmitPage() {
                 {filteredOther.slice(0, 5).map((s, i) => (
                   <button
                     key={i}
-                    onClick={() => { setOtherSel(s); setOtherSearch(''); }}
+                    onClick={() => { setOtherSel(s); setOtherSearchRaw(''); }}
                     className="w-full px-3 py-2 text-left hover:bg-slate-50 rounded-lg text-sm"
                   >
                     <p className="font-bold">{getDisplayName(s)}</p>
@@ -238,7 +238,6 @@ export default function SubmitPage() {
         )}
       </div>
 
-      {/* Form - ကျစ်လစ်အောင် */}
       <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm space-y-3">
         <div className="grid grid-cols-2 gap-2">
           <div>
@@ -281,7 +280,6 @@ export default function SubmitPage() {
           </div>
         </div>
 
-        {/* Back Date Toggle */}
         <div style={{display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background: isBackDate?'rgba(234,88,12,0.08)':'rgba(0,0,0,0.02)', border: isBackDate?'1px solid rgba(234,88,12,0.25)':'1px solid rgba(0,0,0,0.06)', borderRadius:10, cursor:'pointer'}} onClick={()=>setIsBackDate(p=>!p)}>
           <span style={{fontSize:16}}>{isBackDate?'🕐':'📅'}</span>
           <div style={{flex:1}}>
@@ -350,7 +348,6 @@ export default function SubmitPage() {
           />
         </div>
 
-        {/* Attachments */}
         <div>
           <label className="text-[8px] font-black text-slate-400 uppercase block mb-1">Documents</label>
           <div className="flex gap-2">

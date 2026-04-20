@@ -1,36 +1,32 @@
 "use client";
 import { useState, useMemo } from 'react';
+import { useDebounce } from 'use-debounce';
 import useLeaveData from '@/hooks/useLeaveData';
 import DurationBadge from '@/components/leave/DurationBadge';
 import { formatDateDisplay, formatMMDate, getTodayMM } from '@/components/leave/DateHelpers';
 
 export default function HistoryPage() {
   const { allLeaves, loading } = useLeaveData();
-  const [histSearch, setHistSearch] = useState('');
+  const [histSearchRaw, setHistSearchRaw] = useState('');
+  const [histSearch] = useDebounce(histSearchRaw, 300);
   const [histFilter, setHistFilter] = useState('ALL');
-  const today = getTodayMM(); // YYYY-MM-DD
+  const today = getTodayMM();
 
-  // အတည်ပြုပြီးသော ခွင့်များကိုသာ ယူပြီး ယနေ့နောက်ပိုင်းရက်များကို ဖယ်ထုတ်မယ်
   const history = useMemo(() => {
     return allLeaves.filter(l => 
       l.Status !== 'Pending' && 
-      l.Start_Date <= today // စတင်ရက်က ယနေ့ထက်နောက်မကျစေရ
+      l.Start_Date <= today
     );
   }, [allLeaves, today]);
 
-  // ရက်ရှည်ခွင့်များကို ရက်အလိုက် ဖြန့်ပြီး စုစည်းမယ် (ယနေ့အထိသာ)
   const expandedHistory = useMemo(() => {
     const expanded = [];
     history.forEach(leave => {
       const start = formatMMDate(leave.Start_Date);
       const end = formatMMDate(leave.End_Date || leave.Start_Date);
-      
-      // ယနေ့ထက်နောက်ကျတဲ့ရက်တွေကို မထည့်ပါနဲ့
       const maxEnd = end > today ? today : end;
-      
       let current = new Date(start);
       const last = new Date(maxEnd);
-      
       while (current <= last) {
         const dateStr = current.toLocaleDateString('en-CA',{timeZone:'Asia/Yangon'});
         expanded.push({
@@ -45,7 +41,6 @@ export default function HistoryPage() {
     return expanded;
   }, [history, today]);
 
-  // Filter နဲ့ Search
   const filteredHistory = useMemo(() => {
     return expandedHistory.filter(item => {
       const matchSearch = (item.Name || '').toLowerCase().includes(histSearch.toLowerCase());
@@ -54,7 +49,6 @@ export default function HistoryPage() {
     });
   }, [expandedHistory, histSearch, histFilter]);
 
-  // ရက်စွဲအလိုက် အုပ်စုဖွဲ့မယ်
   const groupedHistory = useMemo(() => {
     const groups = {};
     filteredHistory.forEach(item => {
@@ -65,7 +59,6 @@ export default function HistoryPage() {
     return groups;
   }, [filteredHistory]);
 
-  // ရက်စွဲများကို စီမယ် (အသစ်ဆုံးရက်က အထက်မှာ)
   const sortedHistoryDates = useMemo(() => {
     return Object.keys(groupedHistory).sort((a, b) => new Date(b) - new Date(a));
   }, [groupedHistory]);
@@ -84,8 +77,8 @@ export default function HistoryPage() {
       <div className="flex flex-wrap gap-2 mb-4">
         <input
           placeholder="Search by name..."
-          value={histSearch}
-          onChange={e => setHistSearch(e.target.value)}
+          value={histSearchRaw}
+          onChange={e => setHistSearchRaw(e.target.value)}
           className="flex-1 min-w-[200px] bg-white border border-slate-200 rounded-full px-4 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-amber-200"
         />
         <select
@@ -104,14 +97,11 @@ export default function HistoryPage() {
       ) : (
         sortedHistoryDates.map(date => (
           <div key={date} className="space-y-2">
-            {/* Date Header */}
             <div className="sticky top-0 bg-white/90 backdrop-blur-sm z-10 py-2 px-4 rounded-full shadow-sm border border-slate-100 inline-block">
               <span className="text-xs font-black text-slate-700 uppercase tracking-wider">
                 📅 {formatDateDisplay(date)} · {groupedHistory[date].length} ဦး
               </span>
             </div>
-
-            {/* Cards Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {groupedHistory[date].map((item, idx) => (
                 <div
@@ -120,7 +110,6 @@ export default function HistoryPage() {
                     item.Status === 'Approved' ? 'border-emerald-400' : item.Status === 'AWOL' ? 'border-orange-500' : 'border-rose-400'
                   }`}
                 >
-                  {/* Header Line */}
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className={`text-[9px] px-2 py-0.5 rounded-full font-black ${
@@ -136,32 +125,22 @@ export default function HistoryPage() {
                       {item.Status}
                     </span>
                   </div>
-
-                  {/* Name & ID */}
                   <h4 className="font-black text-slate-900 text-base uppercase leading-tight mb-1">{item.Name}</h4>
                   <p className="text-[9px] text-slate-400 font-bold mb-2">ID: {item.User_ID} · {item.Leave_Type}</p>
-
-                  {/* Reason */}
                   <div className="bg-slate-50 p-2 rounded-lg text-[11px] italic text-slate-600 line-clamp-2 mb-2">
                     "{item.Reason || '—'}"
                   </div>
-
-                  {/* Remark — shown prominently if exists */}
                   {item.Remark && item.Remark !== '-' && item.Remark !== '' && (
                     <div className="bg-amber-50 border border-amber-200 p-2 rounded-lg text-[11px] text-amber-700 font-bold mb-2 flex items-start gap-1.5">
                       <span className="shrink-0">✏️</span>
                       <span>{item.Remark}</span>
                     </div>
                   )}
-
-                  {/* Attachment link */}
                   {item.Attachment_Link && item.Attachment_Link !== '-' && (
                     <a href={item.Attachment_Link} target="_blank" className="text-[9px] text-sky-500 underline font-black inline-block">
                       📎 Attachment
                     </a>
                   )}
-
-                  {/* Range indicator (if multi-day) */}
                   {item.originalStart !== item.originalEnd && (
                     <p className="text-[8px] text-slate-400 mt-2 border-t border-slate-100 pt-1">
                       📅 {formatDateDisplay(item.originalStart)} – {formatDateDisplay(item.originalEnd)}

@@ -1,12 +1,13 @@
 "use client";
 import { useState, useMemo, useRef } from 'react';
+import { useDebounce } from 'use-debounce';
 import useLeaveData from '@/hooks/useLeaveData';
 import StatCard from '@/components/leave/StatCard';
 import GradeBreakdown from '@/components/leave/GradeBreakdown';
 import CompactAdvancedFilter from '@/components/leave/CompactAdvancedFilter';
 import UserDetailModal from '@/components/leave/UserDetailModal';
 import PrintableView from '@/components/leave/PrintableView';
-import DurationBadge from '@/components/leave/DurationBadge'; // IMPORT ထည့်ရန် အရေးကြီး
+import DurationBadge from '@/components/leave/DurationBadge';
 import { getTodayMM, formatMMDate, formatDateDisplay } from '@/components/leave/DateHelpers';
 
 // Watchlist Group Component
@@ -96,7 +97,11 @@ export default function AnalysisPage() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [printView, setPrintView] = useState(null);
   const [watchFilter, setWatchFilter] = useState("CONSECUTIVE_3");
-  const [historySearchQueryAnalysis, setHistorySearchQueryAnalysis] = useState("");
+  
+  // ── Debounced search for individual ─────────────────────────────────
+  const [historySearchRaw, setHistorySearchRaw] = useState("");
+  const [historySearchQuery] = useDebounce(historySearchRaw, 300);
+  
   const [advancedFilters, setAdvancedFilters] = useState({
     userType: 'ALL',
     minDays: '',
@@ -114,7 +119,7 @@ export default function AnalysisPage() {
 
   const printRef = useRef();
 
-  // Grade-wise breakdowns
+  // Grade-wise breakdowns (using useMemo)
   const getTodayAbsentByGrade = useMemo(() => {
     const byGrade = {};
     getTodayAbsentUsers.filter(u => u.type === 'STUDENT').forEach(u => {
@@ -178,7 +183,6 @@ export default function AnalysisPage() {
       return true;
     }).sort((a, b) => {
       let aVal, bVal;
-
       switch (advancedFilters.sortBy) {
         case 'totalDays':
           aVal = a.totalDays;
@@ -189,9 +193,7 @@ export default function AnalysisPage() {
           bVal = b.consecutiveMax;
           return advancedFilters.sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
         case 'grade':
-          if (a.type !== b.type) {
-            return a.type === 'STUDENT' ? -1 : 1;
-          }
+          if (a.type !== b.type) return a.type === 'STUDENT' ? -1 : 1;
           if (a.type === 'STUDENT') {
             const gradeA = parseInt(a.grade) || 0;
             const gradeB = parseInt(b.grade) || 0;
@@ -213,51 +215,16 @@ export default function AnalysisPage() {
     });
   }, [statsList, advancedFilters]);
 
-  // Watch groups
-  const watchGroups = {
-    'CONSECUTIVE_2': { 
-      title: '၂ ရက်ဆက်တိုက် ပျက်သူများ', 
-      users: filteredStats.filter(u => u.consecutiveMax >= 2),
-      icon: '⚠️',
-      color: 'text-amber-600'
-    },
-    'CONSECUTIVE_3': { 
-      title: '၃ ရက်ဆက်တိုက် ပျက်သူများ', 
-      users: filteredStats.filter(u => u.consecutiveMax >= 3),
-      icon: '🔥',
-      color: 'text-orange-600'
-    },
-    'CONSECUTIVE_4': { 
-      title: '၄ ရက်ဆက်တိုက် ပျက်သူများ', 
-      users: filteredStats.filter(u => u.consecutiveMax >= 4),
-      icon: '⚡',
-      color: 'text-red-600'
-    },
-    'CONSECUTIVE_5': { 
-      title: '၅ ရက်ဆက်တိုက် ပျက်သူများ', 
-      users: filteredStats.filter(u => u.consecutiveMax >= 5),
-      icon: '🚨',
-      color: 'text-rose-600'
-    },
-    'WEEK_2PLUS': { 
-      title: '၁ ပတ်အတွင်း ၂ ရက်နှင့်အထက်', 
-      users: filteredStats.filter(u => u.weekCount >= 2),
-      icon: '📊',
-      color: 'text-emerald-600'
-    },
-    'MONTH_3PLUS': { 
-      title: '၁ လအတွင်း ၃ ရက်နှင့်အထက်', 
-      users: filteredStats.filter(u => u.monthCount >= 3),
-      icon: '📈',
-      color: 'text-blue-600'
-    },
-    'QUARTER_5PLUS': { 
-      title: '၃ လအတွင်း ၅ ရက်နှင့်အထက်', 
-      users: filteredStats.filter(u => u.quarterCount >= 5),
-      icon: '🎯',
-      color: 'text-purple-600'
-    }
-  };
+  // watchGroups with useMemo
+  const watchGroups = useMemo(() => ({
+    'CONSECUTIVE_2': { title: '၂ ရက်ဆက်တိုက် ပျက်သူများ', users: filteredStats.filter(u => u.consecutiveMax >= 2), icon: '⚠️', color: 'text-amber-600' },
+    'CONSECUTIVE_3': { title: '၃ ရက်ဆက်တိုက် ပျက်သူများ', users: filteredStats.filter(u => u.consecutiveMax >= 3), icon: '🔥', color: 'text-orange-600' },
+    'CONSECUTIVE_4': { title: '၄ ရက်ဆက်တိုက် ပျက်သူများ', users: filteredStats.filter(u => u.consecutiveMax >= 4), icon: '⚡', color: 'text-red-600' },
+    'CONSECUTIVE_5': { title: '၅ ရက်ဆက်တိုက် ပျက်သူများ', users: filteredStats.filter(u => u.consecutiveMax >= 5), icon: '🚨', color: 'text-rose-600' },
+    'WEEK_2PLUS': { title: '၁ ပတ်အတွင်း ၂ ရက်နှင့်အထက်', users: filteredStats.filter(u => u.weekCount >= 2), icon: '📊', color: 'text-emerald-600' },
+    'MONTH_3PLUS': { title: '၁ လအတွင်း ၃ ရက်နှင့်အထက်', users: filteredStats.filter(u => u.monthCount >= 3), icon: '📈', color: 'text-blue-600' },
+    'QUARTER_5PLUS': { title: '၃ လအတွင်း ၅ ရက်နှင့်အထက်', users: filteredStats.filter(u => u.quarterCount >= 5), icon: '🎯', color: 'text-purple-600' }
+  }), [filteredStats]);
 
   const watchTabs = [
     { id: 'CONSECUTIVE_2', label: '၂ ရက်ဆက်' },
@@ -269,20 +236,30 @@ export default function AnalysisPage() {
     { id: 'QUARTER_5PLUS', label: '၃ လ ≥၅' }
   ];
 
-  // Calendar logic
-  const cYear = calDate.getFullYear();
-  const cMonth = calDate.getMonth();
-  const daysInMonth = new Date(cYear, cMonth + 1, 0).getDate();
-  const firstDay = new Date(cYear, cMonth, 1).getDay();
-  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-  
-  const calCells = [];
-  for(let i=0; i<firstDay; i++) calCells.push(null);
-  for(let i=1; i<=daysInMonth; i++) {
-    const dStr = `${cYear}-${String(cMonth+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
-    const count = allLeaves.filter(l => l.Status === 'Approved' && formatMMDate(l.Start_Date) <= dStr && formatMMDate(l.End_Date || l.Start_Date) >= dStr).length;
-    calCells.push({ day: i, dateStr: dStr, total: count });
-  }
+  // ── Calendar cells – useMemo (critical) ───────────────────────────
+  const calCells = useMemo(() => {
+    const cYear = calDate.getFullYear();
+    const cMonth = calDate.getMonth();
+    const daysInMonth = new Date(cYear, cMonth + 1, 0).getDate();
+    const firstDay = new Date(cYear, cMonth, 1).getDay();
+    const cells = [];
+    for(let i=0; i<firstDay; i++) cells.push(null);
+    for(let i=1; i<=daysInMonth; i++) {
+      const dStr = `${cYear}-${String(cMonth+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+      const count = allLeaves.filter(l => l.Status === 'Approved' && formatMMDate(l.Start_Date) <= dStr && formatMMDate(l.End_Date || l.Start_Date) >= dStr).length;
+      cells.push({ day: i, dateStr: dStr, total: count });
+    }
+    return cells;
+  }, [calDate, allLeaves]);
+
+  // ── Debounced individual search result ────────────────────────────
+  const searchedUsers = useMemo(() => {
+    if (historySearchQuery.trim().length < 2) return [];
+    return statsList.filter(u =>
+      u.name.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
+      u.id.toLowerCase().includes(historySearchQuery.toLowerCase())
+    );
+  }, [statsList, historySearchQuery]);
 
   const handlePrint = (title, data) => {
     setPrintView({ title, data });
@@ -353,7 +330,6 @@ export default function AnalysisPage() {
               {allLeaves.filter(l => l.Status === 'Approved' && formatMMDate(l.Start_Date) <= selectedCalDate && (formatMMDate(l.End_Date) || formatMMDate(l.Start_Date)) >= selectedCalDate).length === 0 ? (
                 <div className="py-20 text-center text-slate-300 italic font-black uppercase tracking-widest">No absentees for this day.</div>
               ) : allLeaves.filter(l => l.Status === 'Approved' && formatMMDate(l.Start_Date) <= selectedCalDate && (formatMMDate(l.End_Date) || formatMMDate(l.Start_Date)) >= selectedCalDate).map((l, i) => {
-                // Find user stats to pass to modal
                 const userStat = statsList.find(s => s.id === l.User_ID || s.name === l.Name);
                 const userForModal = userStat ? { ...userStat, id: l.User_ID, name: l.Name } : null;
                 return (
@@ -438,40 +414,36 @@ export default function AnalysisPage() {
       <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-xl">
         <p className="text-xs font-black text-sky-600 uppercase tracking-[0.4em] mb-4 flex items-center gap-2">🔍 တစ်ဦးချင်း ရှာဖွေရန်</p>
         <input
-          value={historySearchQueryAnalysis}
-          onChange={e => setHistorySearchQueryAnalysis(e.target.value)}
+          value={historySearchRaw}
+          onChange={e => setHistorySearchRaw(e.target.value)}
           placeholder="နာမည် သို့မဟုတ် ID ရိုက်ထည့်ပါ..."
           className="w-full bg-slate-50 border border-slate-200 rounded-full px-5 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-sky-200 transition-all mb-4"
         />
 
-        {historySearchQueryAnalysis.trim().length >= 2 && (
+        {historySearchQuery.trim().length >= 2 && (
           <div className="max-h-[400px] overflow-y-auto flex flex-col gap-3 pr-2 scrollbar-thin">
-            {statsList.filter(u =>
-              u.name.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase()) ||
-              u.id.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase())
-            ).length === 0 ? (
+            {searchedUsers.length === 0 ? (
               <p className="py-10 text-center italic text-slate-300 font-black">မတွေ့ပါ။</p>
-            ) : statsList.filter(u =>
-              u.name.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase()) ||
-              u.id.toLowerCase().includes(historySearchQueryAnalysis.toLowerCase())
-            ).map((u, i) => (
-              <div
-                key={i}
-                className="bg-slate-50 p-4 rounded-xl border border-slate-100 hover:bg-white hover:shadow cursor-pointer transition-all"
-                onClick={() => setSelectedUser(u)}
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="font-black text-slate-900">{u.name}</p>
-                    <div className="flex gap-2 mt-1">
-                      <span className="text-[8px] bg-white border border-slate-200 px-2 py-0.5 rounded-full font-black">ID: {u.id}</span>
-                      <span className={`text-[8px] px-2 py-0.5 rounded-full font-black ${u.type === 'STUDENT' ? 'bg-indigo-100' : 'bg-amber-100'}`}>{u.type}</span>
+            ) : (
+              searchedUsers.map((u, i) => (
+                <div
+                  key={i}
+                  className="bg-slate-50 p-4 rounded-xl border border-slate-100 hover:bg-white hover:shadow cursor-pointer transition-all"
+                  onClick={() => setSelectedUser(u)}
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="font-black text-slate-900">{u.name}</p>
+                      <div className="flex gap-2 mt-1">
+                        <span className="text-[8px] bg-white border border-slate-200 px-2 py-0.5 rounded-full font-black">ID: {u.id}</span>
+                        <span className={`text-[8px] px-2 py-0.5 rounded-full font-black ${u.type === 'STUDENT' ? 'bg-indigo-100' : 'bg-amber-100'}`}>{u.type}</span>
+                      </div>
                     </div>
+                    <span className="text-sm font-black text-amber-600">{u.totalDays}d</span>
                   </div>
-                  <span className="text-sm font-black text-amber-600">{u.totalDays}d</span>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         )}
       </div>
@@ -487,7 +459,7 @@ export default function AnalysisPage() {
         </div>
       </div>
 
-      {/* TODAY'S ABSENT SECTION - ထိပ်ဆုံးမှာ */}
+      {/* TODAY'S ABSENT SECTION */}
       {getTodayAbsentUsers.length > 0 && (
         <div id="today-absent-section" className="bg-gradient-to-br from-rose-50 to-amber-50 rounded-[2.5rem] p-6 border-2 border-rose-200 shadow-xl">
           <div className="flex items-center gap-3 mb-4">
@@ -580,12 +552,12 @@ export default function AnalysisPage() {
       {/* Calendar View */}
       <div className="bg-white border border-slate-200 rounded-[2rem] p-6 shadow-xl">
         <div className="flex justify-between items-center mb-6">
-          <button onClick={() => setCalDate(new Date(cYear, cMonth - 1, 1))} className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center font-bold text-slate-500 hover:bg-sky-100 hover:text-sky-600 transition-all">‹</button>
+          <button onClick={() => setCalDate(new Date(calDate.getFullYear(), calDate.getMonth() - 1, 1))} className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center font-bold text-slate-500 hover:bg-sky-100 hover:text-sky-600 transition-all">‹</button>
           <div className="text-center">
-            <h3 className="text-xl font-black uppercase tracking-[0.2em] text-slate-900">{monthNames[cMonth]}</h3>
-            <p className="text-[9px] font-black text-sky-500 mt-1 uppercase tracking-widest">{cYear}</p>
+            <h3 className="text-xl font-black uppercase tracking-[0.2em] text-slate-900">{new Date(calDate.getFullYear(), calDate.getMonth()).toLocaleString('default', { month: 'long' })}</h3>
+            <p className="text-[9px] font-black text-sky-500 mt-1 uppercase tracking-widest">{calDate.getFullYear()}</p>
           </div>
-          <button onClick={() => setCalDate(new Date(cYear, cMonth + 1, 1))} className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center font-bold text-slate-500 hover:bg-sky-100 hover:text-sky-600 transition-all">›</button>
+          <button onClick={() => setCalDate(new Date(calDate.getFullYear(), calDate.getMonth() + 1, 1))} className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center font-bold text-slate-500 hover:bg-sky-100 hover:text-sky-600 transition-all">›</button>
         </div>
         <div className="grid grid-cols-7 gap-1 mb-3 text-center">
           {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => <div key={d} className="text-[9px] font-black text-slate-400">{d}</div>)}
@@ -604,7 +576,7 @@ export default function AnalysisPage() {
                 }`}
               >
                 <span className={`font-black text-[10px] ${isToday ? 'text-white' : cell.total > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{cell.day}</span>
-                {cell.total > 0 && <span className={`text-[7px] font-black ${isToday ? 'text-white/80' : 'text-rose-500'}'}`}>{cell.total}</span>}
+                {cell.total > 0 && <span className={`text-[7px] font-black ${isToday ? 'text-white/80' : 'text-rose-500'}`}>{cell.total}</span>}
               </button>
             );
           })}
@@ -649,7 +621,6 @@ export default function AnalysisPage() {
           />
         )}
       </div>
-
     </div>
   );
 }

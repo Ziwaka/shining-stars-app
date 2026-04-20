@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useDebounce } from 'use-debounce';
 import { WEB_APP_URL } from '@/lib/api';
 import CompactWatchlistFilter from '@/components/leave/CompactWatchlistFilter';
+import StaffAnalysisTab from '@/components/leave/StaffAnalysisTab';
 
 const MM_TZ = 'Asia/Yangon';
 const getTodayMM = () => {
@@ -113,7 +114,7 @@ export default function StaffLeave() {
   const [loading, setLoading]   = useState(true);
   const [saving, setSaving]     = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [registry, setRegistry] = useState({ students:[], staff:[], allLeaves:[], pending:[], history:[] });
+  const [registry, setRegistry] = useState({ students:[], staff:[], allLeaves:[], pending:[], history:[], statsList: [] });
   
   const [view, setView]         = useState('NEW'); 
   const [target, setTarget]     = useState('STUDENT');
@@ -147,13 +148,51 @@ export default function StaffLeave() {
       const r = await res.json();
       if (r.success) {
         const isActive = u => u.Status?.toString().toUpperCase() !== 'FALSE';
-        setRegistry({
-          students:(r.students||[]).filter(isActive),
-          staff:(r.staffList||r.staff||[]).filter(isActive),
-          allLeaves: r.leaves || [],
-          pending:(r.leaves||[]).filter(x=>x.Status==='Pending'),
-          history:(r.leaves||[]).filter(x=>x.Status!=='Pending').reverse(),
+        const students = (r.students||[]).filter(isActive);
+        const staff = (r.staffList||r.staff||[]).filter(isActive);
+        const allLeaves = r.leaves || [];
+        const pending = allLeaves.filter(x=>x.Status==='Pending');
+        const history = allLeaves.filter(x=>x.Status!=='Pending').reverse();
+        
+        // Build statsList for analysis
+        const stats = {};
+        allLeaves.filter(l => l.Status === 'Approved').forEach(l => {
+          const k = l.User_ID || l.Name;
+          if (!stats[k]) stats[k] = { name: l.Name, type: l.User_Type, id: l.User_ID || '-', grade: '', section: '', totalDays: 0, weekCount: 0, monthCount: 0, consecutiveMax: 0, isAbsentToday: false, reasons: [] };
+          const cleanS = formatMMDate(l.Start_Date);
+          const cleanE = formatMMDate(l.End_Date) || cleanS;
+          const days = Number(l.Total_Days) || 0;
+          stats[k].totalDays += days;
+          const todayStr = getTodayMM();
+          if (todayStr >= cleanS && todayStr <= cleanE) stats[k].isAbsentToday = true;
+          const sdMs = new Date(cleanS).getTime();
+          const now = new Date();
+          const diffDays = (now.getTime() - sdMs) / 86400000;
+          if (diffDays <= 7) stats[k].weekCount += days;
+          if (diffDays <= 30) stats[k].monthCount += days;
+          if (l.Reason && l.Reason !== '-') stats[k].reasons.push({ start: cleanS, end: cleanE, text: l.Reason, type: l.Leave_Type, attachment: l.Attachment_Link });
         });
+        Object.values(stats).forEach(u => {
+          if (u.type === 'STUDENT') {
+            const st = students.find(s => s.Student_ID === u.id || s['Enrollment No.'] === u.id || s['Name (ALL CAPITAL)'] === u.name || s.Name === u.name);
+            if (st) { u.grade = st.Grade || ''; u.section = st.Section || st.Class || ''; }
+          }
+          u.reasons.sort((a,b) => new Date(b.start) - new Date(a.start));
+          // Calculate consecutive max
+          let maxC = 0, currC = 0, lastEnd = 0;
+          const periods = u.reasons.map(r => ({ start: new Date(r.start).getTime(), days: 1 }));
+          periods.sort((a,b) => a.start - b.start);
+          periods.forEach(p => {
+            if (lastEnd === 0) currC = p.days;
+            else { const diffDays = (p.start - lastEnd) / 86400000; if (diffDays <= 3) currC += p.days; else currC = p.days; }
+            if (currC > maxC) maxC = currC;
+            lastEnd = p.start + (p.days * 86400000);
+          });
+          u.consecutiveMax = maxC;
+        });
+        const statsList = Object.values(stats);
+        
+        setRegistry({ students, staff, allLeaves, pending, history, statsList });
       }
     } catch {}
     setLoading(false);
@@ -262,92 +301,6 @@ export default function StaffLeave() {
     return st ? { grade: st.Grade || '', section: st.Section || st.Class || '' } : { grade:'', section:'' };
   }, [registry.students]);
 
-  const analysisData = useMemo(() => {
-    if (view !== 'ANALYSIS') return { userStats: {}, statsList: [], watchMap: {}, watchTabs: [], calCells: [], analysisLeaves: [] };
-    
-    const stats = {};
-    registry.allLeaves.filter(l => l.Status === 'Approved').forEach(l => {
-      const k = l.User_ID || l.Name;
-      if (!stats[k]) stats[k] = { name: l.Name, type: l.User_Type, id: l.User_ID || '-', grade: '', section: '', totalDays: 0, last7: 0, last30: 0, last90: 0, periods: [], isAbsentToday: false, reasons: [] };
-      const cleanS = formatMMDate(l.Start_Date);
-      const cleanE = formatMMDate(l.End_Date) || cleanS;
-      const days = Number(l.Total_Days) || 0;
-      stats[k].totalDays += days;
-      const todayStr = getTodayMM();
-      if (todayStr >= cleanS && todayStr <= cleanE) stats[k].isAbsentToday = true;
-      const sdMs = new Date(cleanS).getTime();
-      const now = new Date();
-      const diffDays = (now.getTime() - sdMs) / 86400000;
-      if (diffDays <= 7) stats[k].last7 += days; 
-      if (diffDays <= 30) stats[k].last30 += days; 
-      if (diffDays <= 90) stats[k].last90 += days;
-      stats[k].periods.push({ start: sdMs, days });
-      if (l.Reason && l.Reason !== '-') stats[k].reasons.push({ start: cleanS, end: cleanE, text: l.Reason, type: l.Leave_Type, attachment: l.Attachment_Link });
-    });
-    Object.values(stats).forEach(u => {
-      if (u.type === 'STUDENT') {
-        const stInfo = getStudentInfo(u.id, u.name);
-        u.grade = stInfo.grade; u.section = stInfo.section;
-      }
-      u.reasons.sort((a,b) => new Date(b.start) - new Date(a.start));
-      u.periods.sort((a,b) => a.start - b.start);
-      let maxC = 0, currC = 0, lastEnd = 0;
-      u.periods.forEach(p => {
-        if (lastEnd === 0) currC = p.days;
-        else { const diffDays = (p.start - lastEnd) / 86400000; if (diffDays <= 3) currC += p.days; else currC = p.days; }
-        if (currC > maxC) maxC = currC; lastEnd = p.start + (p.days * 86400000);
-      });
-      u.maxConsecutive = maxC;
-    });
-    const statsList = Object.values(stats);
-    
-    const watchMap = {
-      'TODAY': { title: 'ယနေ့ ပျက်သူ', users: statsList.filter(u => u.isAbsentToday), icon: '📍', color: 'text-sky-600' },
-      'C2':    { title: '၂ ရက်ဆက်တိုက်', users: statsList.filter(u => u.maxConsecutive >= 2 && u.maxConsecutive < 3), icon: '⚠️', color: 'text-amber-600' },
-      'C3':    { title: '၃ ရက်ဆက်တိုက်', users: statsList.filter(u => u.maxConsecutive >= 3 && u.maxConsecutive < 5), icon: '🔥', color: 'text-orange-600' },
-      'C5':    { title: '၅ ရက်ဆက်တိုက်', users: statsList.filter(u => u.maxConsecutive >= 5), icon: '🚨', color: 'text-rose-600' },
-      'W3':    { title: '၁ ပတ် (≥ ၃ ရက်)', users: statsList.filter(u => u.last7 >= 3), icon: '📅', color: 'text-indigo-600' },
-      'M3':    { title: '၁ လ (≥ ၃ ရက်)', users: statsList.filter(u => u.last30 >= 3), icon: '📆', color: 'text-purple-600' },
-      'M5':    { title: '၃ လ (≥ ၅ ရက်)', users: statsList.filter(u => u.last90 >= 5), icon: '📊', color: 'text-pink-600' },
-      'ALL5':  { title: 'All Time (≥ ၅ ရက်)', users: statsList.filter(u => u.totalDays >= 5), icon: '🏆', color: 'text-slate-600' }
-    };
-    const watchTabs = [
-      { id: 'TODAY', label: 'ယနေ့', count: watchMap['TODAY'].users.length },
-      { id: 'C2', label: '၂ ရက်ဆက်', count: watchMap['C2'].users.length },
-      { id: 'C3', label: '၃ ရက်ဆက်', count: watchMap['C3'].users.length },
-      { id: 'C5', label: '≥ ၅ ရက်ဆက်', count: watchMap['C5'].users.length },
-      { id: 'W3', label: '၁ ပတ် (၃)', count: watchMap['W3'].users.length },
-      { id: 'M3', label: '၁ လ (၃)', count: watchMap['M3'].users.length },
-      { id: 'M5', label: '၃ လ (၅)', count: watchMap['M5'].users.length },
-      { id: 'ALL5', label: 'All Time (၅)', count: watchMap['ALL5'].users.length }
-    ];
-
-    const cYear = calDate.getFullYear();
-    const cMonth = calDate.getMonth();
-    const daysInMonth = new Date(cYear, cMonth + 1, 0).getDate();
-    const firstDay = new Date(cYear, cMonth, 1).getDay();
-    const cells = [];
-    for(let i=0; i<firstDay; i++) cells.push(null);
-    for(let i=1; i<=daysInMonth; i++) {
-      const dStr = `${cYear}-${String(cMonth+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
-      const dayLeaves = registry.allLeaves.filter(l => l.Status === 'Approved' && formatMMDate(l.Start_Date) <= dStr && (formatMMDate(l.End_Date) || formatMMDate(l.Start_Date)) >= dStr);
-      let totalAbs = 0;
-      dayLeaves.forEach(l => { totalAbs++; });
-      cells.push({ day: i, dateStr: dStr, total: totalAbs, grades: {} });
-    }
-
-    const now = new Date();
-    const leavesFiltered = registry.allLeaves.filter(l => {
-      const days = (now - new Date(formatMMDate(l.Start_Date))) / 86400000;
-      if (rangeFilter === "7D") return days <= 7;
-      if (rangeFilter === "30D") return days <= 30;
-      if (rangeFilter === "90D") return days <= 90;
-      return true;
-    }).filter(l => typeFilter === "ALL" || l.User_Type === typeFilter);
-
-    return { userStats: stats, statsList, watchMap, watchTabs, calCells: cells, analysisLeaves: leavesFiltered };
-  }, [view, registry.allLeaves, calDate, rangeFilter, typeFilter, getStudentInfo]);
-
   const historyData = useMemo(() => {
     if (view !== 'HISTORY') return { filteredHistory: [], groupedHistory: {}, sortedDates: [] };
     const filtered = registry.history.filter(h => {
@@ -364,17 +317,6 @@ export default function StaffLeave() {
     const sorted = Object.keys(grouped).sort((a,b) => new Date(b) - new Date(a));
     return { filteredHistory: filtered, groupedHistory: grouped, sortedDates: sorted };
   }, [view, registry.history, histSearch, histFilter]);
-
-  const [historySearchQueryAnalysis, setHistorySearchQueryAnalysis] = useState("");
-  const searchedUsersAnalysis = useMemo(() => {
-    if (view !== 'ANALYSIS') return [];
-    const query = historySearchQueryAnalysis.trim();
-    if (query.length < 2) return [];
-    return analysisData.statsList.filter(u => u.name.toLowerCase().includes(query.toLowerCase()) || u.id.toLowerCase().includes(query.toLowerCase()));
-  }, [view, analysisData.statsList, historySearchQueryAnalysis]);
-
-  const prevMonth = () => setCalDate(new Date(calDate.getFullYear(), calDate.getMonth() - 1, 1));
-  const nextMonth = () => setCalDate(new Date(calDate.getFullYear(), calDate.getMonth() + 1, 1));
 
   if (loading || saving || uploading) return (
     <div className="min-h-[50vh] flex items-center justify-center font-black text-[#4c1d95] animate-pulse uppercase italic tracking-widest text-lg">
@@ -698,125 +640,13 @@ export default function StaffLeave() {
             </div>
           )}
 
-          {view==='ANALYSIS' && (
-            <div className="space-y-8">
-              
-              <div className="bg-white border border-slate-200 rounded-[2rem] p-5 shadow-xl">
-                <div className="flex justify-between items-center mb-4">
-                  <button onClick={prevMonth} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 hover:bg-slate-200">‹</button>
-                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-900">{new Date(calDate.getFullYear(), calDate.getMonth()).toLocaleString('default', { month: 'long' })} {calDate.getFullYear()}</h3>
-                  <button onClick={nextMonth} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 hover:bg-slate-200">›</button>
-                </div>
-                <div className="grid grid-cols-7 gap-1 text-center mb-2">
-                  {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=><div key={d} className="text-[8px] font-black uppercase text-slate-400">{d}</div>)}
-                </div>
-                <div className="grid grid-cols-7 gap-1">
-                  {analysisData.calCells.map((cell, idx) => {
-                    if (!cell) return <div key={idx} className="aspect-square bg-slate-50 rounded-lg opacity-50"/>;
-                    return (
-                      <button key={idx} onClick={() => cell.total > 0 && setSelectedCalDate(cell.dateStr)} className={`aspect-square rounded-xl p-1 flex flex-col relative transition-all ${cell.dateStr===getTodayMM()?'ring-2 ring-sky-500 bg-sky-50':cell.total>0?'bg-rose-50 border border-rose-100 cursor-pointer hover:bg-rose-100':'bg-slate-50 cursor-default'}`}>
-                        <span className={`text-[10px] font-black absolute top-1 right-2 ${cell.total>0?'text-rose-500':'text-slate-400'}`}>{cell.day}</span>
-                        <div className="flex-1 flex items-center justify-center pt-3">
-                           {cell.total > 0 ? <span className="text-xs font-black text-rose-600">{cell.total}</span> : <span className="text-[8px] text-slate-300">-</span>}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="bg-white border border-slate-200 rounded-[24px] p-5 shadow-xl">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-1 h-4 bg-sky-500 rounded-full"/>
-                  <h3 className="text-[12px] text-slate-900 font-black uppercase tracking-widest m-0">Attendance Watchlist</h3>
-                </div>
-                <div className="flex items-center justify-between mb-4">
-                  <CompactWatchlistFilter
-                    tabs={analysisData.watchTabs}
-                    activeId={watchFilter}
-                    onSelect={setWatchFilter}
-                  />
-                  <span className="text-xs text-slate-400 font-black">
-                    {analysisData.watchMap[watchFilter]?.users.length || 0} individuals
-                  </span>
-                </div>
-                {analysisData.watchMap[watchFilter] && <WatchlistGroup {...analysisData.watchMap[watchFilter]} bg="#ffffff" color="#0f172a" />}
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                <div className="flex bg-white p-1 rounded-xl border border-slate-100 gap-1 flex-1 min-w-[180px]">
-                  {["ALL","7D","30D","90D"].map(r=>(
-                    <button key={r} onClick={()=>setRangeFilter(r)} style={{flex:1,padding:'8px 4px',borderRadius:'10px',border:'none',cursor:'pointer',fontSize:'9px',fontWeight:900, background:rangeFilter===r?'#020617':'transparent',color:rangeFilter===r?'#fff':'#64748b'}}>{r}</button>
-                  ))}
-                </div>
-                <div className="flex bg-white p-1 rounded-xl border border-slate-100 gap-1 flex-1 min-w-[180px]">
-                  {["ALL","STUDENT","STAFF"].map(t=>(
-                    <button key={t} onClick={()=>setTypeFilter(t)} style={{flex:1,padding:'8px 4px',borderRadius:'10px',border:'none',cursor:'pointer',fontSize:'9px',fontWeight:900, background:typeFilter===t?'#fbbf24':'transparent',color:typeFilter===t?'#020617':'#64748b'}}>{t}</button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  {label:"Total Leaves", value:analysisData.analysisLeaves.length,                                     icon:"📋", bg:'#eff6ff', color:'#2563eb'},
-                  {label:"Total Days",   value:analysisData.analysisLeaves.reduce((s,l)=>s+Number(l.Total_Days||0),0), icon:"📅", bg:'#fef3c7', color:'#d97706'},
-                  {label:"Approved",     value:analysisData.analysisLeaves.filter(l=>l.Status==="Approved").length,     icon:"✅", bg:'#f0fdf4', color:'#16a34a'},
-                ].map((s,i)=>(
-                  <div key={i} style={{background:s.bg,padding:'16px 10px',borderRadius:'16px',textAlign:'center',border:`1px solid ${s.color}33`}}>
-                    <div style={{fontSize:'20px',marginBottom:'4px'}}>{s.icon}</div>
-                    <p style={{fontSize:'22px',fontWeight:900,color:s.color,margin:'0 0 4px',lineHeight:1}}>{s.value}</p>
-                    <p style={{fontSize:'8px',fontWeight:900,color:s.color,textTransform:'uppercase',letterSpacing:'0.05em',margin:0,opacity:0.8}}>{s.label}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="bg-white p-5 rounded-[24px] border border-slate-200 shadow-xl">
-                <p className="text-[11px] font-black color-[#0284c7] uppercase tracking-widest mb-3">🔍 Individual Search</p>
-                <input value={historySearchQueryAnalysis} onChange={e => setHistorySearchQueryAnalysis(e.target.value)} placeholder="Search student or staff name/ID..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 focus:outline-none mb-3"/>
-                {historySearchQueryAnalysis.trim().length >= 2 && (
-                  <div className="max-h-[350px] overflow-y-auto flex flex-col gap-3 pr-1">
-                    {searchedUsersAnalysis.length === 0 ? <p className="text-[11px] text-slate-400 text-center italic my-4">No records found.</p> : searchedUsersAnalysis.map((u, i) => (
-                      <div key={i} className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <p className="text-sm font-black text-slate-900 m-0 mb-1">{u.name}</p>
-                            <div className="flex gap-2 flex-wrap">
-                              <span className="text-[8px] bg-white border border-slate-200 text-slate-500 px-2 py-0.5 rounded-md font-black">ID: {u.id}</span>
-                              {u.type === 'STUDENT' ? (
-                                <>
-                                  <span className="text-[8px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md font-black">STUDENT</span>
-                                  {(u.grade || u.section) && <span className="text-[8px] bg-sky-100 text-sky-700 px-2 py-0.5 rounded-md font-black">{u.grade ? `Grade ${u.grade}` : ''}{u.grade && u.section ? ` - ${u.section}` : ''}</span>}
-                                </>
-                              ) : <span className="text-[8px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md font-black">STAFF</span>}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-xl font-black text-amber-500 leading-none m-0">{u.totalDays}</p>
-                            <p className="text-[8px] uppercase tracking-widest text-slate-400 mt-1 font-bold m-0">Total Days</p>
-                          </div>
-                        </div>
-                        <div className="border-t border-slate-200 pt-3 flex flex-col gap-2">
-                          <p className="text-[9px] color-[#94a3b8] uppercase font-black m-0 mb-1">Absence Records:</p>
-                          {u.reasons.map((r, ri) => (
-                            <div key={ri} className="bg-white p-2 rounded-lg flex gap-3 items-center border border-slate-100 shadow-sm">
-                              <div className="bg-slate-50 p-2 rounded-md text-center min-w-[50px] border border-slate-200">
-                                <p className="text-[9px] text-slate-600 font-black m-0">{formatDateDisplay(r.start)}</p>
-                                {r.end && formatMMDate(r.end) !== formatMMDate(r.start) && <p className="text-[8px] text-slate-400 font-black m-0 mt-0.5">↓<br/>{formatDateDisplay(r.end)}</p>}
-                              </div>
-                              <div className="flex-1">
-                                <span className="text-[8px] text-sky-600 uppercase font-black block mb-0.5">{r.type}</span>
-                                <p className="text-[11px] text-slate-600 m-0 font-italic word-break-word">Reason: {r.text}</p>
-                                {r.attachment && r.attachment !== '-' && <a href={r.attachment} target="_blank" className="text-[10px] text-sky-500 underline font-bold mt-1 inline-block">📎 View Doc</a>}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+          {/* ANALYSIS TAB - using the full-featured StaffAnalysisTab */}
+          {view === 'ANALYSIS' && (
+            <StaffAnalysisTab 
+              statsList={registry.statsList} 
+              allLeaves={registry.allLeaves}
+              loading={loading} 
+            />
           )}
 
         </div>
