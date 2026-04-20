@@ -5,7 +5,6 @@ import DurationBadge from '@/components/leave/DurationBadge';
 import { formatDateDisplay, formatMMDate } from '@/components/leave/DateHelpers';
 import { WEB_APP_URL } from '@/lib/api';
 
-// ── helpers ──────────────────────────────────────────────────────
 const STATUS_STYLE = {
   Approved: { bg:'#dcfce7', color:'#16a34a', label:'✓ Approved'    },
   Rejected: { bg:'#fee2e2', color:'#dc2626', label:'✗ Rejected'    },
@@ -18,7 +17,7 @@ export default function ApprovalPage() {
   const [proc, setProc]           = useState(false);
   const [remark, setRemark]         = useState('');
   const [selectedLeave, setSelectedLeave] = useState(null);
-  const [histTab, setHistTab]     = useState('detail'); // 'detail' | 'history'
+  const [histTab, setHistTab]     = useState('detail');
   const [user] = useState(() => {
     if (typeof window !== 'undefined') {
       return JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
@@ -26,7 +25,6 @@ export default function ApprovalPage() {
     return null;
   });
 
-  // ── Get leave history for a person ───────────────────────────
   const getPersonHistory = (leave) => {
     if (!leave || !allLeaves?.length) return [];
     return allLeaves
@@ -40,11 +38,39 @@ export default function ApprovalPage() {
       .sort((a, b) => (b.Start_Date > a.Start_Date ? 1 : -1));
   };
 
-  // ── Approve / Reject ─────────────────────────────────────────
   const handleAction = async (leave, status) => {
     if (!user?.Name) return alert('Session Expired.');
     const statusLabel = status === 'Approved' ? 'Approve' : status === 'Rejected' ? 'Decline (Reject)' : 'ခွင့်မဲ့ ပျက်ကွက် (AWOL) မှတ်တမ်းတင်';
-    if (!confirm(`${statusLabel} လုပ်မှာ သေချာပါသလား?`)) return;
+    
+    let warningMsg = '';
+    if (status === 'Approved') {
+      // Check for duplicate approved leave (same user, same dates, already approved)
+      const existingApproved = allLeaves.find(l => 
+        l.User_ID === leave.User_ID &&
+        l.Status === 'Approved' &&
+        formatMMDate(l.Start_Date) === formatMMDate(leave.Start_Date) &&
+        formatMMDate(l.End_Date || l.Start_Date) === formatMMDate(leave.End_Date || leave.Start_Date) &&
+        l._rowIndex !== leave._rowIndex
+      );
+      if (existingApproved) {
+        warningMsg = `⚠️ ဤအသုံးပြုသူအတွက် ဤရက်များတွင် ခွင့် Approved ဖြစ်ပြီးသားရှိသည်။\n\nဆက်လက်လုပ်ဆောင်မည်လား။`;
+        if (!confirm(warningMsg)) return;
+      }
+      
+      // Check for excessive approved leaves in last 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const recentApproved = allLeaves.filter(l => 
+        l.User_ID === leave.User_ID &&
+        l.Status === 'Approved' &&
+        new Date(l.Start_Date) >= thirtyDaysAgo
+      ).length;
+      if (recentApproved >= 3) {
+        const extraWarning = `\n\n❗ သတိပြုရန် - ဤအသုံးပြုသူသည် လွန်ခဲ့သော ၃၀ ရက်အတွင်း ${recentApproved} ကြိမ် ခွင့် Approved ရှိပြီးဖြစ်သည်။ ဆက်လက်လုပ်ဆောင်မည်လား။`;
+        if (!confirm(warningMsg + extraWarning)) return;
+      }
+    }
+    
     setProc(true);
     try {
       const res = await fetch(WEB_APP_URL, {
@@ -67,6 +93,7 @@ export default function ApprovalPage() {
         setRemark('');
         setSelectedLeave(null);
         fetchLeaves();
+        alert(`Leave ${statusLabel} ပြုလုပ်ပြီးပါပြီ။`);
       } else {
         alert('မအောင်မြင်ပါ: ' + r.message);
       }
@@ -77,7 +104,6 @@ export default function ApprovalPage() {
     }
   };
 
-  // ── Open detail modal ─────────────────────────────────────────
   const openDetail = (leave) => {
     setSelectedLeave(leave);
     setHistTab('detail');
@@ -99,7 +125,6 @@ export default function ApprovalPage() {
   return (
     <div style={{ paddingBottom:24 }}>
 
-      {/* ── Detail / History Modal ─────────────────────────── */}
       {selectedLeave && (
         <div style={{
           position:'fixed', inset:0, zIndex:9999,
@@ -113,7 +138,6 @@ export default function ApprovalPage() {
             boxShadow:'0 8px 40px rgba(0,0,0,0.25)',
           }} onClick={e => e.stopPropagation()}>
 
-            {/* Modal header */}
             <div style={{
               padding:'16px 20px 0',
               borderBottom:'1px solid #f1f5f9',
@@ -137,7 +161,6 @@ export default function ApprovalPage() {
                 }}>✕</button>
               </div>
 
-              {/* Tab switch */}
               <div style={{ display:'flex', gap:4, paddingBottom:0 }}>
                 {[
                   { id:'detail',  label:'📋 အချက်အလက်' },
@@ -155,14 +178,11 @@ export default function ApprovalPage() {
               </div>
             </div>
 
-            {/* Modal body */}
             <div style={{ overflowY:'auto', flex:1, padding:'16px 20px' }}>
 
-              {/* ── Detail tab ─────────────────────────────── */}
               {histTab === 'detail' && (
                 <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
 
-                  {/* Person info */}
                   <div style={{ background:'#f8fafc', borderRadius:16, padding:'14px 16px' }}>
                     <p style={{ fontSize:9, fontWeight:900, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:10 }}>
                       တိုင်ကြားသူ
@@ -198,7 +218,6 @@ export default function ApprovalPage() {
                     </div>
                   </div>
 
-                  {/* Leave dates */}
                   <div style={{ background:'#f8fafc', borderRadius:16, padding:'14px 16px' }}>
                     <p style={{ fontSize:9, fontWeight:900, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:10 }}>
                       ခွင့်အချက်အလက်
@@ -237,7 +256,6 @@ export default function ApprovalPage() {
                     )}
                   </div>
 
-                  {/* Quick history summary */}
                   {history.length > 0 && (
                     <div style={{
                       background: history.filter(h=>h.Status==='Approved').length >= 3 ? '#fff7ed' : '#f0fdf4',
@@ -266,7 +284,6 @@ export default function ApprovalPage() {
                 </div>
               )}
 
-              {/* ── History tab ─────────────────────────────── */}
               {histTab === 'history' && (
                 <div>
                   {history.length === 0 ? (
@@ -321,7 +338,6 @@ export default function ApprovalPage() {
                                 ✓ Approved by {h.Approved_By}
                               </p>
                             )}
-                            {/* AWOL → ခွင့်ပြန်တိုင်နိုင်ရန် */}
                             {h.Status === 'AWOL' && (
                               <div style={{ marginTop:8, paddingTop:8, borderTop:'1px solid rgba(234,88,12,0.15)' }}>
                                 <p style={{ fontSize:9, color:'#ea580c', fontWeight:700, margin:'0 0 6px' }}>
@@ -352,7 +368,6 @@ export default function ApprovalPage() {
               )}
             </div>
 
-            {/* Remark input + Action buttons */}
             {selectedLeave.Status === 'Pending' && (
               <div style={{ padding:'14px 20px', borderTop:'1px solid #f1f5f9', flexShrink:0 }}>
                 <div style={{ marginBottom:10 }}>
@@ -389,7 +404,6 @@ export default function ApprovalPage() {
         </div>
       )}
 
-      {/* ── Pending list ─────────────────────────────────────── */}
       {pending.length === 0 ? (
         <div style={{
           padding:'60px 20px', textAlign:'center',
@@ -414,7 +428,6 @@ export default function ApprovalPage() {
                 transition:'box-shadow 0.15s',
               }}
             >
-              {/* Top row */}
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
                 <div>
                   <p style={{ fontSize:14, fontWeight:900, color:'#1a1a2e', margin:'0 0 2px' }}>{l.Name}</p>
@@ -428,7 +441,6 @@ export default function ApprovalPage() {
                 </div>
               </div>
 
-              {/* Dates */}
               <p style={{ fontSize:10, color:'#64748b', marginBottom:6 }}>
                 📅 {formatDateDisplay(l.Start_Date)}
                 {l.End_Date && formatMMDate(l.End_Date) !== formatMMDate(l.Start_Date)
@@ -436,7 +448,6 @@ export default function ApprovalPage() {
                   : ''}
               </p>
 
-              {/* Reason preview */}
               <p style={{
                 fontSize:11, fontStyle:'italic', color:'#475569',
                 background:'#f8fafc', padding:'8px 10px', borderRadius:10,
@@ -446,7 +457,6 @@ export default function ApprovalPage() {
                 "{l.Reason || '—'}"
               </p>
 
-              {/* Inline approve / decline / AWOL */}
               <div style={{ display:'flex', gap:6, justifyContent:'flex-end', flexWrap:'wrap' }}>
                 <button
                   onClick={e => { e.stopPropagation(); handleAction(l, 'Approved'); }}

@@ -154,7 +154,6 @@ export default function StaffLeave() {
         const pending = allLeaves.filter(x=>x.Status==='Pending');
         const history = allLeaves.filter(x=>x.Status!=='Pending').reverse();
         
-        // Build statsList for analysis
         const stats = {};
         allLeaves.filter(l => l.Status === 'Approved').forEach(l => {
           const k = l.User_ID || l.Name;
@@ -178,7 +177,6 @@ export default function StaffLeave() {
             if (st) { u.grade = st.Grade || ''; u.section = st.Section || st.Class || ''; }
           }
           u.reasons.sort((a,b) => new Date(b.start) - new Date(a.start));
-          // Calculate consecutive max
           let maxC = 0, currC = 0, lastEnd = 0;
           const periods = u.reasons.map(r => ({ start: new Date(r.start).getTime(), days: 1 }));
           periods.sort((a,b) => a.start - b.start);
@@ -257,15 +255,31 @@ export default function StaffLeave() {
     if (form.durType==='PERIOD'&&!form.subject.trim()) return showMsg('ဘာသာရပ် အမည် ဖြည့်ပါ','error');
     if (target==='STUDENT'&&(!form.reporter.trim()||!form.relation.trim()||!form.phone.trim())) return showMsg('Reporter details ဖြည့်ပါ','error');
     
-    setSaving(true);
-    const totalDays=calcDays();
     const startDateMM = formatMMDate(form.start);
     const endDateMM = formatMMDate(endDateForSave());
+    const userId = selected['Enrollment No.'] || selected['Staff_ID'];
+    
+    // Check for duplicate leave (same user, same dates, not rejected)
+    const existingLeave = registry.allLeaves.find(l => 
+      l.User_ID === userId &&
+      l.Status !== 'Rejected' &&
+      formatMMDate(l.Start_Date) === startDateMM &&
+      formatMMDate(l.End_Date || l.Start_Date) === endDateMM
+    );
+
+    if (existingLeave) {
+      const confirmMsg = `⚠️ ဤအသုံးပြုသူအတွက် ဤရက်များတွင် ခွင့်တင်ထားပြီးသားဖြစ်သည်။\n\nStatus: ${existingLeave.Status}\nLeave Type: ${existingLeave.Leave_Type}\nReason: ${existingLeave.Reason}\n\nဆက်လက်တင်မည်လား။`;
+      if (!confirm(confirmMsg)) return;
+    }
+
+    setSaving(true);
+    const totalDays=calcDays();
     const applyDateMM = getTodayMM();
 
     const entry=[{
       Date_Applied: applyDateMM, Category:form.category, User_Type:target,
-      User_ID:selected['Enrollment No.']||selected['Staff_ID'], Name:selected['Name (ALL CAPITAL)']||selected['Name'],
+      User_ID: userId,
+      Name:selected['Name (ALL CAPITAL)']||selected['Name'],
       Leave_Type:form.type, Duration_Type:form.durType, Half_Day_Part:form.durType==='HALF'?form.halfPart:'-',
       Period_Count:'-', Period_Range:form.durType==='PERIOD'?form.subject:'-',
       Start_Date: startDateMM, End_Date: endDateMM, Total_Days:totalDays,
@@ -640,7 +654,6 @@ export default function StaffLeave() {
             </div>
           )}
 
-          {/* ANALYSIS TAB - using the full-featured StaffAnalysisTab */}
           {view === 'ANALYSIS' && (
             <StaffAnalysisTab 
               statsList={registry.statsList} 
