@@ -173,8 +173,8 @@ export default function StaffLeave() {
         });
         Object.values(stats).forEach(u => {
           if (u.type === 'STUDENT') {
-            const st = students.find(s => s.Student_ID === u.id || s['Enrollment No.'] === u.id || s['Name (ALL CAPITAL)'] === u.name || s.Name === u.name);
-            if (st) { u.grade = st.Grade || ''; u.section = st.Section || st.Class || ''; }
+            const st = students.find(s => s.Student_ID === u.id || s['Enrollment No.'] === u.id || s['Name (ALL CAPITAL)'] === u.name || s['အမည်'] === u.name || s.Name === u.name);
+            if (st) { u.grade = st.Grade || ''; u.section = st.Class || st.Section || ''; }
           }
           u.reasons.sort((a,b) => new Date(b.start) - new Date(a.start));
           let maxC = 0, currC = 0, lastEnd = 0;
@@ -279,7 +279,7 @@ export default function StaffLeave() {
     const entry=[{
       Date_Applied: applyDateMM, Category:form.category, User_Type:target,
       User_ID: userId,
-      Name:selected['Name (ALL CAPITAL)']||selected['Name'],
+      Name:selected['Name (ALL CAPITAL)']||selected['အမည်']||selected['Name'],
       Leave_Type:form.type, Duration_Type:form.durType, Half_Day_Part:form.durType==='HALF'?form.halfPart:'-',
       Period_Count:'-', Period_Range:form.durType==='PERIOD'?form.subject:'-',
       Start_Date: startDateMM, End_Date: endDateMM, Total_Days:totalDays,
@@ -300,28 +300,46 @@ export default function StaffLeave() {
     setSaving(false);
   };
 
+  // ========== FIXED SEARCH (Regex, case‑insensitive, partial match on both name fields) ==========
   const filtered = useMemo(() => {
     if (!search) return [];
-    const list = target==='STUDENT' ? registry.students : registry.staff;
-    const s = search.toLowerCase();
-    return list.filter(u => 
-      (u['Name (ALL CAPITAL)']||u['Name']||'').toLowerCase().includes(s) ||
-      (u['Enrollment No.']||u['Staff_ID']||'').toString().includes(s)
-    );
+    const list = target === 'STUDENT' ? registry.students : registry.staff;
+    const trimmed = search.trim();
+    if (!trimmed) return [];
+    const regex = new RegExp(trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    return list.filter(u => {
+      let nameMatch = false;
+      if (target === 'STUDENT') {
+        const burmeseName = u['အမည်'] || '';
+        const englishName = u['Name (ALL CAPITAL)'] || u['Name'] || '';
+        nameMatch = regex.test(burmeseName) || regex.test(englishName);
+      } else {
+        const staffName = u['Name (ALL CAPITAL)'] || u['Name'] || '';
+        nameMatch = regex.test(staffName);
+      }
+      const id = (u['Enrollment No.'] || u['Student_ID'] || u['Staff_ID'] || '').toString();
+      return nameMatch || regex.test(id);
+    });
   }, [search, target, registry.students, registry.staff]);
 
   const getStudentInfo = useCallback((userId, name) => {
-    const st = registry.students.find(s => s.Student_ID === userId || s['Enrollment No.'] === userId || s['Name (ALL CAPITAL)'] === name || s.Name === name);
-    return st ? { grade: st.Grade || '', section: st.Section || st.Class || '' } : { grade:'', section:'' };
+    const st = registry.students.find(s => s.Student_ID === userId || s['Enrollment No.'] === userId || s['Name (ALL CAPITAL)'] === name || s['အမည်'] === name || s.Name === name);
+    return st ? { grade: st.Grade || '', section: st.Class || st.Section || '' } : { grade:'', section:'' };
   }, [registry.students]);
 
   const historyData = useMemo(() => {
     if (view !== 'HISTORY') return { filteredHistory: [], groupedHistory: {}, sortedDates: [] };
-    const filtered = registry.history.filter(h => {
-      const matchSearch = (h.Name||'').toLowerCase().includes(histSearch.toLowerCase()) || (h.Leave_Type||'').toLowerCase().includes(histSearch.toLowerCase());
-      const matchType = histFilter === 'ALL' || h.User_Type === histFilter;
-      return matchSearch && matchType;
-    });
+    const trimmedSearch = histSearch.trim();
+    let filtered = registry.history.slice();
+    if (trimmedSearch) {
+      const regex = new RegExp(trimmedSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filtered = filtered.filter(h => 
+        regex.test(h.Name || '') || regex.test(h.Leave_Type || '')
+      );
+    }
+    if (histFilter !== 'ALL') {
+      filtered = filtered.filter(h => h.User_Type === histFilter);
+    }
     const grouped = filtered.reduce((acc, l) => {
       const date = formatMMDate(l.Start_Date);
       if (!acc[date]) acc[date] = [];
@@ -427,7 +445,7 @@ export default function StaffLeave() {
               </div>
               <div style={S.card}>
                 <label style={S.label}>နာမည် သို့ ID ရှာပါ</label>
-                <input value={searchRaw} onChange={e=>setSearchRaw(e.target.value)} placeholder={target==='STUDENT'?'Student name or ID...':'Staff name or ID...'} style={S.input}/>
+                <input value={searchRaw} onChange={e=>setSearchRaw(e.target.value)} placeholder={target==='STUDENT'?'ကျောင်းသားနာမည် သို့ ID...':'ဝန်ထမ်းနာမည် သို့ ID...'} style={S.input}/>
                 {filtered.length>0&&(
                   <div style={{marginTop:'8px',display:'flex',flexDirection:'column',gap:'6px',maxHeight:'300px',overflowY:'auto'}}>
                     {filtered.map((u,i)=>(
@@ -526,11 +544,11 @@ export default function StaffLeave() {
                   <p style={{...S.label,marginBottom:'12px',color:'#92400e'}}>ခွင့်တိုင်သူ အချက်အလက်</p>
                   <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
                     <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
-                      <input value={form.reporter} onChange={e=>setF('reporter',e.target.value)} placeholder="Reporter Name *" style={{...S.input,background:'#fff'}}/>
-                      <input value={form.relation} onChange={e=>setF('relation',e.target.value)} placeholder="Relationship *" style={{...S.input,background:'#fff'}}/>
+                      <input value={form.reporter} onChange={e=>setF('reporter',e.target.value)} placeholder="သတင်းပို့သူအမည် *" style={{...S.input,background:'#fff'}}/>
+                      <input value={form.relation} onChange={e=>setF('relation',e.target.value)} placeholder="ဆက်ဆံရေး *" style={{...S.input,background:'#fff'}}/>
                     </div>
                     <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
-                      <input value={form.phone} onChange={e=>setF('phone',e.target.value)} placeholder="Phone *" type="tel" style={{...S.input,background:'#fff'}}/>
+                      <input value={form.phone} onChange={e=>setF('phone',e.target.value)} placeholder="ဖုန်းနံပါတ် *" type="tel" style={{...S.input,background:'#fff'}}/>
                       <select value={form.method} onChange={e=>setF('method',e.target.value)} style={{...S.select,background:'#fff'}}>
                         {METHODS.map(m=><option key={m}>{m}</option>)}
                       </select>
