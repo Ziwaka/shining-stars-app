@@ -44,7 +44,6 @@ export default function ApprovalPage() {
     
     let warningMsg = '';
     if (status === 'Approved') {
-      // Check for duplicate approved leave (same user, same dates, already approved)
       const existingApproved = allLeaves.find(l => 
         l.User_ID === leave.User_ID &&
         l.Status === 'Approved' &&
@@ -57,7 +56,6 @@ export default function ApprovalPage() {
         if (!confirm(warningMsg)) return;
       }
       
-      // Check for excessive approved leaves in last 30 days
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const recentApproved = allLeaves.filter(l => 

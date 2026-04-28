@@ -119,27 +119,41 @@ export default function AnalysisPage() {
 
   const printRef = useRef();
 
-  // Grade-wise breakdowns (using useMemo)
+  // Helper: get student grade from allStudents by ID or name
+  const getStudentGrade = (userId, userName) => {
+    if (!userId && !userName) return null;
+    const student = allStudents?.find(s => 
+      s.Student_ID === userId || 
+      s['Enrollment No.'] === userId || 
+      s['Name (ALL CAPITAL)'] === userName || 
+      s.Name === userName ||
+      s['အမည်'] === userName
+    );
+    return student?.Grade || null;
+  };
+
+  // Grade-wise breakdowns (using student lookup for accurate grade)
   const getTodayAbsentByGrade = useMemo(() => {
     const byGrade = {};
     getTodayAbsentUsers.filter(u => u.type === 'STUDENT').forEach(u => {
-      const grade = u.grade || 'undefined';
-      if (!byGrade[grade]) byGrade[grade] = [];
-      byGrade[grade].push(u);
+      const grade = u.grade || getStudentGrade(u.id, u.name);
+      const gradeKey = grade && grade !== '' && grade !== 'undefined' ? String(grade) : 'Unknown';
+      if (!byGrade[gradeKey]) byGrade[gradeKey] = [];
+      byGrade[gradeKey].push(u);
     });
     return byGrade;
-  }, [getTodayAbsentUsers]);
+  }, [getTodayAbsentUsers, allStudents]);
 
   const pendingByGrade = useMemo(() => {
     const byGrade = {};
     pending.filter(l => l.User_Type === 'STUDENT').forEach(l => {
-      const student = allStudents?.find(s => s.Student_ID === l.User_ID || s.Name === l.Name);
-      const grade = student?.Grade || 'undefined';
-      if (!byGrade[grade]) byGrade[grade] = [];
-      byGrade[grade].push({
+      const grade = getStudentGrade(l.User_ID, l.Name);
+      const gradeKey = grade && grade !== '' && grade !== 'undefined' ? String(grade) : 'Unknown';
+      if (!byGrade[gradeKey]) byGrade[gradeKey] = [];
+      byGrade[gradeKey].push({
         ...l,
         studentGrade: grade,
-        studentSection: student?.Section
+        studentSection: null
       });
     });
     return byGrade;
@@ -148,22 +162,25 @@ export default function AnalysisPage() {
   const highRiskByGrade = useMemo(() => {
     const byGrade = {};
     highRiskUsers.filter(u => u.type === 'STUDENT').forEach(u => {
-      const grade = u.grade || 'undefined';
-      if (!byGrade[grade]) byGrade[grade] = [];
-      byGrade[grade].push(u);
+      const grade = u.grade || getStudentGrade(u.id, u.name);
+      const gradeKey = grade && grade !== '' && grade !== 'undefined' ? String(grade) : 'Unknown';
+      if (!byGrade[gradeKey]) byGrade[gradeKey] = [];
+      byGrade[gradeKey].push(u);
     });
     return byGrade;
-  }, [highRiskUsers]);
+  }, [highRiskUsers, allStudents]);
 
   const topAbsenteesByGrade = useMemo(() => {
     const byGrade = {};
     topAbsentees.forEach(u => {
-      const grade = u.grade || 'undefined';
-      if (!byGrade[grade]) byGrade[grade] = [];
-      byGrade[grade].push(u);
+      // topAbsentees are already student objects, may have grade directly
+      const grade = u.grade || getStudentGrade(u.id, u.name);
+      const gradeKey = grade && grade !== '' && grade !== 'undefined' ? String(grade) : 'Unknown';
+      if (!byGrade[gradeKey]) byGrade[gradeKey] = [];
+      byGrade[gradeKey].push(u);
     });
     return byGrade;
-  }, [topAbsentees]);
+  }, [topAbsentees, allStudents]);
 
   // Filtered stats
   const filteredStats = useMemo(() => {

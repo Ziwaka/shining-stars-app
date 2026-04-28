@@ -1,8 +1,7 @@
 export const dynamic = "force-dynamic";
 
-const GAS =
-  process.env.GAS_URL ||
-  "https://script.google.com/macros/s/AKfycbwebk9Jh15hK4ioWmbHySroAU5mc8gRFeyHwvIHQTIX7_os13S6qQR4cXz5DtDPHVM5/exec";
+// ✅ NEXT_PUBLIC_WEB_APP_URL ကို သုံးပါ
+const GAS = process.env.NEXT_PUBLIC_WEB_APP_URL;
 
 const H = {
   "Content-Type": "application/json",
@@ -14,6 +13,9 @@ export async function OPTIONS() {
 }
 
 export async function GET() {
+  if (!GAS) {
+    return new Response(JSON.stringify({ success: false, message: "GAS URL not configured" }), { status: 500, headers: H });
+  }
   try {
     const r = await fetch(GAS, { cache: "no-store" });
     const t = await r.text();
@@ -27,6 +29,9 @@ export async function GET() {
 }
 
 export async function POST(request) {
+  if (!GAS) {
+    return new Response(JSON.stringify({ success: false, message: "GAS URL not configured" }), { status: 500, headers: H });
+  }
   try {
     const body = await request.text();
     const r = await fetch(GAS, {

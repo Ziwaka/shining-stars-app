@@ -59,8 +59,8 @@ const DurationBadge = React.memo(({ leave }) => {
     return <span style={{background:'#fef3c7',color:'#92400e',fontSize:'9px',fontWeight:900,padding:'3px 8px',borderRadius:'99px',textTransform:'uppercase',whiteSpace:'nowrap'}}>🌗 ½ Day{part}</span>;
   }
   if (dt === 'PERIOD') {
-    const subj = leave.Period_Range && leave.Period_Range !== '-' ? leave.Period_Range : (leave.Leave_Detail && leave.Leave_Detail !== '-' ? leave.Leave_Detail : 'Period');
-    return <span style={{background:'#ede9fe',color:'#6d28d9',fontSize:'9px',fontWeight:900,padding:'3px 8px',borderRadius:'99px',textTransform:'uppercase',whiteSpace:'nowrap'}}>⏱️ {subj}</span>;
+    const range = leave.Period_Range || leave.Leave_Detail || 'Period';
+    return <span style={{background:'#ede9fe',color:'#6d28d9',fontSize:'9px',fontWeight:900,padding:'3px 8px',borderRadius:'99px',textTransform:'uppercase',whiteSpace:'nowrap'}}>⏱️ {range}</span>;
   }
   return <span style={{background:'#f0fdf4',color:'#16a34a',fontSize:'9px',fontWeight:900,padding:'3px 8px',borderRadius:'99px',textTransform:'uppercase',whiteSpace:'nowrap'}}>📅 {days} Day{days!==1?'s':''}</span>;
 });
@@ -91,7 +91,11 @@ const WatchlistGroup = React.memo(({ title, users, icon, color, bg }) => (
                 <div key={ri} style={{background:'#ffffff',padding:'10px',borderRadius:'10px',marginBottom:'6px',borderLeft:'3px solid #cbd5e1',boxShadow:'0 1px 3px rgba(0,0,0,0.02)'}}>
                   <p style={{fontSize:'10px',color:'#64748b',fontWeight:900,margin:'0 0 4px'}}>📅 {formatDateDisplay(r.start)} {r.end&&formatMMDate(r.end)!==formatMMDate(r.start)?`→ ${formatDateDisplay(r.end)}`:''}</p>
                   <p style={{fontSize:'11px',color:'#334155',margin:0,fontStyle:'italic',wordBreak:'break-word'}}>"{r.text}"</p>
-                  {r.attachment && r.attachment !== '-' && <a href={r.attachment} target="_blank" style={{fontSize:'10px', color:'#0284c7', textDecoration:'none', fontWeight:900, display:'inline-block', marginTop:'6px'}}>📎 View Doc</a>}
+                  {r.remark && r.remark !== '-' && r.remark !== '' && (
+                    <div className="mt-1 text-amber-600 text-[9px] font-bold flex items-start gap-1">
+                      <span>✏️</span><span>{r.remark}</span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -105,7 +109,7 @@ const WatchlistGroup = React.memo(({ title, users, icon, color, bg }) => (
 const DUR_TYPES = [
   { id:'FULL',   label:'Full Day', icon:'📅' },
   { id:'HALF',   label:'½ Day',    icon:'🌗' },
-  { id:'PERIOD', label:'Subject',  icon:'⏱️' },
+  { id:'PERIOD', label:'Period',   icon:'⏱️' },
 ];
 
 export default function StaffLeave() {
@@ -132,10 +136,12 @@ export default function StaffLeave() {
 
   const [calDate, setCalDate] = useState(new Date());
   const [selectedCalDate, setSelectedCalDate] = useState(null);
+  const [selectedLeaveDetail, setSelectedLeaveDetail] = useState(null);
 
   const [form, setForm] = useState({
     category:'School', type:'Sick Leave', durType:'FULL',
-    start: getTodayMM(), end: getTodayMM(), halfPart:'AM', subject:'',
+    start: getTodayMM(), end: getTodayMM(), halfPart:'AM',
+    periodStartTime: '', periodEndTime: '',
     reason:'', remark:'', attachment:'',
     reporter:'', relation:'', phone:'', method:'Phone Call',
   });
@@ -169,7 +175,14 @@ export default function StaffLeave() {
           const diffDays = (now.getTime() - sdMs) / 86400000;
           if (diffDays <= 7) stats[k].weekCount += days;
           if (diffDays <= 30) stats[k].monthCount += days;
-          if (l.Reason && l.Reason !== '-') stats[k].reasons.push({ start: cleanS, end: cleanE, text: l.Reason, type: l.Leave_Type, attachment: l.Attachment_Link });
+          stats[k].reasons.push({
+            start: cleanS, end: cleanE,
+            text: l.Reason || '-',
+            type: l.Leave_Type || 'Leave',
+            remark: l.Remark || '',
+            attachment: l.Attachment_Link || '',
+            status: l.Status || 'Approved'
+          });
         });
         Object.values(stats).forEach(u => {
           if (u.type === 'STUDENT') {
@@ -245,21 +258,24 @@ export default function StaffLeave() {
   const durationSummary = () => {
     const d = calcDays();
     if (form.durType === 'HALF')   return `½ Day — ${form.halfPart}`;
-    if (form.durType === 'PERIOD') return `⏱️ ${form.subject || 'Subject(s)'}`;
+    if (form.durType === 'PERIOD') {
+      const range = form.periodStartTime && form.periodEndTime ? `${form.periodStartTime} - ${form.periodEndTime}` : 'Period';
+      return `⏱️ ${range}`;
+    }
     return `${d} day${d!==1?'s':''}`;
   };
 
   const handleSubmit = async () => {
     if (!selected||!form.start||!form.reason.trim()) return showMsg('Date နှင့် Reason ဖြည့်ပါ','error');
     if (form.durType==='FULL'&&!form.end) return showMsg('End Date ဖြည့်ပါ','error');
-    if (form.durType==='PERIOD'&&!form.subject.trim()) return showMsg('ဘာသာရပ် အမည် ဖြည့်ပါ','error');
+    if (form.durType==='PERIOD'&&(!form.periodStartTime || !form.periodEndTime)) return showMsg('Start Time နှင့် End Time ဖြည့်ပါ','error');
     if (target==='STUDENT'&&(!form.reporter.trim()||!form.relation.trim()||!form.phone.trim())) return showMsg('Reporter details ဖြည့်ပါ','error');
     
     const startDateMM = formatMMDate(form.start);
     const endDateMM = formatMMDate(endDateForSave());
     const userId = selected['Enrollment No.'] || selected['Staff_ID'];
     
-    // Check for duplicate leave (same user, same dates, not rejected)
+    // Check for duplicate leave
     const existingLeave = registry.allLeaves.find(l => 
       l.User_ID === userId &&
       l.Status !== 'Rejected' &&
@@ -276,12 +292,17 @@ export default function StaffLeave() {
     const totalDays=calcDays();
     const applyDateMM = getTodayMM();
 
+    let periodRange = '-';
+    if (form.durType === 'PERIOD') {
+      periodRange = `${form.periodStartTime} - ${form.periodEndTime}`;
+    }
+
     const entry=[{
       Date_Applied: applyDateMM, Category:form.category, User_Type:target,
       User_ID: userId,
       Name:selected['Name (ALL CAPITAL)']||selected['အမည်']||selected['Name'],
       Leave_Type:form.type, Duration_Type:form.durType, Half_Day_Part:form.durType==='HALF'?form.halfPart:'-',
-      Period_Count:'-', Period_Range:form.durType==='PERIOD'?form.subject:'-',
+      Period_Count:'-', Period_Range:periodRange,
       Start_Date: startDateMM, End_Date: endDateMM, Total_Days:totalDays,
       Reason:form.reason, Remark:form.remark||'-', Attachment_Link:form.attachment||'-',
       Reporter_Name:target==='STUDENT'?form.reporter:'-', Relationship:target==='STUDENT'?form.relation:'-',
@@ -293,14 +314,13 @@ export default function StaffLeave() {
       const r = await res.json();
       if (r.success) {
         showMsg('Leave တင်ပြီးပါပြီ ✓');
-        setForm({category:'School',type:'Sick Leave',durType:'FULL',start:getTodayMM(),end:getTodayMM(),halfPart:'AM',subject:'',reason:'',remark:'',attachment:'',reporter:'',relation:'',phone:'',method:'Phone Call'});
+        setForm({category:'School',type:'Sick Leave',durType:'FULL',start:getTodayMM(),end:getTodayMM(),halfPart:'AM',periodStartTime:'',periodEndTime:'',reason:'',remark:'',attachment:'',reporter:'',relation:'',phone:'',method:'Phone Call'});
         setSelected(null); setSearchRaw(''); fetchData();
       } else showMsg(r.message||'Error','error');
     } catch { showMsg('Network error','error'); }
     setSaving(false);
   };
 
-  // ========== FIXED SEARCH (Regex, case‑insensitive, partial match on both name fields) ==========
   const filtered = useMemo(() => {
     if (!search) return [];
     const list = target === 'STUDENT' ? registry.students : registry.staff;
@@ -399,6 +419,52 @@ export default function StaffLeave() {
                })}
              </div>
            </div>
+        </div>
+      )}
+
+      {/* Leave Detail Modal for pending/history cards */}
+      {selectedLeaveDetail && (
+        <div className="fixed inset-0 z-[99] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setSelectedLeaveDetail(null)}>
+          <div className="bg-white w-full max-w-[520px] rounded-[24px] p-6 shadow-2xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-5 border-b border-slate-100 pb-4 shrink-0">
+              <div>
+                <h3 className="text-xl font-black text-slate-900 leading-none mb-1">Leave Details</h3>
+                <p className="text-[10px] uppercase tracking-widest text-sky-500 font-bold">{selectedLeaveDetail.Name}</p>
+              </div>
+              <button onClick={() => setSelectedLeaveDetail(null)} className="w-10 h-10 rounded-full bg-slate-100 text-slate-500 font-black text-lg flex items-center justify-center hover:bg-slate-200">✕</button>
+            </div>
+            <div className="overflow-y-auto pr-2 space-y-3 flex-1">
+              <div className="bg-slate-50 p-4 rounded-2xl">
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Leave Type</p>
+                <p className="text-sm font-black text-slate-900">{selectedLeaveDetail.Leave_Type}</p>
+              </div>
+              <div className="bg-slate-50 p-4 rounded-2xl">
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Dates</p>
+                <p className="text-sm text-slate-800 font-bold">{formatDateDisplay(selectedLeaveDetail.Start_Date)} {selectedLeaveDetail.End_Date && selectedLeaveDetail.End_Date !== selectedLeaveDetail.Start_Date ? ` → ${formatDateDisplay(selectedLeaveDetail.End_Date)}` : ''}</p>
+                {selectedLeaveDetail.Total_Days && <p className="text-xs text-slate-500 mt-1">Total days: {selectedLeaveDetail.Total_Days}</p>}
+              </div>
+              <div className="bg-slate-50 p-4 rounded-2xl">
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Reason</p>
+                <p className="text-sm text-slate-700 italic">"{selectedLeaveDetail.Reason || '—'}"</p>
+              </div>
+              {selectedLeaveDetail.Remark && selectedLeaveDetail.Remark !== '-' && selectedLeaveDetail.Remark !== '' && (
+                <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200">
+                  <p className="text-[10px] font-black text-amber-600 uppercase mb-1">✏️ Remark</p>
+                  <p className="text-sm text-amber-800">{selectedLeaveDetail.Remark}</p>
+                </div>
+              )}
+              {selectedLeaveDetail.Attachment_Link && selectedLeaveDetail.Attachment_Link !== '-' && (
+                <a href={selectedLeaveDetail.Attachment_Link} target="_blank" className="block text-center text-sm text-sky-600 underline font-bold mt-2">📎 View Document</a>
+              )}
+              {selectedLeaveDetail.Status && (
+                <div className="mt-2 text-center">
+                  <span className={`inline-block px-4 py-1 rounded-full text-xs font-black uppercase ${selectedLeaveDetail.Status === 'Pending' ? 'bg-amber-100 text-amber-700' : selectedLeaveDetail.Status === 'Approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                    {selectedLeaveDetail.Status}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -520,8 +586,24 @@ export default function StaffLeave() {
                   <div className="grid grid-cols-2 gap-4">
                     <div><label style={S.label}>Date *</label><input type="date" value={form.start} onChange={e=>setF('start',e.target.value)} style={S.input}/></div>
                     <div>
-                      <label style={S.label}>Subject(s) missed *</label>
-                      <input value={form.subject} onChange={e=>setF('subject',e.target.value)} placeholder="Mathematics..." style={S.input}/>
+                      <label style={S.label}>Time Range (Start – End) *</label>
+                      <div className="flex gap-2 items-center">
+                        <input
+                          type="time"
+                          value={form.periodStartTime}
+                          onChange={e=>setF('periodStartTime',e.target.value)}
+                          placeholder="Start"
+                          className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold"
+                        />
+                        <span className="text-slate-400">–</span>
+                        <input
+                          type="time"
+                          value={form.periodEndTime}
+                          onChange={e=>setF('periodEndTime',e.target.value)}
+                          placeholder="End"
+                          className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold"
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -588,7 +670,7 @@ export default function StaffLeave() {
               ):registry.pending.map((l,i)=>{
                 const stInfo = l.User_Type === 'STUDENT' ? getStudentInfo(l.User_ID, l.Name) : {grade:'',section:''};
                 return (
-                  <div key={i} style={S.card}>
+                  <div key={i} style={S.card} onClick={() => setSelectedLeaveDetail(l)}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'10px'}}>
                       <div style={{display:'flex',alignItems:'center',gap:'6px',flexWrap:'wrap'}}>
                         {l.Category && <span style={{background:'#e0e7ff',border:'1px solid #c7d2fe',color:'#4338ca',fontSize:'8px',fontWeight:900,padding:'2px 10px',borderRadius:'99px',textTransform:'uppercase'}}>{l.Category}</span>}
@@ -611,6 +693,11 @@ export default function StaffLeave() {
                       <p style={{fontSize:'9px',color:'#94a3b8',fontWeight:900,margin:'0 0 4px',textTransform:'uppercase',letterSpacing:'0.1em'}}>Reason:</p>
                       <p style={{fontSize:'12px',color:'#334155',margin:0,fontStyle:'italic',wordBreak:'break-word'}}>"{l.Reason}"</p>
                     </div>
+                    {l.Remark && l.Remark !== '-' && l.Remark !== '' && (
+                      <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 text-[10px] text-amber-700 font-bold flex items-start gap-1">
+                        <span>✏️</span><span>{l.Remark}</span>
+                      </div>
+                    )}
                     {l.Attachment_Link && l.Attachment_Link !== '-' && (
                       <a href={l.Attachment_Link} target="_blank" style={{fontSize:'10px', color:'#0284c7', textDecoration:'none', fontWeight:900, display:'inline-block', marginBottom:'8px'}}>📎 View Document</a>
                     )}
@@ -642,7 +729,9 @@ export default function StaffLeave() {
                     {historyData.groupedHistory[date].map((l,i)=>{
                       const stInfo = l.User_Type === 'STUDENT' ? getStudentInfo(l.User_ID, l.Name) : {grade:'',section:''};
                       return (
-                        <div key={i} className={`bg-white p-5 rounded-[2rem] border-b-[6px] shadow-sm ${l.Status==='Approved'?'border-emerald-100':'border-rose-100'}`}>
+                        <div key={i} className={`bg-white p-5 rounded-[2rem] border-b-[6px] shadow-sm cursor-pointer ${l.Status==='Approved'?'border-emerald-100 hover:bg-emerald-50':'border-rose-100 hover:bg-rose-50'}`}
+                          onClick={() => setSelectedLeaveDetail(l)}
+                        >
                           <div className="flex items-center justify-between mb-2">
                              <div className="flex items-center gap-2 flex-wrap">
                                {l.Category && <span className="text-[8px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md font-black uppercase">{l.Category}</span>}
@@ -662,6 +751,11 @@ export default function StaffLeave() {
                           </div>
                           <p className="text-[9px] uppercase font-black text-slate-400 mt-1">{l.Leave_Type} · {formatDateDisplay(l.Start_Date)}{l.End_Date&&formatMMDate(l.End_Date)!==formatMMDate(l.Start_Date)?` → ${formatDateDisplay(l.End_Date)}`:''}</p>
                           <div className="bg-slate-50 border-l-2 border-slate-300 p-2 mt-2 rounded-r-lg"><p className="text-[10px] text-slate-500 italic m-0 word-break-word">"{l.Reason}"</p></div>
+                          {l.Remark && l.Remark !== '-' && l.Remark !== '' && (
+                            <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 text-[10px] text-amber-700 font-bold flex items-start gap-1">
+                              <span>✏️</span><span>{l.Remark}</span>
+                            </div>
+                          )}
                           {l.Attachment_Link && l.Attachment_Link !== '-' && <a href={l.Attachment_Link} target="_blank" className="text-[10px] text-sky-500 underline font-bold mt-2 inline-block">📎 View Document</a>}
                         </div>
                       )

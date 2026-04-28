@@ -12,7 +12,6 @@ const canManage = (u) => {
 };
 
 const gas = async (action, payload = {}) => {
-  // ✅ Always inject userRole so GAS permission check works
   const _u = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
   const res = await fetch(WEB_APP_URL, {
     method: 'POST',
@@ -41,23 +40,26 @@ const EMPTY_STAFF = { Staff_ID:'', Username:'', 'Name (ALL CAPITAL)':'', Name:''
 
 const PersonCard = ({ item, type, onEdit, onToggle, isMgt }) => {
   const name = item['Name (ALL CAPITAL)'] || item.Name || '';
+  const myanmarName = item['အမည်'] || '';
   const id   = type === 'student' ? (item['Enrollment No.'] || item.Student_ID || '') : (item.Staff_ID || item.Username || '');
   const active = item.Status === true || String(item.Status || '').toUpperCase() === 'TRUE';
   const photo = getPhotoUrl(item.Photo_URL);
+  const hostel = item['School/Hostel'] || (type === 'student' ? 'School' : '');
   const sub   = type === 'student'
-    ? `G${item.Grade || '?'} ${item.Section || item.Class || ''} \u00b7 ${item.House || '-'}`
-    : `${item.Position || ''} \u00b7 ${item.Department || ''}`;
+    ? `G${item.Grade || '?'} ${item.Section || item.Class || ''} · ${item.House || '-'} · ${hostel === 'Hostel' ? '🏠 အဆောင်' : '🏫 ကျောင်း'}`
+    : `${item.Position || ''} · ${item.Department || ''}`;
   return (
     <div style={{ ...S.card, display:'flex', alignItems:'center', gap:'12px', opacity: active ? 1 : 0.5 }}>
       <div style={{ width:44, height:44, borderRadius:'50%', background:'rgba(255,255,255,0.08)', overflow:'hidden', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20 }}>
-        {photo ? <img src={photo} style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e => e.target.style.display='none'} /> : '\ud83d\udc64'}
+        {photo ? <img src={photo} style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e => e.target.style.display='none'} /> : '👤'}
       </div>
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ fontSize:13, fontWeight:900, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{name}</div>
-        <div style={{ fontSize:10, color:'rgba(255,255,255,0.4)', marginTop:2 }}>{id} \u00b7 {sub}</div>
+        {myanmarName && <div style={{ fontSize:9, color:'rgba(255,255,255,0.35)', marginTop:2 }}>{myanmarName}</div>}
+        <div style={{ fontSize:9, color:'rgba(255,255,255,0.4)', marginTop:2 }}>{id} · {sub}</div>
       </div>
       <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-        {isMgt && <button style={S.btnSm} onClick={() => onEdit(item)}>\u270f\ufe0f Edit</button>}
+        {isMgt && <button style={S.btnSm} onClick={() => onEdit(item)}>✏️ Edit</button>}
         {isMgt && <button style={active ? S.btnRed : S.btnGreen} onClick={() => onToggle(item, !active)}>{active ? 'Deactivate' : 'Activate'}</button>}
       </div>
     </div>
@@ -77,6 +79,7 @@ export default function RegistryPage() {
   const [msg, setMsg]           = useState(null);
   const [search, setSearch]     = useState('');
   const [filterGrade, setFilterGrade] = useState('ALL');
+  const [filterHostel, setFilterHostel] = useState('ALL');   // NEW: School/Hostel filter
   const [filterStatus, setFilterStatus] = useState('active');
   const [modal, setModal]       = useState(null);
   const [form, setForm]         = useState({});
@@ -111,17 +114,22 @@ export default function RegistryPage() {
   }, []);
 
   const filterItems = (items, type) => {
-    const q = search.toLowerCase().trim();
+    const q = search.trim().toLowerCase();
     return items.filter(item => {
       const active = item.Status === true || String(item.Status || '').toUpperCase() === 'TRUE';
       if (filterStatus === 'active' && !active) return false;
       if (filterStatus === 'inactive' && active) return false;
-      if (type === 'student' && filterGrade !== 'ALL' && String(item.Grade || '') !== filterGrade) return false;
+      if (type === 'student') {
+        if (filterGrade !== 'ALL' && String(item.Grade || '') !== filterGrade) return false;
+        if (filterHostel !== 'ALL' && (item['School/Hostel'] || 'School') !== filterHostel) return false;
+      }
       if (!q) return true;
-      const name = (item['Name (ALL CAPITAL)'] || item.Name || '').toLowerCase();
+      // Search in English name, Myanmar name, ID, Position
+      const engName = (item['Name (ALL CAPITAL)'] || item.Name || '').toLowerCase();
+      const myanName = (item['အမည်'] || '').toLowerCase();
       const id   = (item['Enrollment No.'] || item.Student_ID || item.Staff_ID || item.Username || '').toString().toLowerCase();
       const pos  = (item.Position || '').toLowerCase();
-      return name.includes(q) || id.includes(q) || pos.includes(q);
+      return engName.includes(q) || myanName.includes(q) || id.includes(q) || pos.includes(q);
     });
   };
 
@@ -139,33 +147,33 @@ export default function RegistryPage() {
     try {
       const url = await uploadToCloudinary(file, tab === 'student' ? 'students' : 'staff');
       setF('Photo_URL', url);
-      showMsg('\u1013\u102c\u1010\u103a\u1015\u102f\u1036 upload \u1015\u103c\u102e\u1038\u1015\u102a\u1038\u1015\u103c\u102e');
-    } catch(e) { showMsg('Upload \u1019\u1021\u1031\u102c\u1004\u103a\u1019\u103c\u1004\u103a\u1015\u102a', 'err'); }
+      showMsg('ဓာတ်ပုံ upload ပြီးပါပြီ');
+    } catch(e) { showMsg('Upload မအောင်မြင်ပါ', 'err'); }
     finally { setUploading(false); }
   };
 
   const saveStudent = async () => {
-    if (!form['Enrollment No.']) { showMsg('Enrollment No. \u1016\u103c\u100a\u1037\u1015\u102a', 'err'); return; }
-    if (!form['Name (ALL CAPITAL)']) { showMsg('\u1021\u1019\u100a\u103a \u1016\u103c\u100a\u1037\u1015\u102a', 'err'); return; }
+    if (!form['Enrollment No.']) { showMsg('Enrollment No. ဖြည့်ပါ', 'err'); return; }
+    if (!form['Name (ALL CAPITAL)']) { showMsg('အမည် ဖြည့်ပါ', 'err'); return; }
     setSaving(true);
     try {
       const action = modal === 'addStu' ? 'addStudent' : 'updateStudent';
       const res = await gas(action, {...form, userRole:'management'});
-      if (res.success) { showMsg(res.message || '\u101e\u102d\u1019\u103a\u1015\u103c\u102e\u1038\u1015\u102a\u1038\u1015\u103c\u102e'); setModal(null); await loadAll(); }
-      else showMsg(res.message || '\u1019\u1021\u1031\u102c\u1004\u103a\u1019\u103c\u1004\u103a\u1015\u102a', 'err');
+      if (res.success) { showMsg(res.message || 'သိမ်းပြီးပါပြီ'); setModal(null); await loadAll(); }
+      else showMsg(res.message || 'မအောင်မြင်ပါ', 'err');
     } catch(e) { showMsg(e.toString(), 'err'); }
     finally { setSaving(false); }
   };
 
   const saveStaff = async () => {
-    if (!form.Staff_ID) { showMsg('Staff ID \u1016\u103c\u100a\u1037\u1015\u102a', 'err'); return; }
-    if (!form['Name (ALL CAPITAL)'] && !form.Name) { showMsg('\u1021\u1019\u100a\u103a \u1016\u103c\u100a\u1037\u1015\u102a', 'err'); return; }
+    if (!form.Staff_ID) { showMsg('Staff ID ဖြည့်ပါ', 'err'); return; }
+    if (!form['Name (ALL CAPITAL)'] && !form.Name) { showMsg('အမည် ဖြည့်ပါ', 'err'); return; }
     setSaving(true);
     try {
       const action = modal === 'addStaff' ? 'addStaff' : 'updateStaff';
       const res = await gas(action, {...form, userRole:'management'});
-      if (res.success) { showMsg(res.message || '\u101e\u102d\u1019\u103a\u1015\u103c\u102e\u1038\u1015\u102a\u1038\u1015\u103c\u102e'); setModal(null); await loadAll(); }
-      else showMsg(res.message || '\u1019\u1021\u1031\u102c\u1004\u103a\u1019\u103c\u1004\u103a\u1015\u102a', 'err');
+      if (res.success) { showMsg(res.message || 'သိမ်းပြီးပါပြီ'); setModal(null); await loadAll(); }
+      else showMsg(res.message || 'မအောင်မြင်ပါ', 'err');
     } catch(e) { showMsg(e.toString(), 'err'); }
     finally { setSaving(false); }
   };
@@ -179,8 +187,8 @@ export default function RegistryPage() {
     setSaving(true);
     try {
       const res = await gas(action, { [idKey]: id, Status: setActive });
-      if (res.success) { showMsg(res.message || '\u1015\u103c\u1031\u102c\u1004\u103a\u1038\u1015\u103c\u102e\u1038\u1015\u102a\u1038\u1015\u103c\u102e'); await loadAll(); }
-      else showMsg(res.message || '\u1019\u1021\u1031\u102c\u1004\u103a\u1019\u103c\u1004\u103a\u1015\u102a', 'err');
+      if (res.success) { showMsg(res.message || 'ပြောင်းလဲပြီးပါပြီ'); await loadAll(); }
+      else showMsg(res.message || 'မအောင်မြင်ပါ', 'err');
     } catch(e) { showMsg(e.toString(), 'err'); }
     finally { setSaving(false); }
   };
@@ -190,7 +198,7 @@ export default function RegistryPage() {
       <label style={S.label}>{label}{required && <span style={{color:'#f87171'}}> *</span>}</label>
       {options ? (
         <select style={S.select} value={form[fkey] ?? ''} onChange={e => setF(fkey, e.target.value)}>
-          <option value="">— \u101b\u103d\u1031\u1038\u1015\u102a —</option>
+          <option value="">— ရွေးပါ —</option>
           {options.map(o => <option key={o} value={o}>{o}</option>)}
         </select>
       ) : (
@@ -216,17 +224,17 @@ export default function RegistryPage() {
         <div style={{ background:'#130f22', border:'1px solid rgba(255,255,255,0.1)', borderRadius:20, width:'100%', maxWidth:600, padding:20, marginTop:20, marginBottom:40 }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
             <h2 style={{ fontSize:16, fontWeight:900, margin:0 }}>
-              {isEdit ? '\u270f\ufe0f ' : '\u2795 '}
-              {isStu ? (isEdit ? '\u1000\u103b\u1031\u102c\u1004\u103a\u101e\u102c\u1038 \u1015\u103c\u1004\u103a\u1006\u1004\u103a' : '\u1000\u103b\u1031\u102c\u1004\u103a\u101e\u102c\u1038 \u1021\u101e\u1005\u103a\u1781\u100a\u1037\u1037\u1038') : (isEdit ? '\u101d\u1014\u103a\u1011\u1019\u103a\u1038 \u1015\u103c\u1004\u103a\u1006\u1004\u103a' : '\u101d\u1014\u103a\u1011\u1019\u103a\u1038 \u1021\u101e\u1005\u103a\u1781\u100a\u1037\u1037\u1038')}
+              {isEdit ? '✏️ ' : '➕ '}
+              {isStu ? (isEdit ? 'ကျောင်းသား ပြင်ဆင်' : 'ကျောင်းသား အသစ်') : (isEdit ? 'ဝန်ထမ်း ပြင်ဆင်' : 'ဝန်ထမ်း အသစ်')}
             </h2>
-            <button style={S.btnSm} onClick={() => setModal(null)}>\u2715 Close</button>
+            <button style={S.btnSm} onClick={() => setModal(null)}>✕ Close</button>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
             <div style={{ width:64, height:64, borderRadius:'50%', background:'rgba(255,255,255,0.08)', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, flexShrink:0 }}>
-              {form.Photo_URL ? <img src={getPhotoUrl(form.Photo_URL)} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e => e.target.style.display='none'} /> : '\ud83d\udc64'}
+              {form.Photo_URL ? <img src={getPhotoUrl(form.Photo_URL)} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e => e.target.style.display='none'} /> : '👤'}
             </div>
             <div>
-              <label style={S.label}>\u1013\u102c\u1010\u103a\u1015\u102f\u1036</label>
+              <label style={S.label}>ဓာတ်ပုံ</label>
               <input type="file" accept="image/*" style={{ fontSize:11, color:'rgba(255,255,255,0.5)' }}
                 onChange={e => e.target.files[0] && handlePhotoChange(e.target.files[0])} />
               {uploading && <div style={{ fontSize:10, color:'#fbbf24', marginTop:4 }}>Uploading...</div>}
@@ -236,7 +244,7 @@ export default function RegistryPage() {
             {isStu ? (
               <>
                 <div style={g2}><Field label="Enrollment No." fkey="Enrollment No." required={!isEdit} /><Field label="Password (Login)" fkey="Password" /></div>
-                <div style={g2}><Field label="Name (ALL CAPITAL)" fkey="Name (ALL CAPITAL)" required /><Field label="Myanmar Name (\u1021\u1019\u100a\u103a)" fkey="\u1021\u1019\u100a\u103a" /></div>
+                <div style={g2}><Field label="Name (ALL CAPITAL)" fkey="Name (ALL CAPITAL)" required /><Field label="Myanmar Name (အမည်)" fkey="အမည်" /></div>
                 <div style={g3}><Field label="Grade" fkey="Grade" options={grades} /><Field label="Section" fkey="Section" options={sections} /><Field label="Class" fkey="Class" /></div>
                 <div style={g3}><Field label="House" fkey="House" options={houses} /><Field label="Sex" fkey="Sex" options={cfg?.sexOptions || ['Male','Female']} /><Field label="School/Hostel" fkey="School/Hostel" options={cfg?.schoolHostel || ['School','Hostel']} /></div>
                 <div style={g2}><Field label="Date of Birth" fkey="Date of Birth" type="date" /><Field label="Religion" fkey="Religion" options={cfg?.religions || []} /></div>
@@ -255,7 +263,7 @@ export default function RegistryPage() {
               </>
             )}
             <button style={{ ...S.btn, marginTop:8 }} onClick={isStu ? saveStudent : saveStaff} disabled={saving || uploading}>
-              {saving ? 'Saving...' : (isEdit ? '\ud83d\udcbe Update' : '\u2795 Add')}
+              {saving ? 'Saving...' : (isEdit ? '💾 Update' : '➕ Add')}
             </button>
           </div>
         </div>
@@ -274,9 +282,9 @@ export default function RegistryPage() {
   return (
     <div style={S.page}>
       <div style={S.header}>
-        <button style={S.btnSm} onClick={() => router.back()}>\u2190 Back</button>
+        <button style={S.btnSm} onClick={() => router.back()}>← Back</button>
         <h1 style={{ fontSize:15, fontWeight:900, flex:1, margin:0, textTransform:'uppercase', letterSpacing:'0.06em' }}>
-          \ud83d\udccb Registry Management
+          📋 Registry Management
         </h1>
         {isMgt && (
           <button style={S.btn} onClick={tab === 'student' ? openAddStu : openAddStaff}>
@@ -295,20 +303,27 @@ export default function RegistryPage() {
         <div style={{ display:'flex', gap:8, marginBottom:16 }}>
           {['student','staff'].map(t => (
             <button key={t} style={{ padding:'8px 18px', borderRadius:10, border:'none', cursor:'pointer', fontSize:11, fontWeight:900, textTransform:'uppercase', letterSpacing:'0.06em', background: tab === t ? '#fbbf24' : 'rgba(255,255,255,0.06)', color: tab === t ? '#09080f' : 'rgba(255,255,255,0.5)' }}
-              onClick={() => { setTab(t); setSearch(''); setFilterGrade('ALL'); }}>
-              {t === 'student' ? '\ud83c\udf93 Students' : '\ud83d\udc54 Staff'}
+              onClick={() => { setTab(t); setSearch(''); setFilterGrade('ALL'); setFilterHostel('ALL'); }}>
+              {t === 'student' ? '🎓 Students' : '👔 Staff'}
               <span style={{ marginLeft:6, opacity:0.7 }}>({t === 'student' ? students.length : staffList.length})</span>
             </button>
           ))}
         </div>
 
         <div style={{ display:'flex', gap:8, marginBottom:12, flexWrap:'wrap' }}>
-          <input style={{ ...S.input, flex:'1', minWidth:160 }} placeholder="Search name / ID..." value={search} onChange={e => setSearch(e.target.value)} />
+          <input style={{ ...S.input, flex:'1', minWidth:160 }} placeholder="Search name (Eng/Myanmar) / ID..." value={search} onChange={e => setSearch(e.target.value)} />
           {tab === 'student' && (
-            <select style={{ ...S.select, width:'auto' }} value={filterGrade} onChange={e => setFilterGrade(e.target.value)}>
-              <option value="ALL">All Grades</option>
-              {grades.map(g => <option key={g} value={g}>Grade {g}</option>)}
-            </select>
+            <>
+              <select style={{ ...S.select, width:'auto' }} value={filterGrade} onChange={e => setFilterGrade(e.target.value)}>
+                <option value="ALL">All Grades</option>
+                {grades.map(g => <option key={g} value={g}>Grade {g}</option>)}
+              </select>
+              <select style={{ ...S.select, width:'auto' }} value={filterHostel} onChange={e => setFilterHostel(e.target.value)}>
+                <option value="ALL">All (ကျောင်း/အဆောင်)</option>
+                <option value="School">ကျောင်း (School)</option>
+                <option value="Hostel">အဆောင် (Hostel)</option>
+              </select>
+            </>
           )}
           <select style={{ ...S.select, width:'auto' }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
             <option value="active">Active</option>
@@ -332,11 +347,11 @@ export default function RegistryPage() {
 
         {tab === 'student' ? (
           filteredStu.length === 0
-            ? <div style={{ textAlign:'center', padding:40, color:'rgba(255,255,255,0.25)', fontSize:13 }}>\u1000\u103b\u1031\u102c\u1004\u103a\u101e\u102c\u1038 \u1019\u1010\u103d\u1031\u1037\u1015\u102a</div>
+            ? <div style={{ textAlign:'center', padding:40, color:'rgba(255,255,255,0.25)', fontSize:13 }}>ကျောင်းသား မတွေ့ပါ</div>
             : filteredStu.map((s,i) => <PersonCard key={i} item={s} type="student" onEdit={openEditStu} onToggle={toggleStatus} isMgt={isMgt} />)
         ) : (
           filteredStaff.length === 0
-            ? <div style={{ textAlign:'center', padding:40, color:'rgba(255,255,255,0.25)', fontSize:13 }}>\u101d\u1014\u103a\u1011\u1019\u103a\u1038 \u1019\u1010\u103d\u1031\u1037\u1015\u102a</div>
+            ? <div style={{ textAlign:'center', padding:40, color:'rgba(255,255,255,0.25)', fontSize:13 }}>ဝန်ထမ်း မတွေ့ပါ</div>
             : filteredStaff.map((s,i) => <PersonCard key={i} item={s} type="staff" onEdit={openEditStaff} onToggle={toggleStatus} isMgt={isMgt} />)
         )}
       </div>

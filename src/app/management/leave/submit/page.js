@@ -32,6 +32,8 @@ export default function SubmitPage() {
     Reason: '',
     Leave_Mode: 'Full Day',
     Time_Detail: '',
+    periodStartTime: '',
+    periodEndTime: '',
     subject: '',
     Attachment_Link: '',
     Reporter_Name: '',
@@ -118,6 +120,13 @@ export default function SubmitPage() {
     const days = calcDays();
     const endD = otherForm.Leave_Mode === 'Full Day' ? otherForm.End_Date : otherForm.Start_Date;
 
+    let periodRange = '-';
+    if (otherForm.Leave_Mode === 'Period-wise') {
+      const start = otherForm.periodStartTime || '';
+      const end = otherForm.periodEndTime || '';
+      periodRange = start && end ? `${start} - ${end}` : '-';
+    }
+
     try {
       const isStaff = otherTarget === 'STAFF';
       const entry = [{
@@ -131,10 +140,10 @@ export default function SubmitPage() {
         End_Date: formatMMDate(endD),
         Total_Days: days,
         Reason: otherForm.Reason.trim(),
-        Remark: otherForm.Remark||'-',
+        Remark: otherForm.Remark || '-',
         Leave_Mode: otherForm.Leave_Mode,
         Half_Day_Part: otherForm.Leave_Mode === 'Half Day' ? otherForm.Time_Detail : '-',
-        Period_Range: otherForm.Leave_Mode === 'Period-wise' ? otherForm.subject : '-',
+        Period_Range: periodRange,
         Attachment_Link: attachments.length > 0 ? attachments.join(',') : '-',
         Reporter_Name: isStaff ? (user?.Name || 'Management') : otherForm.Reporter_Name,
         Relationship: isStaff ? 'Management' : otherForm.Relationship,
@@ -154,7 +163,7 @@ export default function SubmitPage() {
         setOtherSel(null);
         setOtherSearchRaw('');
         setAttachments([]);
-        setOtherForm(f => ({ ...f, Start_Date: getTodayMM(), End_Date: getTodayMM(), Reason: '', Attachment_Link: '' }));
+        setOtherForm(f => ({ ...f, Start_Date: getTodayMM(), End_Date: getTodayMM(), Reason: '', Attachment_Link: '', periodStartTime: '', periodEndTime: '' }));
         fetchLeaves();
       }
     } catch { alert('Network Error'); }
@@ -280,30 +289,24 @@ export default function SubmitPage() {
           </div>
         </div>
 
-        <div style={{display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background: isBackDate?'rgba(234,88,12,0.08)':'rgba(0,0,0,0.02)', border: isBackDate?'1px solid rgba(234,88,12,0.25)':'1px solid rgba(0,0,0,0.06)', borderRadius:10, cursor:'pointer'}} onClick={()=>setIsBackDate(p=>!p)}>
-          <span style={{fontSize:16}}>{isBackDate?'🕐':'📅'}</span>
-          <div style={{flex:1}}>
-            <p style={{fontSize:11, fontWeight:900, color: isBackDate?'#ea580c':'#64748b', margin:0}}>
+        <div className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer" onClick={() => setIsBackDate(p => !p)}>
+          <span className="text-xl">{isBackDate ? '🕐' : '📅'}</span>
+          <div className="flex-1">
+            <p className="text-xs font-bold" style={{color: isBackDate ? '#ea580c' : '#64748b'}}>
               {isBackDate ? 'Back Date Mode — ဖွင့်ထားသည်' : 'Back Date Mode — ပိတ်ထားသည်'}
             </p>
-            <p style={{fontSize:9, color:'rgba(0,0,0,0.35)', margin:0}}>
-              ခွင့်မဲ့ ဖြစ်ပြီးမှ ပြန်တိုင်ရန် — ယခင်ရက်ကို ရွေးနိုင်သည်
-            </p>
+            <p className="text-[9px] text-gray-400">ခွင့်မဲ့ ဖြစ်ပြီးမှ ပြန်တိုင်ရန် — ယခင်ရက်ကို ရွေးနိုင်သည်</p>
           </div>
-          <div style={{width:34, height:20, borderRadius:20, background: isBackDate?'#ea580c':'#e2e8f0', position:'relative', transition:'background 0.2s', flexShrink:0}}>
-            <div style={{position:'absolute', top:2, left: isBackDate?14:2, width:16, height:16, borderRadius:'50%', background:'#fff', transition:'left 0.2s', boxShadow:'0 1px 3px rgba(0,0,0,0.2)'}}/>
+          <div className="relative w-8 h-5 rounded-full transition-colors" style={{background: isBackDate ? '#ea580c' : '#e2e8f0'}}>
+            <div className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all shadow" style={{left: isBackDate ? '14px' : '2px'}} />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4}}>
-              <label className="text-[8px] font-black text-slate-400 uppercase block">Start</label>
-              {isBackDate && (
-                <span style={{fontSize:9, fontWeight:900, background:'rgba(234,88,12,0.1)', color:'#ea580c', border:'1px solid rgba(234,88,12,0.3)', borderRadius:20, padding:'1px 8px'}}>
-                  🕐 Back Date Mode
-                </span>
-              )}
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[8px] font-black text-slate-400 uppercase">Start</label>
+              {isBackDate && <span className="text-[9px] text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">🕐 Back Date Mode</span>}
             </div>
             <input
               type="date"
@@ -315,7 +318,7 @@ export default function SubmitPage() {
           </div>
           <div>
             <label className="text-[8px] font-black text-slate-400 uppercase block mb-1">
-              {otherForm.Leave_Mode === 'Full Day' ? 'End' : otherForm.Leave_Mode === 'Half Day' ? 'Session' : 'Subject'}
+              {otherForm.Leave_Mode === 'Full Day' ? 'End' : otherForm.Leave_Mode === 'Half Day' ? 'Session' : 'Time Range'}
             </label>
             {otherForm.Leave_Mode === 'Full Day' ? (
               <input
@@ -325,20 +328,38 @@ export default function SubmitPage() {
                 onChange={e => setOtherForm(f => ({ ...f, End_Date: e.target.value }))}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold"
               />
-            ) : (
+            ) : otherForm.Leave_Mode === 'Half Day' ? (
               <input
-                value={otherForm.Leave_Mode === 'Half Day' ? otherForm.Time_Detail : otherForm.subject}
-                onChange={e => setOtherForm(f => ({ ...f, [otherForm.Leave_Mode === 'Half Day' ? 'Time_Detail' : 'subject']: e.target.value }))}
-                placeholder={otherForm.Leave_Mode === 'Half Day' ? 'AM/PM' : 'Subject'}
+                value={otherForm.Time_Detail}
+                onChange={e => setOtherForm(f => ({ ...f, Time_Detail: e.target.value }))}
+                placeholder="AM / PM"
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold"
               />
+            ) : (
+              <div className="flex gap-2 items-center">
+                <input
+                  type="time"
+                  value={otherForm.periodStartTime}
+                  onChange={e => setOtherForm(f => ({ ...f, periodStartTime: e.target.value }))}
+                  placeholder="Start time"
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold"
+                />
+                <span className="text-slate-400">–</span>
+                <input
+                  type="time"
+                  value={otherForm.periodEndTime}
+                  onChange={e => setOtherForm(f => ({ ...f, periodEndTime: e.target.value }))}
+                  placeholder="End time"
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold"
+                />
+              </div>
             )}
           </div>
         </div>
 
         <div>
           <label className="text-[8px] font-black text-slate-400 uppercase block mb-1">
-            Reason {isBackDate && <span style={{color:'#ea580c', fontWeight:900}}> — ခွင့်မဲ့ ပြန်တိုင်ရသည့် အကြောင်းအရင်း</span>}
+            Reason {isBackDate && <span className="text-orange-600 ml-1">— ခွင့်မဲ့ ပြန်တိုင်ရသည့် အကြောင်းအရင်း</span>}
           </label>
           <textarea
             value={otherForm.Reason}
@@ -366,13 +387,13 @@ export default function SubmitPage() {
           </div>
           <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleCameraCapture} className="hidden" multiple />
           <input ref={fileInputRef} type="file" accept="image/*,application/pdf" onChange={handleFileUpload} className="hidden" multiple />
-          {uploading && <p className="text-[9px] text-amber-600 mt-1">Uploading...</p>}
+          {uploading && <p className="text-amber-600 text-xs mt-1">Uploading...</p>}
           {attachments.length > 0 && (
             <div className="mt-2 space-y-1">
               {attachments.map((url, idx) => (
                 <div key={idx} className="flex items-center justify-between bg-slate-50 p-2 rounded-lg">
-                  <a href={url} target="_blank" className="text-[9px] text-sky-600 underline truncate">📎 File {idx + 1}</a>
-                  <button onClick={() => removeAttachment(idx)} className="text-rose-500 text-[9px]">✕</button>
+                  <a href={url} target="_blank" className="text-sky-600 underline text-xs truncate">📎 File {idx + 1}</a>
+                  <button onClick={() => removeAttachment(idx)} className="text-rose-500 text-xs">✕</button>
                 </div>
               ))}
             </div>
