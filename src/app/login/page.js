@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
+import { getDefaultPathForRole, readStoredUser, saveStoredUser } from '@/features/users/auth';
 
 export default function LoginPage() {
   const [role, setRole] = useState('STUDENT');
@@ -15,12 +16,10 @@ export default function LoginPage() {
 
   useEffect(() => {
     setTimeout(() => setReady(true), 100);
-    const saved = localStorage.getItem('user') || sessionStorage.getItem('user');
-    if (saved) {
-      try {
-        const u = JSON.parse(saved);
-        router.push(u.userRole === 'management' ? '/management/mgt-dashboard' : u.userRole === 'staff' ? '/staff' : '/student');
-      } catch { localStorage.removeItem('user'); sessionStorage.removeItem('user'); }
+    const u = readStoredUser();
+    if (u) {
+      saveStoredUser(u);
+      router.push(getDefaultPathForRole(u.userRole));
     }
   }, [router]);
 
@@ -35,8 +34,9 @@ export default function LoginPage() {
       });
       const result = await res.json();
       if (result.success) {
-        localStorage.setItem('user', JSON.stringify({ ...result.user, userRole: role.toLowerCase() }));
-        router.push(role === 'MANAGEMENT' ? '/management/mgt-dashboard' : role === 'STAFF' ? '/staff' : '/student');
+        const userRole = role.toLowerCase();
+        saveStoredUser({ ...result.user, userRole });
+        router.push(getDefaultPathForRole(userRole));
       } else {
         const msg = result.message || '';
         if (msg.includes('မရှိ') || msg.toLowerCase().includes('user')) setError('Username မှားနေသည်');

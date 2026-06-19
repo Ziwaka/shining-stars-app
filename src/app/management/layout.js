@@ -2,7 +2,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import CacheControl from '@/components/CacheControl';
+import CacheControl from '@/components/common/CacheControl';
+import { AuthGate, clearStoredUser, readStoredUser } from '@/features/users/auth';
 
 export default function MgtUniversalLayout({ children }) {
   const router   = useRouter();
@@ -10,7 +11,7 @@ export default function MgtUniversalLayout({ children }) {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const auth = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
+    const auth = readStoredUser();
     if (!auth || auth.userRole !== 'management') {
       router.push('/login');
     } else {
@@ -27,17 +28,18 @@ export default function MgtUniversalLayout({ children }) {
   ];
 
   const handleLogout = () => {
-    localStorage.removeItem('user');
-    sessionStorage.removeItem('user');
+    clearStoredUser();
     router.push('/login');
   };
 
-  if (!user) return null;
-
-  const displayName = user?.Name || user?.name || user?.username
-                   || user?.['Name (ALL CAPITAL)'] || 'Admin';
-
   return (
+    <AuthGate allowedRoles={['management']}>
+    {authedUser => {
+      const activeUser = user || authedUser;
+      const displayName = activeUser?.Name || activeUser?.name || activeUser?.username
+                     || activeUser?.['Name (ALL CAPITAL)'] || 'Admin';
+
+      return (
     <div style={{
       height:'100dvh', display:'flex', flexDirection:'column',
       overflow:'hidden',
@@ -150,5 +152,8 @@ export default function MgtUniversalLayout({ children }) {
         })}
       </nav>
     </div>
+      );
+    }}
+    </AuthGate>
   );
 }

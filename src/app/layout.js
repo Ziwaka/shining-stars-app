@@ -3,16 +3,14 @@ import "./globals.css";
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
+import { clearStoredUser, readStoredUser } from '@/features/users/auth';
 
 export default function RootLayout({ children }) {
   const [user, setUser] = useState(null);
   const pathname = usePathname();
 
   useEffect(() => {
-    const savedUser = localStorage.getItem("user") || sessionStorage.getItem("user");
-    if (savedUser && savedUser !== "undefined") {
-      try { setUser(JSON.parse(savedUser)); } catch (e) { console.error(e); }
-    }
+    setUser(readStoredUser());
   }, [pathname]);
 
   // ဒီ pages တွေမှာ root nav bar မပြဘဲ ကိုယ်ပိုင် layout သုံးမည်
@@ -47,7 +45,7 @@ export default function RootLayout({ children }) {
               <Link href="/" className="text-[10px] font-black text-indigo-900 hover:text-amber-500 uppercase tracking-widest italic transition-colors">HOME</Link>
             </div>
             <button
-              onClick={() => { localStorage.clear(); sessionStorage.clear(); window.location.href = "/login"; }}
+              onClick={() => { clearStoredUser(); window.location.href = "/login"; }}
               className="bg-indigo-900 text-white px-6 py-2 rounded-xl text-[10px] font-black hover:bg-rose-600 transition shadow-xl active:scale-95"
             >
               LOGOUT

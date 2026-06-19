@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from 'react';
 import { useDebounce } from 'use-debounce';
-import { formatDateDisplay } from '@/components/leave/DateHelpers';
+import { formatDateDisplay } from '@/features/leave/components/DateHelpers';
 
 export default function StaffAnalysisTab({ statsList, loading }) {
   const [watchFilter, setWatchFilter] = useState("CONSECUTIVE_3");

@@ -1,5 +1,6 @@
 "use client";
 import { useRouter, usePathname } from 'next/navigation';
+import { AuthGate, clearStoredUser } from '@/features/users/auth';
 
 export default function StudentMasterLayout({ children }) {
   const router   = useRouter();
@@ -13,12 +14,12 @@ export default function StudentMasterLayout({ children }) {
   ];
 
   const logout = () => {
-    localStorage.removeItem('user');
-    sessionStorage.removeItem('user');
+    clearStoredUser();
     router.push('/login');
   };
 
   return (
+    <AuthGate allowedRoles={['student']}>
     <div style={{
       height:'100dvh', display:'flex', flexDirection:'column',
       overflow:'hidden', background:'#CBCBE5',
@@ -121,5 +122,6 @@ export default function StudentMasterLayout({ children }) {
         })}
       </nav>
     </div>
+    </AuthGate>
   );
 }

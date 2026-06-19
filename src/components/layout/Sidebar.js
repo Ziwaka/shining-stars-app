@@ -1,6 +1,7 @@
 "use client";
 import { useRouter, usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { AuthGate, clearStoredUser } from '@/features/users/auth';
 
 // ══════════════════════════════════════════════════════════════
 //  Shining Stars — Staff Layout  (Mobile Responsive v2)
@@ -29,8 +30,7 @@ export default function DashboardLayout({ children }) {
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
 
   const handleLogout = () => {
-    localStorage.removeItem("user");
-    sessionStorage.removeItem("user");
+    clearStoredUser();
     router.push("/login");
   };
 
@@ -55,6 +55,7 @@ export default function DashboardLayout({ children }) {
   // ── MOBILE LAYOUT ─────────────────────────────────────────
   if (isMobile) {
     return (
+      <AuthGate allowedRoles={['staff', 'management']} checkPagePermission>
       <div style={{
         height: '100dvh', display: 'flex', flexDirection: 'column',
         overflow: 'hidden', background: '#F8FAFC',
@@ -162,11 +163,13 @@ export default function DashboardLayout({ children }) {
           })}
         </nav>
       </div>
+      </AuthGate>
     );
   }
 
   // ── DESKTOP LAYOUT (original sidebar, improved) ───────────
   return (
+    <AuthGate allowedRoles={['staff', 'management']} checkPagePermission>
     <div style={{
       display: 'flex', minHeight: '100dvh',
       background: '#F8FAFC', fontFamily: 'system-ui,sans-serif',
@@ -283,5 +286,6 @@ export default function DashboardLayout({ children }) {
         {children}
       </main>
     </div>
+    </AuthGate>
   );
 }

@@ -7,7 +7,7 @@ import {
   parseMMDate, 
   isDateInRange,
   compareMMDates 
-} from '@/components/leave/DateHelpers';
+} from '@/features/leave/components/DateHelpers';
 
 export default function useLeaveData() {
   const [allLeaves, setAllLeaves] = useState([]);

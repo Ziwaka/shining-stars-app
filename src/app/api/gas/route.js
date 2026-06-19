@@ -1,11 +1,16 @@
 export const dynamic = "force-dynamic";
 
-// ✅ NEXT_PUBLIC_WEB_APP_URL ကို သုံးပါ
-const GAS = process.env.NEXT_PUBLIC_WEB_APP_URL;
+const GAS = process.env.GOOGLE_APPS_SCRIPT_URL || process.env.NEXT_PUBLIC_WEB_APP_URL;
+const MAX_BODY_BYTES = 1024 * 1024;
+const REQUEST_TIMEOUT_MS = 25000;
 
 const H = {
   "Content-Type": "application/json",
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": process.env.NEXT_PUBLIC_APP_ORIGIN || "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Cache-Control": "no-store",
+  "X-Content-Type-Options": "nosniff",
 };
 
 export async function OPTIONS() {
@@ -13,39 +18,45 @@ export async function OPTIONS() {
 }
 
 export async function GET() {
-  if (!GAS) {
-    return new Response(JSON.stringify({ success: false, message: "GAS URL not configured" }), { status: 500, headers: H });
-  }
-  try {
-    const r = await fetch(GAS, { cache: "no-store" });
-    const t = await r.text();
-    return new Response(t, { status: 200, headers: H });
-  } catch (e) {
-    return new Response(
-      JSON.stringify({ success: false, message: e.message }),
-      { status: 500, headers: H }
-    );
-  }
+  return json({ success: false, message: "Method not allowed" }, 405);
 }
 
 export async function POST(request) {
   if (!GAS) {
-    return new Response(JSON.stringify({ success: false, message: "GAS URL not configured" }), { status: 500, headers: H });
+    return json({ success: false, message: "GAS URL not configured" }, 500);
   }
+
   try {
     const body = await request.text();
-    const r = await fetch(GAS, {
+    if (new TextEncoder().encode(body).length > MAX_BODY_BYTES) {
+      return json({ success: false, message: "Request payload too large" }, 413);
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const upstream = await fetch(GAS, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body,
       cache: "no-store",
+      signal: controller.signal,
     });
-    const t = await r.text();
-    return new Response(t, { status: 200, headers: H });
+    clearTimeout(timeout);
+
+    const text = await upstream.text();
+    return new Response(text, {
+      status: upstream.ok ? 200 : upstream.status,
+      headers: H,
+    });
   } catch (e) {
-    return new Response(
-      JSON.stringify({ success: false, message: e.message }),
-      { status: 500, headers: H }
+    const isTimeout = e.name === "AbortError";
+    return json(
+      { success: false, message: isTimeout ? "GAS request timed out" : e.message },
+      isTimeout ? 504 : 500
     );
   }
+}
+
+function json(payload, status) {
+  return new Response(JSON.stringify(payload), { status, headers: H });
 }
