@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 import { getPhotoUrl } from '@/lib/cloudinary';
 
-// ─── HELPER FUNCTIONS FOR EXAM REGISTRY ───
+// ─── HELPER FUNCTIONS ───
 const SUBJECT_DISTINCTION_MAP = {
   Myan: 75, Eng: 75, Bio: 75, Eco: 75,
   Maths: 80, Phys: 80, Chem: 80, Social: 80
@@ -27,12 +27,35 @@ const getMonthKey = (examName) => {
   return null;
 };
 
+function formatDateWithDay(dateStr) {
+  if (!dateStr || dateStr === '—') return '—';
+  try {
+    let cleaned = dateStr.replace(/[ZT]/g, ' ').trim();
+    const parts = cleaned.split(/[- :]/);
+    if (parts.length >= 3) {
+      const year = parseInt(parts[0]);
+      const month = parseInt(parts[1]) - 1;
+      const day = parseInt(parts[2]);
+      const d = new Date(year, month, day);
+      if (!isNaN(d.getTime())) {
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return `${days[d.getDay()]}, ${String(day).padStart(2, '0')} ${months[d.getMonth()]} ${year}`;
+      }
+    }
+    return dateStr;
+  } catch (e) { return dateStr; }
+}
 // ─── END HELPERS ───
 
 export default function MyPerformanceRegistry() {
   const [auth, setAuth] = useState(null);
   const [myHouse, setMyHouse] = useState("SYNCING...");
   const [myPhoto, setMyPhoto] = useState(null);
+  const [myGrade, setMyGrade] = useState(null);
+  const [myStream, setMyStream] = useState(null);
+  // ─── NEW: Store total active from Exam_Records ───
+  const [totalActiveByGradeStream, setTotalActiveByGradeStream] = useState({});
   const [data, setData] = useState({ 
     scores: [], earnedPoints: [], deductedPoints: [], 
     notes: [], fees: [], leaves: [] 
@@ -88,22 +111,67 @@ export default function MyPerformanceRegistry() {
 
         let liveHouse = "UNASSIGNED";
         let photoUrl = null;
+        let studentGrade = null;
+        let studentStream = null;
+        
+        // ─── Calculate totals from Exam_Records (Ignore Status) ───
+        const totalsFromExam = {};
+        if (scRes.success && Array.isArray(scRes.data)) {
+          scRes.data.forEach(sc => {
+            const grade = sc.Grade ? String(sc.Grade).trim() : '';
+            const subject = sc.Subject ? String(sc.Subject).trim() : '';
+            // Only count Bio or Eco subjects
+            if (!grade || (subject !== 'Bio' && subject !== 'Eco')) return;
+            
+            const key = `${grade}_${subject}`;
+            if (!totalsFromExam[key]) {
+              // Store unique Student_IDs for this grade+subject
+              totalsFromExam[key] = new Set();
+            }
+            const studentId = sc.Student_ID ? String(sc.Student_ID).trim() : '';
+            if (studentId) {
+              totalsFromExam[key].add(studentId);
+            }
+          });
+        }
         
         if (dirRes.success && Array.isArray(dirRes.data)) {
-           const studentProfile = dirRes.data.find(s => {
-              const rowID = String(s.Student_ID || s['Enrollment No.'] || s['Student ID'] || "").trim();
+          // Find current student
+          const studentProfile = dirRes.data.find(s => {
+            const rowID = String(s.Student_ID || s['Enrollment No.'] || s['Student ID'] || "").trim();
+            return rowID === myID;
+          });
+          if (studentProfile) {
+            if (studentProfile.House) liveHouse = studentProfile.House;
+            if (studentProfile.Photo_URL) photoUrl = studentProfile.Photo_URL;
+            if (studentProfile.Grade) studentGrade = String(studentProfile.Grade).trim();
+          }
+          
+          // Determine student's stream from their own scores
+          if (scRes.success && Array.isArray(scRes.data)) {
+            const myScores = scRes.data.filter(x => {
+              const rowID = String(x.Student_ID || x.User_ID || x['Enrollment No.'] || x['Student ID'] || "").trim();
               return rowID === myID;
-           });
-           if (studentProfile) {
-             if (studentProfile.House) liveHouse = studentProfile.House;
-             // Get photo URL from directory
-             if (studentProfile.Photo_URL) {
-               photoUrl = studentProfile.Photo_URL;
-             }
-           }
+            });
+            const hasBio = myScores.some(sc => String(sc.Subject || '').trim() === 'Bio');
+            const hasEco = myScores.some(sc => String(sc.Subject || '').trim() === 'Eco');
+            if (hasBio) studentStream = 'Bio';
+            else if (hasEco) studentStream = 'Eco';
+            else studentStream = 'General';
+          }
         }
+        
         setMyHouse(liveHouse);
         setMyPhoto(photoUrl);
+        setMyGrade(studentGrade);
+        setMyStream(studentStream);
+        
+        // ─── Convert Sets to counts ───
+        const totalCounts = {};
+        Object.keys(totalsFromExam).forEach(key => {
+          totalCounts[key] = totalsFromExam[key].size;
+        });
+        setTotalActiveByGradeStream(totalCounts);
 
         const filterMyRecords = (result) => {
           if (!result.success || !Array.isArray(result.data)) return [];
@@ -150,15 +218,17 @@ export default function MyPerformanceRegistry() {
   const totalEarned = data.earnedPoints.reduce((s, x) => s + x.Numeric_Points, 0);
   const totalDeducted = data.deductedPoints.reduce((s, x) => s + Math.abs(x.Numeric_Points), 0);
   const leavesTaken = data.leaves.filter(x => String(x.Status).toLowerCase().includes("approved")).length;
-  
-  // Get photo URL using the helper
   const photoUrl = getPhotoUrl(myPhoto);
+  
+  // ─── Get total from Exam_Records for this Grade + Stream ───
+  const gradeStreamKey = myGrade && myStream ? `${myGrade}_${myStream}` : null;
+  const totalActive = gradeStreamKey ? (totalActiveByGradeStream[gradeStreamKey] || 0) : 0;
 
   return (
     <div className="p-4 md:p-10 font-black selection:bg-gold text-slate-950" style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",paddingBottom:"120px",minHeight:0,background:'#FDFCF0'}}>
       <div className="mx-auto space-y-12" style={{maxWidth:'1500px'}}>
         
-        {/* HEADER SECTION - WITH PHOTO */}
+        {/* HEADER SECTION */}
         <div className="bg-slate-950 p-10 md:p-14 shadow-2xl flex flex-col md:flex-row justify-between items-center gap-10 relative overflow-hidden" style={{borderRadius:'4rem', borderBottomWidth:'15px', borderColor:'#fbbf24'}}>
           <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
           <div className="flex items-center gap-6 md:gap-10 z-10">
@@ -181,7 +251,7 @@ export default function MyPerformanceRegistry() {
             <div className="text-center md:text-left leading-none">
               <div className="inline-block px-4 py-1.5 text-slate-950 font-black uppercase rounded-lg mb-4 shadow-md" style={{background:'#fbbf24', fontSize:'10px', letterSpacing:'0.2em'}}>My Performance Hub</div>
               <h1 className="text-3xl md:text-6xl italic uppercase font-black text-white tracking-tighter leading-tight">{auth?.Name}</h1>
-              <p className="text-slate-400 text-xs md:text-sm uppercase font-black mt-3 italic" style={{letterSpacing:'0.4em'}}>House: <span className="text-white">{myHouse}</span></p>
+              <p className="text-slate-400 text-xs md:text-sm uppercase font-black mt-3 italic" style={{letterSpacing:'0.4em'}}>House: <span className="text-white">{myHouse}</span> {myStream && <span className="text-amber-400 ml-2">• Stream: {myStream}</span>}</p>
             </div>
           </div>
           <div className="flex bg-white/10 p-5 px-8 rounded-full border-2 border-white/20 items-center gap-4 z-10 backdrop-blur-sm text-white">
@@ -239,7 +309,7 @@ export default function MyPerformanceRegistry() {
             </div>
           </div>
 
-          {/* 3. EXAM REGISTRY - TABLE STYLE */}
+          {/* 3. EXAM REGISTRY */}
           <div className="bg-slate-950 p-10 shadow-xl space-y-8 text-white flex flex-col h-full" style={{borderRadius:'3.5rem', borderTopWidth:'10px', borderColor:'#8B5CF6'}}>
             <h2 className="text-2xl font-black uppercase italic border-b-4 border-white/10 pb-4 flex items-center gap-3" style={{color:'#A78BFA'}}>
               <span className="text-white w-10 h-10 flex items-center justify-center rounded-xl text-xl shadow-md" style={{background:'#8B5CF6'}}>📊</span>
@@ -268,8 +338,9 @@ export default function MyPerformanceRegistry() {
                   const monthKey = getMonthKey(examName);
                   if (!monthKey) return;
                   
-                  if (sc.Rank !== undefined && sc.Rank !== null) {
-                    monthRank[monthKey] = sc.Rank;
+                  const rank = sc.Rank !== undefined ? sc.Rank : sc['Rank'];
+                  if (rank !== undefined && rank !== null && rank !== '') {
+                    monthRank[monthKey] = rank;
                   }
                   
                   let matchedSubject = null;
@@ -341,7 +412,7 @@ export default function MyPerformanceRegistry() {
                         );
                       })}
 
-                      {/* RANK ROW */}
+                      {/* ─── RANK ROW - Uses total from Exam_Records ─── */}
                       <tr className="border-t-2 border-amber-500/30 bg-amber-500/5">
                         <td className="p-3 font-black text-sm md:text-base text-amber-400 sticky left-0 bg-slate-950 z-10">🏆 Rank</td>
                         {monthOrder.map(m => {
@@ -350,9 +421,13 @@ export default function MyPerformanceRegistry() {
                             return <td key={m} className="p-3 text-center text-slate-600">—</td>;
                           }
                           const rank = monthRank[m];
+                          if (rank && String(rank).includes('/')) {
+                            return <td key={m} className="p-3 text-center text-sm md:text-base font-black text-amber-400">{rank}</td>;
+                          }
+                          const displayRank = (rank && rank !== '—') ? `${rank} / ${totalActive}` : '—';
                           return (
                             <td key={m} className="p-3 text-center text-sm md:text-base font-black text-amber-400">
-                              {rank !== null && rank !== undefined ? rank : '—'}
+                              {displayRank}
                             </td>
                           );
                         })}
@@ -367,7 +442,7 @@ export default function MyPerformanceRegistry() {
             </div>
           </div>
 
-          {/* 4. OBSERVATION LOG - UNLIMITED */}
+          {/* 4. OBSERVATION LOG */}
           <div className="p-10 shadow-xl space-y-8 flex flex-col h-full" style={{background:'#FEF9C3', borderRadius:'3.5rem', borderTopWidth:'10px', borderColor:'#F59E0B'}}>
             <h2 className="text-2xl font-black uppercase italic text-amber-800 border-b-4 border-amber-200 pb-4 flex items-center gap-3">
               <span className="bg-amber-500 text-white w-10 h-10 flex items-center justify-center rounded-xl text-xl shadow-md">📓</span>
@@ -389,7 +464,7 @@ export default function MyPerformanceRegistry() {
             </div>
           </div>
 
-          {/* 5. LEAVE HISTORY - UNLIMITED */}
+          {/* 5. LEAVE HISTORY */}
           <div className="bg-white p-10 shadow-xl space-y-8 flex flex-col h-full" style={{borderRadius:'3.5rem', borderTopWidth:'10px', borderColor:'#3B82F6'}}>
             <h2 className="text-2xl font-black uppercase italic text-blue-700 border-b-4 border-blue-100 pb-4 flex items-center gap-3">
               <span className="bg-blue-500 text-white w-10 h-10 flex items-center justify-center rounded-xl text-xl shadow-md">✈️</span>
@@ -401,7 +476,9 @@ export default function MyPerformanceRegistry() {
                   <div className="flex justify-between items-start mb-3">
                     <div>
                       <span className="font-black uppercase bg-slate-200 text-slate-700 px-3 py-1 rounded-lg tracking-widest" style={{fontSize:'10px'}}>{l.Leave_Type}</span>
-                      <p className="text-sm font-black uppercase text-slate-950 mt-2">{l.Start_Date} to {l.End_Date}</p>
+                      <p className="text-sm font-black uppercase text-slate-950 mt-2">
+                        {formatDateWithDay(l.Start_Date)} → {formatDateWithDay(l.End_Date)}
+                      </p>
                     </div>
                     <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-lg tracking-widest ${String(l.Status).toLowerCase() === 'approved' ? 'bg-emerald-100 text-emerald-700' : String(l.Status).toLowerCase() === 'rejected' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
                       {l.Status}
@@ -424,7 +501,7 @@ export default function MyPerformanceRegistry() {
                 <div key={i} className="bg-teal-50/50 p-6 border border-teal-100 flex flex-col md:flex-row justify-between md:items-center gap-4 transition-all hover:-translate-y-1 hover:bg-teal-50" style={{borderRadius:'2rem'}}>
                   <div className="flex-1">
                     <span className="font-black uppercase bg-white text-teal-700 px-3 py-1 rounded-lg tracking-widest border border-teal-200" style={{fontSize:'10px'}}>{f.Fee_Type || "Tuition"}</span>
-                    <p className="text-slate-500 font-bold uppercase tracking-widest mt-3" style={{fontSize:'10px'}}>Date: {f.Date || f.Payment_Date}</p>
+                    <p className="text-slate-500 font-bold uppercase tracking-widest mt-3" style={{fontSize:'10px'}}>Date: {formatDateWithDay(f.Date || f.Payment_Date)}</p>
                     {f.Remark && <p className="text-xs italic text-teal-800 mt-1">Note: {f.Remark}</p>}
                   </div>
                   <div className="text-left md:text-right">
