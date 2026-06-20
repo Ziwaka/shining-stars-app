@@ -29,7 +29,6 @@ import {
 
 /* ─────────────────────────────────────────────
    STUDENT DIRECTORY HELPERS
-   (UNCHANGED — same as original)
 ───────────────────────────────────────────── */
 
 function getValue(row, keys) {
@@ -327,7 +326,6 @@ function buildStudentOverview(rawStudents) {
 
 /* ─────────────────────────────────────────────
    LOCAL MODAL FOR STUDENT DRILL-DOWN
-   (UNCHANGED)
 ───────────────────────────────────────────── */
 
 function StudentListModal({ title, students, onClose }) {
@@ -405,7 +403,6 @@ function StudentListModal({ title, students, onClose }) {
 
 /* ─────────────────────────────────────────────
    STUDENT POPULATION OVERVIEW
-   (UNCHANGED)
 ───────────────────────────────────────────── */
 
 function MiniStatCard({ label, value, tone = 'white', sub }) {
@@ -685,7 +682,7 @@ export default function StaffAccessHub() {
   const [modal, setModal] = useState(null);
   const router = useRouter();
 
-  // top-level page tab — ONLY split that exists now
+  // top-level page tab
   const [mainTab, setMainTab] = useState('dashboard'); // 'dashboard', 'tools'
 
   const studentOverview = useMemo(
@@ -818,6 +815,7 @@ export default function StaffAccessHub() {
     );
   }
 
+  // ── TOOLS ARRAY (with new Performance Hub button) ──
   const toolGroups = [
     {
       group: "Campus & Student Operations",
@@ -853,6 +851,8 @@ export default function StaffAccessHub() {
         { name: 'Exam Records', path: '/staff/exam-records', icon: '📝', perm: 'Can_Record_Exam' },
         { name: 'Calendar', path: '/staff/calendar', icon: '📅', perm: 'Can_Manage_Events' },
         { name: 'My Timetable', path: '/staff/timetable', icon: '🗓️', perm: null },
+        // ★ NEW: Performance Hub with permission
+        { name: 'Performance Hub', path: '/staff/performance', icon: '📈', perm: 'Can_View_Performance_Hub' },
       ]
     }
   ];
@@ -944,7 +944,7 @@ export default function StaffAccessHub() {
           </button>
         </div>
 
-        {/* MAIN PAGE TABS: Dashboard / Tools — the ONLY tab split */}
+        {/* MAIN PAGE TABS: Dashboard / Tools */}
         <div className="flex gap-2 overflow-x-auto pb-1">
           <button
             onClick={() => setMainTab('dashboard')}

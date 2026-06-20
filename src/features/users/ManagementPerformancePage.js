@@ -58,12 +58,29 @@ export default function MgtPerformanceHub() {
   const [selectedCompareIds, setSelectedCompareIds] = useState([]);
   const [expandedStudentId, setExpandedStudentId] = useState(null);
 
+  // ── UPDATED AUTH CHECK: Allow staff with permission ──
   useEffect(() => {
     const saved = localStorage.getItem('user');
     if (!saved) { router.push('/login'); return; }
     const u = JSON.parse(saved);
-    if (u.userRole !== 'management') { router.push('/login'); return; }
-    loadData();
+    
+    // Management user ကို ဒီအတိုင်း ဝင်ခွင့်ပြုသည်။
+    if (u.userRole === 'management') {
+      loadData();
+      return;
+    }
+    
+    // Staff user ဖြစ်ပါက Can_View_Performance_Hub permission ရှိမှသာ ဝင်ခွင့်ပြုသည်။
+    if (u.userRole === 'staff') {
+      const hasPerm = u['Can_View_Performance_Hub'] === true || u['Can_View_Performance_Hub'] === 'TRUE';
+      if (hasPerm) {
+        loadData();
+        return;
+      }
+    }
+    
+    // အထက်ပါအခြေအနေများနှင့် မကိုက်ညီပါက login သို့ ပြန်ညွှန်သည်။
+    router.push('/login');
   }, []);
 
   const loadData = async () => {
@@ -164,7 +181,6 @@ export default function MgtPerformanceHub() {
   }, [selectedGrade, selectedSubject, data.rankings]);
 
   // ── Compare tab: multi‑month data ──
-  // Detect which months actually have data for the selected grade
   const availableMonths = useMemo(() => {
     if (selectedGrade === 'All' || !data.scoresData.length) return [];
     const months = new Set();
@@ -177,14 +193,11 @@ export default function MgtPerformanceHub() {
     return MONTH_ORDER.filter(m => months.has(m));
   }, [selectedGrade, data.scoresData]);
 
-  // For each student and each available month, compute:
-  //   subs: { subject: score }, total, rank (among all students in that month)
   const compareData = useMemo(() => {
     if (selectedGrade === 'All' || availableMonths.length === 0 || !data.scoresData.length) return {};
     const gradeScores = data.scoresData.filter(sc => String(sc.Grade) === selectedGrade);
-    const result = {}; // studentId -> { name, months: { month: { subs, total, rank } } }
+    const result = {};
 
-    // Step 1: gather raw scores per student per month
     gradeScores.forEach(sc => {
       const monthKey = getMonthKey(sc.Exam_Name || sc.Term);
       if (!monthKey || !availableMonths.includes(monthKey)) return;
@@ -207,17 +220,15 @@ export default function MgtPerformanceHub() {
       result[studentId].months[monthKey].total += score;
     });
 
-    // Step 2: for each month, assign rank based on total (highest total = rank 1)
     availableMonths.forEach(month => {
       const entries = Object.entries(result)
         .map(([id, stu]) => ({
           id,
           total: stu.months[month]?.total || 0
         }))
-        .filter(e => e.total > 0) // only those who have scores in that month
+        .filter(e => e.total > 0)
         .sort((a, b) => b.total - a.total);
 
-      // assign rank (1-based)
       entries.forEach((entry, idx) => {
         if (result[entry.id].months[month]) {
           result[entry.id].months[month].rank = idx + 1;
@@ -228,14 +239,11 @@ export default function MgtPerformanceHub() {
     return result;
   }, [selectedGrade, availableMonths, data.scoresData]);
 
-  // Determine latest exam month for auto‑selecting top 10
   const latestMonth = availableMonths.length > 0 ? availableMonths[availableMonths.length - 1] : null;
 
-  // Auto‑select top 10 students based on latest exam month (highest total)
   useEffect(() => {
     if (tab === 'compare' && latestMonth && Object.keys(compareData).length > 0) {
       const studentIds = Object.keys(compareData);
-      // sort by total in latest month descending, then take top 10 IDs
       const top10Ids = studentIds
         .map(id => ({ id, total: compareData[id].months[latestMonth]?.total || 0 }))
         .sort((a, b) => b.total - a.total)
@@ -260,7 +268,6 @@ export default function MgtPerformanceHub() {
   };
 
   const StudentExamDetail = ({ studentId, grade }) => {
-    // (same as before – used for Rankings expand)
     if (!studentId || !grade) return null;
     const studentScores = data.scoresData.filter(sc => {
       const id = sc.Student_ID ? String(sc.Student_ID).trim() : '';
@@ -431,7 +438,6 @@ export default function MgtPerformanceHub() {
             {subjects.map(sub => <option key={sub} value={sub} style={{ background:'#1a1030', color:'#fff' }}>{sub}</option>)}
           </select>
         )}
-        {/* No extra selector for compare – all months automatically */}
       </div>
 
       <div style={{ padding:'0 16px' }}>
@@ -585,7 +591,7 @@ export default function MgtPerformanceHub() {
                       </div>
                     </div>
 
-                    {/* Multi‑month table: rows = subjects, columns = student/month pairs */}
+                    {/* Multi‑month table */}
                     <div style={{ overflowX:'auto' }}>
                       <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px', color:'#fff' }}>
                         <thead>
@@ -651,7 +657,7 @@ export default function MgtPerformanceHub() {
                               });
                             })}
                           </tr>
-                          {/* Rank row (now shows computed rank 1..N for each month) */}
+                          {/* Rank row */}
                           <tr style={{ borderTop:'1px solid rgba(251,191,36,0.3)' }}>
                             <td style={{ padding:'8px 10px', fontWeight:900, color:'#fbbf24' }}>🏆 Rank</td>
                             {selectedCompareIds.map(id => {
