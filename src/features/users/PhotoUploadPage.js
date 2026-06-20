@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 import { CLOUDINARY_CLOUD } from '@/lib/cloudinary';
 
-// Presets — Cloudinary dashboard မှာ ၂ ခု သီးသန့် ဖန်တီးထားရသည်
 const PRESETS = {
   students: 'shining-stars-students',
   staff:    'shining-stars-staff',
@@ -13,8 +12,6 @@ const FOLDERS = {
   students: 'shining-stars/students',
   staff:    'shining-stars/staff',
 };
-
-// Sheet config per tab
 const SHEET_CONFIG = {
   students: { sheetName: 'Student_Directory', idField: 'Enrollment No.' },
   staff:    { sheetName: 'Staff_Login',      idField: 'Staff_ID' },
@@ -42,7 +39,6 @@ export default function PhotoUploadPage() {
       file,
       status:   'waiting',
       preview:  URL.createObjectURL(file),
-      // publicId = filename without extension = Student/Staff ID
       publicId: file.name.replace(/\.[^/.]+$/, '').trim(),
     }));
     setQueue(prev => [...prev, ...newItems]);
@@ -53,7 +49,6 @@ export default function PhotoUploadPage() {
   const updateStatus = (id, status, extra = {}) =>
     setQueue(prev => prev.map(f => f.id === id ? { ...f, status, ...extra } : f));
 
-  // ── Save URL back to Google Sheet ────────────────────────────────────────
   const saveToSheet = async (studentId, photoUrl) => {
     const cfg = SHEET_CONFIG[tab];
     const res = await fetch(WEB_APP_URL, {
@@ -70,7 +65,6 @@ export default function PhotoUploadPage() {
     return data;
   };
 
-  // ── Main upload loop ─────────────────────────────────────────────────────
   const startUpload = async () => {
     const pending = queue.filter(f => f.status !== 'done');
     if (!pending.length || uploading) return;
@@ -89,7 +83,6 @@ export default function PhotoUploadPage() {
       fd.append('public_id',      item.publicId);
 
       try {
-        // Step 1 — Upload to Cloudinary
         const res  = await fetch(
           `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,
           { method: 'POST', body: fd }
@@ -106,7 +99,6 @@ export default function PhotoUploadPage() {
 
         addLog('ok', `☁️ ${item.file.name} → Cloudinary OK`);
 
-        // Step 2 — Save URL to Google Sheet
         const saveRes = await saveToSheet(item.publicId, data.secure_url);
         if (saveRes.success) {
           updateStatus(item.id, 'done', { savedUrl: data.secure_url });
@@ -152,7 +144,8 @@ export default function PhotoUploadPage() {
   };
 
   return (
-    <div className="min-h-screen p-4 md:p-10 font-black" style={{ background: '#0f0720', color: '#fff' }}>
+    // 👇 HERE IS THE FIX: h-screen + overflow-y-auto ensures the page can scroll
+    <div className="h-screen overflow-y-auto p-4 md:p-10 font-black" style={{ background: '#0f0720', color: '#fff' }}>
       <div className="mx-auto space-y-6" style={{ maxWidth: '1000px' }}>
 
         {/* HEADER */}

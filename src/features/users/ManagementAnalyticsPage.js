@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 
@@ -23,7 +23,6 @@ const C = {
 
 const scoreColor = v => v >= 80 ? C.green : v >= 60 ? C.blue : v >= 40 ? C.amber : C.red;
 
-// Helper to clean dates
 const cleanDateStr = (d) => {
   if (!d || d === '-') return '-';
   return String(d).split('T')[0];
@@ -129,6 +128,64 @@ const RankList = ({ items, color, total, emptyMsg }) => {
   );
 };
 
+// ── Academic Breakdown Helper ───────────────────────────────────────────────
+function computeAcademicBreakdown(rawScores) {
+  const studentStats = {};
+  rawScores.forEach(r => {
+    const sid = r.Student_ID;
+    if (!sid) return;
+    if (!studentStats[sid]) studentStats[sid] = { distinctions: 0, fails: 0 };
+    if (r.Distinction) studentStats[sid].distinctions++;
+    if (r.Result === 'Fail') studentStats[sid].fails++;
+  });
+
+  let distStudents = 0, passStudents = 0, failStudents = 0;
+  const distBrk = {}, failBrk = {};
+  Object.values(studentStats).forEach(st => {
+    if (st.fails > 0) {
+      failStudents++;
+      failBrk[st.fails] = (failBrk[st.fails] || 0) + 1;
+    } else if (st.distinctions > 0) {
+      distStudents++;
+      distBrk[st.distinctions] = (distBrk[st.distinctions] || 0) + 1;
+    } else {
+      passStudents++;
+    }
+  });
+
+  const distBrkArr = Object.keys(distBrk)
+    .map(k => ({ distinctions: Number(k), students: distBrk[k] }))
+    .sort((a,b) => a.distinctions - b.distinctions);
+  const failBrkArr = Object.keys(failBrk)
+    .map(k => ({ fails: Number(k), students: failBrk[k] }))
+    .sort((a,b) => a.fails - b.fails);
+
+  const avg = rawScores.length > 0 
+    ? Math.round(rawScores.reduce((s,r) => s + r.Percentage, 0) / rawScores.length) 
+    : 0;
+
+  const subjTotals = {};
+  rawScores.forEach(r => {
+    if (!subjTotals[r.Subject]) subjTotals[r.Subject] = { total: 0, count: 0 };
+    subjTotals[r.Subject].total += r.Percentage;
+    subjTotals[r.Subject].count++;
+  });
+  const subjAvg = Object.keys(subjTotals)
+    .map(sub => ({ subject: sub, avg: Math.round(subjTotals[sub].total / subjTotals[sub].count) }))
+    .sort((a,b) => b.avg - a.avg)
+    .slice(0,5);
+
+  return {
+    avg,
+    distinctionStudents: distStudents,
+    passStudents,
+    failStudents,
+    distinctionBreakdown: distBrkArr,
+    failBreakdown: failBrkArr,
+    subjectAvg: subjAvg
+  };
+}
+
 // ── Main Page ───────────────────────────────────────────────────────────────
 export default function AnalyticsPage() {
   const router = useRouter();
@@ -136,6 +193,9 @@ export default function AnalyticsPage() {
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [updated, setUpdated] = useState(null);
+  const [selectedGrade, setSelectedGrade] = useState('__all__'); // for demographics
+  const [selectedExam, setSelectedExam]   = useState('__all__'); // for academic
+  const [selectedAcadGrade, setSelectedAcadGrade] = useState('__all__'); // for academic grade filter
 
   useEffect(() => {
     const saved = localStorage.getItem('user');
@@ -163,6 +223,19 @@ export default function AnalyticsPage() {
     { id:'finance',   icon:'💰', label:'Finance'    },
     { id:'ops',       icon:'⚙️', label:'Operations' },
   ];
+
+  // ── Academic Filtered Data ──
+  const filteredAcademic = useMemo(() => {
+    if (!data || !data.scoresRaw) return null;
+    let filtered = data.scoresRaw;
+    if (selectedExam !== '__all__') {
+      filtered = filtered.filter(r => r.Exam === selectedExam);
+    }
+    if (selectedAcadGrade !== '__all__') {
+      filtered = filtered.filter(r => r.Grade === selectedAcadGrade);
+    }
+    return computeAcademicBreakdown(filtered);
+  }, [data, selectedExam, selectedAcadGrade]);
 
   return (
     <div style={{display:'flex',flexDirection:'column',height:'100%',overflow:'hidden',background:C.bg,color:C.text,fontFamily:'system-ui,sans-serif'}}>
@@ -310,76 +383,203 @@ export default function AnalyticsPage() {
                 );
               })()}
 
-              {/* ══════════ DEMOGRAPHICS ══════════════════════════════════════ */}
+              {/* ══════════ DEMOGRAPHICS (With Grade Filter) ═══════════════════ */}
               {tab === 'demog' && (() => {
-                const dm = data.demographics || {};
-                const total = data.students?.active ?? data.students?.total ?? 0;
-                const gasDeployed = !!data.demographics;
+                const dmAll = data.demographics || {};
+                const dmByGrade = data.demographicsByGrade || {};
+                const totalActive = data.students?.active ?? 0;
+                const grades = Object.keys(dmByGrade).sort();
+                
+                const dm = selectedGrade === '__all__' ? dmAll : (dmByGrade[selectedGrade] || {});
 
-                const DemogSection = ({ title, items, color, icon }) => (
-                  <Card accent={color}>
-                    <CardLabel icon={icon}>{title}</CardLabel>
-                    <RankList items={items} color={color} total={total} emptyMsg={`No data for ${title}`}/>
-                  </Card>
-                );
+                const sumItems = (items) => (items || []).reduce((sum, it) => sum + it.count, 0);
+
+                const DemogSection = ({ title, items, color, icon }) => {
+                  const sectionTotal = sumItems(items);
+                  return (
+                    <Card accent={color}>
+                      <CardLabel icon={icon}>{title}</CardLabel>
+                      <RankList items={items} color={color} total={totalActive} emptyMsg={`No data for ${title}`}/>
+                      {items && items.length > 0 && (
+                        <div style={{marginTop:'16px',paddingTop:'12px',borderTop:`1px solid ${C.border}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                          <span style={{fontSize:'9px',color:C.muted,fontWeight:700,textTransform:'uppercase'}}>Total</span>
+                          <span style={{fontSize:'14px',fontWeight:900,color}}>{sectionTotal}</span>
+                        </div>
+                      )}
+                    </Card>
+                  );
+                };
 
                 return (
                   <>
-                    {!gasDeployed && (
-                      <div style={{background:`${C.red}22`,border:`1px solid ${C.red}55`,borderRadius:'16px',padding:'20px',textAlign:'center'}}>
-                        <p style={{fontSize:'30px',margin:'0 0 10px'}}>⚠️</p>
-                        <p style={{color:C.red,fontWeight:900,fontSize:'14px',textTransform:'uppercase',letterSpacing:'0.1em'}}>Demographics Unavailable</p>
-                        <p style={{color:C.text,fontSize:'11px',marginTop:'8px',opacity:0.8}}>Backend script requires an update to process demographic data. See instructions below.</p>
-                      </div>
-                    )}
+                    <div style={{display:'flex',gap:'8px',flexWrap:'wrap',padding:'4px 0'}}>
+                      <button onClick={() => setSelectedGrade('__all__')}
+                        style={selectedGrade === '__all__'
+                          ? {background:C.gold,color:'#000',border:'none',borderRadius:'10px',padding:'8px 14px',fontSize:'9px',fontWeight:900,cursor:'pointer',textTransform:'uppercase'}
+                          : {background:C.surf2,color:C.muted,border:`1px solid ${C.border}`,borderRadius:'10px',padding:'8px 14px',fontSize:'9px',fontWeight:900,cursor:'pointer',textTransform:'uppercase'}
+                        }
+                      >
+                        All Grades
+                      </button>
+                      {grades.map(g => (
+                        <button key={g} onClick={() => setSelectedGrade(g)}
+                          style={selectedGrade === g
+                            ? {background:C.gold,color:'#000',border:'none',borderRadius:'10px',padding:'8px 14px',fontSize:'9px',fontWeight:900,cursor:'pointer',textTransform:'uppercase'}
+                            : {background:C.surf2,color:C.muted,border:`1px solid ${C.border}`,borderRadius:'10px',padding:'8px 14px',fontSize:'9px',fontWeight:900,cursor:'pointer',textTransform:'uppercase'}
+                          }
+                        >
+                          {g}
+                        </button>
+                      ))}
+                    </div>
 
-                    {gasDeployed && dm.ageTotal > 0 && (
+                    {dm.ageTotal > 0 && (
                       <Card accent={C.amber}>
                         <CardLabel icon="🎂">Age Distribution ({dm.ageTotal} recorded)</CardLabel>
                         {(dm.ageRanges||[]).map((r,i) => (
                           <HBar key={i} label={`${r.range} yrs`} count={r.count} max={Math.max(...dm.ageRanges.map(x=>x.count),1)} color={[C.blue,C.cyan,C.green,C.amber,C.pink,C.purple][i%6]} showPct total={dm.ageTotal}/>
                         ))}
+                        <div style={{marginTop:'16px',paddingTop:'12px',borderTop:`1px solid ${C.border}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                          <span style={{fontSize:'9px',color:C.muted,fontWeight:700,textTransform:'uppercase'}}>Total</span>
+                          <span style={{fontSize:'14px',fontWeight:900,color:C.amber}}>{dm.ageTotal}</span>
+                        </div>
                       </Card>
                     )}
 
-                    {gasDeployed && (
-                      <div style={{display:'grid',gridTemplateColumns:'1fr',gap:'16px'}}>
-                        <DemogSection title="Religion" items={dm.religions} color={C.gold} icon="🛐"/>
-                        <DemogSection title="Town / City" items={dm.towns} color={C.cyan} icon="🏙️"/>
-                        <DemogSection title="Father's Occupation" items={dm.fatherOccupations} color={C.blue} icon="👨‍💼"/>
-                        <DemogSection title="Mother's Occupation" items={dm.motherOccupations} color={C.pink} icon="👩‍💼"/>
-                      </div>
-                    )}
+                    <div style={{display:'flex',flexDirection:'column',gap:'16px'}}>
+                      <DemogSection title="Transferred From" items={dm.transferredFrom} color={C.amber} icon="🏫" />
+                      <DemogSection title="Nation / Ethnicity" items={dm.nations} color={C.gold} icon="🧬" />
+                      <DemogSection title="Religion" items={dm.religions} color={C.gold} icon="🛐" />
+                      
+                      {dm.birthMonths?.length > 0 && (
+                        <Card accent={C.pink}>
+                          <CardLabel icon="🎂">Birth Month Distribution</CardLabel>
+                          <RankList items={dm.birthMonths} color={C.pink} total={totalActive} emptyMsg="No birth month data"/>
+                          <div style={{marginTop:'16px',paddingTop:'12px',borderTop:`1px solid ${C.border}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                            <span style={{fontSize:'9px',color:C.muted,fontWeight:700,textTransform:'uppercase'}}>Total</span>
+                            <span style={{fontSize:'14px',fontWeight:900,color:C.pink}}>{sumItems(dm.birthMonths)}</span>
+                          </div>
+                        </Card>
+                      )}
+
+                      <DemogSection title="Town / City" items={dm.towns} color={C.cyan} icon="🏙️" />
+                      <DemogSection title="Father's Occupation" items={dm.fatherOccupations} color={C.blue} icon="👨‍💼" />
+                      <DemogSection title="Mother's Occupation" items={dm.motherOccupations} color={C.pink} icon="👩‍💼" />
+
+                      {dm.allergies?.length > 0 && (
+                        <Card accent={C.red}>
+                          <CardLabel icon="⚠️">Allergies & Intolerances</CardLabel>
+                          <RankList items={dm.allergies} color={C.red} total={totalActive} emptyMsg="No allergy data recorded"/>
+                          <div style={{marginTop:'16px',paddingTop:'12px',borderTop:`1px solid ${C.border}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                            <span style={{fontSize:'9px',color:C.muted,fontWeight:700,textTransform:'uppercase'}}>Total</span>
+                            <span style={{fontSize:'14px',fontWeight:900,color:C.red}}>{sumItems(dm.allergies)}</span>
+                          </div>
+                        </Card>
+                      )}
+                    </div>
                   </>
                 );
               })()}
 
-              {/* ══════════ ACADEMIC ══════════════════════════════════════════ */}
+              {/* ══════════ ACADEMIC (with Exam & Grade Selectors) ═══════════ */}
               {tab === 'academic' && (() => {
-                const sc = data.scores || {};
+                const exams = data.exams || [];
+                const grades = data.gradesInScores || [];
+
+                // Use filtered breakdown if available, else show overall
+                const sc = filteredAcademic || data.scores || {};
+                const dist = sc.distinctionStudents || 0;
+                const pass = sc.passStudents || 0;
+                const fail = sc.failStudents || 0;
+                const totalStudentsWithScores = dist + pass + fail;
+
                 return (
                   <>
-                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
-                      <Card accent={scoreColor(sc.avg)} style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',gridColumn:'1 / -1'}}>
-                        <p style={{fontSize:'10px',color:C.muted,fontWeight:900,letterSpacing:'0.1em',marginBottom:'10px'}}>SCHOOL AVERAGE SCORE</p>
-                        <div style={{fontSize:'54px',fontWeight:900,color:scoreColor(sc.avg),textShadow:`0 0 30px ${scoreColor(sc.avg)}44`}}>{sc.avg}%</div>
-                        <p style={{fontSize:'12px',color:C.text,marginTop:'4px',fontWeight:700}}>{sc.avg>=80?'Excellent Performance 🎉':sc.avg>=60?'Good Performance 👍':sc.avg>=40?'Needs Improvement ⚠️':'Critical Alert 🚨'}</p>
-                      </Card>
-
-                      <KpiCard icon="⭐" label="Distinctions" value={sc.distinctions || 0} color={C.green}/>
-                      <KpiCard icon="❌" label="Fails" value={sc.fails || 0} color={sc.fails>0?C.red:C.green}/>
+                    {/* Exam Selector */}
+                    <div style={{display:'flex',gap:'8px',flexWrap:'wrap',marginBottom:'12px'}}>
+                      <button onClick={()=>{setSelectedExam('__all__');}} style={selectedExam==='__all__'?{background:C.gold,color:'#000',border:'none',borderRadius:'10px',padding:'8px 14px',fontSize:'9px',fontWeight:900,cursor:'pointer'}:{background:C.surf2,color:C.muted,border:`1px solid ${C.border}`,borderRadius:'10px',padding:'8px 14px',fontSize:'9px',fontWeight:900,cursor:'pointer'}}>
+                        All Exams
+                      </button>
+                      {exams.map(ex => (
+                        <button key={ex} onClick={()=>setSelectedExam(ex)} style={selectedExam===ex?{background:C.gold,color:'#000',border:'none',borderRadius:'10px',padding:'8px 14px',fontSize:'9px',fontWeight:900,cursor:'pointer'}:{background:C.surf2,color:C.muted,border:`1px solid ${C.border}`,borderRadius:'10px',padding:'8px 14px',fontSize:'9px',fontWeight:900,cursor:'pointer'}}>
+                          {ex}
+                        </button>
+                      ))}
                     </div>
 
+                    {/* Grade Selector */}
+                    <div style={{display:'flex',gap:'8px',flexWrap:'wrap',marginBottom:'16px'}}>
+                      <button onClick={()=>setSelectedAcadGrade('__all__')} style={selectedAcadGrade==='__all__'?{background:C.gold,color:'#000',border:'none',borderRadius:'10px',padding:'8px 14px',fontSize:'9px',fontWeight:900,cursor:'pointer'}:{background:C.surf2,color:C.muted,border:`1px solid ${C.border}`,borderRadius:'10px',padding:'8px 14px',fontSize:'9px',fontWeight:900,cursor:'pointer'}}>
+                        All Grades
+                      </button>
+                      {grades.map(g => (
+                        <button key={g} onClick={()=>setSelectedAcadGrade(g)} style={selectedAcadGrade===g?{background:C.gold,color:'#000',border:'none',borderRadius:'10px',padding:'8px 14px',fontSize:'9px',fontWeight:900,cursor:'pointer'}:{background:C.surf2,color:C.muted,border:`1px solid ${C.border}`,borderRadius:'10px',padding:'8px 14px',fontSize:'9px',fontWeight:900,cursor:'pointer'}}>
+                          {g}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Average Score Card */}
+                    <Card accent={scoreColor(sc.avg)} style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center'}}>
+                      <p style={{fontSize:'10px',color:C.muted,fontWeight:900,letterSpacing:'0.1em',marginBottom:'10px'}}>AVERAGE SCORE</p>
+                      <div style={{fontSize:'54px',fontWeight:900,color:scoreColor(sc.avg),textShadow:`0 0 30px ${scoreColor(sc.avg)}44`}}>{sc.avg}%</div>
+                      <p style={{fontSize:'12px',color:C.text,marginTop:'4px',fontWeight:700}}>
+                        {sc.avg>=80?'Excellent 🎉':sc.avg>=60?'Good 👍':sc.avg>=40?'Needs Work ⚠️':'Critical 🚨'}
+                      </p>
+                    </Card>
+
+                    {/* KPI Cards */}
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'12px'}}>
+                      <KpiCard icon="🏆" label="Distinction" value={dist} color={C.green} sub="No fails, ≥1 Dist."/>
+                      <KpiCard icon="✅" label="Pass" value={pass} color={C.blue} sub="All passed, no Dist."/>
+                      <KpiCard icon="❌" label="Fail" value={fail} color={fail>0?C.red:C.green} sub="Failed at least 1 subj."/>
+                    </div>
+
+                    {/* Distinction Breakdown */}
+                    {sc.distinctionBreakdown?.length > 0 && (
+                      <Card accent={C.green}>
+                        <CardLabel icon="📊">Distinction Count Breakdown</CardLabel>
+                        <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
+                          {sc.distinctionBreakdown.map((d,i) => (
+                            <div key={i} style={{display:'flex',justifyContent:'space-between',background:C.surf2,padding:'8px 12px',borderRadius:'10px'}}>
+                              <span style={{color:C.text,fontWeight:600}}>{d.distinctions} subject{d.distinctions>1?'s':''}</span>
+                              <span style={{fontWeight:900,color:C.green}}>{d.students} student{d.students>1?'s':''}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </Card>
+                    )}
+
+                    {/* Fail Breakdown */}
+                    {sc.failBreakdown?.length > 0 && (
+                      <Card accent={C.red}>
+                        <CardLabel icon="📉">Fail Count Breakdown</CardLabel>
+                        <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
+                          {sc.failBreakdown.map((f,i) => (
+                            <div key={i} style={{display:'flex',justifyContent:'space-between',background:C.surf2,padding:'8px 12px',borderRadius:'10px'}}>
+                              <span style={{color:C.text,fontWeight:600}}>{f.fails} subject{f.fails>1?'s':''}</span>
+                              <span style={{fontWeight:900,color:C.red}}>{f.students} student{f.students>1?'s':''}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </Card>
+                    )}
+
+                    {/* Subject Performance */}
                     {sc.subjectAvg?.length > 0 ? (
                       <Card accent={C.purple}>
                         <CardLabel icon="📚">Subject Performance</CardLabel>
-                        {(sc.subjectAvg||[]).map((s,i) => (
+                        {sc.subjectAvg.map((s,i) => (
                           <HBar key={i} label={s.subject} count={s.avg} max={100} color={scoreColor(s.avg)}/>
                         ))}
                       </Card>
                     ) : (
-                       <Card><p style={{textAlign:'center',color:C.muted,fontSize:'12px'}}>No subject data available.</p></Card>
+                      <Card><p style={{textAlign:'center',color:C.muted,fontSize:'12px'}}>No subject data.</p></Card>
                     )}
+
+                    <p style={{textAlign:'center',fontSize:'9px',color:C.muted,marginTop:'8px'}}>
+                      Based on {totalStudentsWithScores} student{totalStudentsWithScores!==1?'s':''} in selection
+                    </p>
                   </>
                 );
               })()}
@@ -419,7 +619,7 @@ export default function AnalyticsPage() {
                 );
               })()}
 
-              {/* ══════════ OPERATIONS (Includes Recent Detailed Leaves) ══════ */}
+              {/* ══════════ OPERATIONS ══════════════════════════════════════ */}
               {tab === 'ops' && (() => {
                 const st = data.staff || {};
                 const lv = data.leaves || {};
@@ -459,7 +659,6 @@ export default function AnalyticsPage() {
                           <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
                             {lv.recent.slice(0,10).map((l,i) => (
                               <div key={i} style={{background:C.surf2,padding:'16px',borderRadius:'16px',display:'flex',flexDirection:'column',gap:'10px',border:`1px solid ${C.border}`}}>
-                                {/* Name, Labels, Status */}
                                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
                                   <div>
                                     <p style={{fontSize:'14px',fontWeight:900,color:C.text,margin:'0 0 6px'}}>{l.Name}</p>
@@ -481,7 +680,6 @@ export default function AnalyticsPage() {
                                     <p style={{fontSize:'16px',fontWeight:900,color:C.text,margin:'8px 0 0',lineHeight:1}}>{l.Total_Days} <span style={{fontSize:'9px',color:C.muted,fontWeight:600}}>Day{l.Total_Days > 1 ? 's' : ''}</span></p>
                                   </div>
                                 </div>
-                                {/* Date Range and Reason */}
                                 <div style={{background:'rgba(0,0,0,0.3)',padding:'12px',borderRadius:'10px',border:`1px solid rgba(255,255,255,0.05)`}}>
                                   <p style={{fontSize:'10px',color:C.cyan,fontWeight:700,margin:'0 0 6px'}}>
                                     📅 {cleanDateStr(l.Start_Date)} {l.End_Date && cleanDateStr(l.End_Date) !== cleanDateStr(l.Start_Date) ? `→ ${cleanDateStr(l.End_Date)}` : ''}
