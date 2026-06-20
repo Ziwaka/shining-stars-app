@@ -2,16 +2,37 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
+import { getPhotoUrl } from '@/lib/cloudinary';
 
-/**
- * Shining Stars - Student My-Performance Hub (v5.3 Identity Update)
- * FEATURE: Observation Log now displays "Recorded By" for teacher feedback [cite: 2026-02-26]
- * PRESERVED: Ivory/Slate-950 Style, Attendance Removed, House Sync Fix [cite: 2026-02-25]
- * STYLE: High Visibility Ivory (#FDFCF0) & Slate-950 Bold Luxury Template [cite: 2023-02-23]
- */
+// ─── HELPER FUNCTIONS FOR EXAM REGISTRY ───
+const SUBJECT_DISTINCTION_MAP = {
+  Myan: 75, Eng: 75, Bio: 75, Eco: 75,
+  Maths: 80, Phys: 80, Chem: 80, Social: 80
+};
+
+const isDistinction = (subject, percentage) => {
+  const threshold = SUBJECT_DISTINCTION_MAP[subject];
+  return threshold ? percentage >= threshold : false;
+};
+
+const isFail = (percentage) => percentage < 40;
+
+const getMonthKey = (examName) => {
+  const name = (examName || '').toUpperCase();
+  if (name.includes('MAY')) return 'MAY';
+  if (name.includes('JUL') || name.includes('JULY')) return 'JUL';
+  if (name.includes('OCT') || name.includes('OCTOBER')) return 'OCT';
+  if (name.includes('DEC') || name.includes('DECEMBER')) return 'DEC';
+  if (name.includes('FEB') || name.includes('FEBRUARY')) return 'FEB';
+  return null;
+};
+
+// ─── END HELPERS ───
+
 export default function MyPerformanceRegistry() {
   const [auth, setAuth] = useState(null);
-  const [myHouse, setMyHouse] = useState("SYNCING..."); 
+  const [myHouse, setMyHouse] = useState("SYNCING...");
+  const [myPhoto, setMyPhoto] = useState(null);
   const [data, setData] = useState({ 
     scores: [], earnedPoints: [], deductedPoints: [], 
     notes: [], fees: [], leaves: [] 
@@ -66,14 +87,23 @@ export default function MyPerformanceRegistry() {
         if (!isMounted) return;
 
         let liveHouse = "UNASSIGNED";
+        let photoUrl = null;
+        
         if (dirRes.success && Array.isArray(dirRes.data)) {
            const studentProfile = dirRes.data.find(s => {
               const rowID = String(s.Student_ID || s['Enrollment No.'] || s['Student ID'] || "").trim();
               return rowID === myID;
            });
-           if (studentProfile && studentProfile.House) liveHouse = studentProfile.House;
+           if (studentProfile) {
+             if (studentProfile.House) liveHouse = studentProfile.House;
+             // Get photo URL from directory
+             if (studentProfile.Photo_URL) {
+               photoUrl = studentProfile.Photo_URL;
+             }
+           }
         }
         setMyHouse(liveHouse);
+        setMyPhoto(photoUrl);
 
         const filterMyRecords = (result) => {
           if (!result.success || !Array.isArray(result.data)) return [];
@@ -120,16 +150,34 @@ export default function MyPerformanceRegistry() {
   const totalEarned = data.earnedPoints.reduce((s, x) => s + x.Numeric_Points, 0);
   const totalDeducted = data.deductedPoints.reduce((s, x) => s + Math.abs(x.Numeric_Points), 0);
   const leavesTaken = data.leaves.filter(x => String(x.Status).toLowerCase().includes("approved")).length;
+  
+  // Get photo URL using the helper
+  const photoUrl = getPhotoUrl(myPhoto);
 
   return (
     <div className="p-4 md:p-10 font-black selection:bg-gold text-slate-950" style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",paddingBottom:"120px",minHeight:0,background:'#FDFCF0'}}>
       <div className="mx-auto space-y-12" style={{maxWidth:'1500px'}}>
         
-        {/* HEADER SECTION */}
+        {/* HEADER SECTION - WITH PHOTO */}
         <div className="bg-slate-950 p-10 md:p-14 shadow-2xl flex flex-col md:flex-row justify-between items-center gap-10 relative overflow-hidden" style={{borderRadius:'4rem', borderBottomWidth:'15px', borderColor:'#fbbf24'}}>
           <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
           <div className="flex items-center gap-6 md:gap-10 z-10">
-            <div className="w-24 h-24 md:w-32 md:h-32 bg-white flex items-center justify-center text-5xl md:text-7xl shadow-2xl border-4" style={{borderRadius:'2.5rem', borderColor:'#fbbf24'}}>🧑‍🎓</div>
+            <div className="w-24 h-24 md:w-32 md:h-32 bg-white flex items-center justify-center text-5xl md:text-7xl shadow-2xl border-4 overflow-hidden" style={{borderRadius:'2.5rem', borderColor:'#fbbf24'}}>
+              {photoUrl ? (
+                <img 
+                  src={photoUrl} 
+                  alt={auth?.Name || "Student"} 
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.parentElement.innerHTML = '🧑‍🎓';
+                  }}
+                />
+              ) : (
+                <span>🧑‍🎓</span>
+              )}
+            </div>
             <div className="text-center md:text-left leading-none">
               <div className="inline-block px-4 py-1.5 text-slate-950 font-black uppercase rounded-lg mb-4 shadow-md" style={{background:'#fbbf24', fontSize:'10px', letterSpacing:'0.2em'}}>My Performance Hub</div>
               <h1 className="text-3xl md:text-6xl italic uppercase font-black text-white tracking-tighter leading-tight">{auth?.Name}</h1>
@@ -191,42 +239,147 @@ export default function MyPerformanceRegistry() {
             </div>
           </div>
 
-          {/* 3. EXAM REGISTRY */}
+          {/* 3. EXAM REGISTRY - TABLE STYLE */}
           <div className="bg-slate-950 p-10 shadow-xl space-y-8 text-white flex flex-col h-full" style={{borderRadius:'3.5rem', borderTopWidth:'10px', borderColor:'#8B5CF6'}}>
             <h2 className="text-2xl font-black uppercase italic border-b-4 border-white/10 pb-4 flex items-center gap-3" style={{color:'#A78BFA'}}>
               <span className="text-white w-10 h-10 flex items-center justify-center rounded-xl text-xl shadow-md" style={{background:'#8B5CF6'}}>📊</span>
               Exam Registry
             </h2>
-            <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar flex-1">
-              {data.scores.length > 0 ? data.scores.map((sc, i) => (
-                <div key={i} className="bg-white/5 p-6 border border-white/10 flex justify-between items-center hover:bg-white/10 transition-all" style={{borderRadius:'2rem'}}>
-                   <div>
-                      <p className="font-black uppercase text-slate-400 tracking-widest mb-1" style={{fontSize:'10px'}}>{sc.Term}</p>
-                      <p className="text-xl font-black italic uppercase text-white">{sc.Subject}</p>
-                   </div>
-                   <div className="text-right">
-                      <p className="text-4xl md:text-5xl font-black italic" style={{color:'#fbbf24'}}>{sc.Score}</p>
-                      <p className={`text-[10px] font-black uppercase mt-1 tracking-widest ${String(sc.Result).toLowerCase() === 'pass' ? 'text-emerald-400' : 'text-rose-400'}`}>{sc.Result}</p>
-                   </div>
-                </div>
-              )) : <div className="text-center py-20 opacity-30 italic uppercase">No Academic Records</div>}
+            <div className="overflow-x-auto rounded-2xl border border-white/10">
+              {(() => {
+                const subjects = ['Myan', 'Eng', 'Maths', 'Chem', 'Phys', 'Bio/Eco', 'SS'];
+                const monthOrder = ['MAY', 'JUL', 'OCT', 'DEC', 'FEB'];
+                
+                const subjectScores = {};
+                const monthRank = {};
+                subjects.forEach(sub => {
+                  subjectScores[sub] = {};
+                  monthOrder.forEach(m => {
+                    subjectScores[sub][m] = null;
+                  });
+                });
+                monthOrder.forEach(m => {
+                  monthRank[m] = null;
+                });
+
+                data.scores.forEach(sc => {
+                  const subject = (sc.Subject || '').trim();
+                  const examName = sc.Exam_Name || sc.Term || '';
+                  const monthKey = getMonthKey(examName);
+                  if (!monthKey) return;
+                  
+                  if (sc.Rank !== undefined && sc.Rank !== null) {
+                    monthRank[monthKey] = sc.Rank;
+                  }
+                  
+                  let matchedSubject = null;
+                  if (subject === 'Bio' || subject === 'Eco') {
+                    matchedSubject = 'Bio/Eco';
+                  } else if (subject === 'Social') {
+                    matchedSubject = 'SS';
+                  } else {
+                    matchedSubject = subjects.find(s => s === subject);
+                  }
+                  
+                  if (matchedSubject && subjectScores[matchedSubject]) {
+                    const score = Number(sc.Score);
+                    if (!isNaN(score)) {
+                      subjectScores[matchedSubject][monthKey] = score;
+                    }
+                  }
+                });
+
+                const hasAnyScore = monthOrder.some(m => 
+                  subjects.some(sub => subjectScores[sub][m] !== null)
+                );
+
+                if (!hasAnyScore) {
+                  return <div className="text-center py-20 opacity-30 italic uppercase text-white">No Academic Records</div>;
+                }
+
+                return (
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-white/5 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                        <th className="p-3 border-b border-white/10 sticky left-0 bg-slate-950 z-10">SUBJECT</th>
+                        {monthOrder.map(m => (
+                          <th key={m} className="p-3 border-b border-white/10 text-center">{m}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {subjects.map(sub => {
+                        const scores = subjectScores[sub];
+                        return (
+                          <tr key={sub} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                            <td className="p-3 font-bold text-sm md:text-base text-white sticky left-0 bg-slate-950 z-10">{sub}</td>
+                            {monthOrder.map(m => {
+                              const score = scores[m];
+                              let display = '—';
+                              let isDist = false;
+                              let isFailScore = false;
+                              if (score !== null && score !== undefined) {
+                                display = String(score);
+                                const threshold = SUBJECT_DISTINCTION_MAP[sub === 'Bio/Eco' ? 'Bio' : sub === 'SS' ? 'Social' : sub];
+                                isDist = threshold ? score >= threshold : false;
+                                isFailScore = score < 40;
+                              }
+                              return (
+                                <td key={m} className="p-3 text-center text-sm md:text-base font-black">
+                                  {score !== null ? (
+                                    <span className={`${isFailScore ? 'text-rose-400' : isDist ? 'text-amber-400' : 'text-slate-200'}`}>
+                                      {display}
+                                      {isDist && <span className="text-amber-400 text-xs ml-1">⭐</span>}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-600">—</span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+
+                      {/* RANK ROW */}
+                      <tr className="border-t-2 border-amber-500/30 bg-amber-500/5">
+                        <td className="p-3 font-black text-sm md:text-base text-amber-400 sticky left-0 bg-slate-950 z-10">🏆 Rank</td>
+                        {monthOrder.map(m => {
+                          const hasScore = subjects.some(sub => subjectScores[sub][m] !== null);
+                          if (!hasScore) {
+                            return <td key={m} className="p-3 text-center text-slate-600">—</td>;
+                          }
+                          const rank = monthRank[m];
+                          return (
+                            <td key={m} className="p-3 text-center text-sm md:text-base font-black text-amber-400">
+                              {rank !== null && rank !== undefined ? rank : '—'}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    </tbody>
+                  </table>
+                );
+              })()}
+            </div>
+            <div className="text-right text-slate-400 text-[10px] font-black uppercase tracking-widest mt-2">
+              ⚡ SHOWING ONLY MAIN EXAMS (MAY, JUL, OCT, DEC, FEB)
             </div>
           </div>
 
-          {/* 4. OBSERVATION LOG (WITH RECORDED BY) */}
+          {/* 4. OBSERVATION LOG - UNLIMITED */}
           <div className="p-10 shadow-xl space-y-8 flex flex-col h-full" style={{background:'#FEF9C3', borderRadius:'3.5rem', borderTopWidth:'10px', borderColor:'#F59E0B'}}>
             <h2 className="text-2xl font-black uppercase italic text-amber-800 border-b-4 border-amber-200 pb-4 flex items-center gap-3">
               <span className="bg-amber-500 text-white w-10 h-10 flex items-center justify-center rounded-xl text-xl shadow-md">📓</span>
               Observation Log
             </h2>
-            <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar flex-1">
+            <div className="space-y-4 pr-2 custom-scrollbar flex-1">
               {data.notes.length > 0 ? data.notes.map((n, i) => (
                 <div key={i} className="bg-white p-6 shadow-sm border border-amber-100 transition-all hover:-translate-y-1" style={{borderRadius:'2rem'}}>
                   <p className="text-lg font-black italic text-slate-950 leading-relaxed mb-4">"{n.Note_Detail}"</p>
                   <div className="flex justify-between items-center pt-4 border-t border-slate-100">
                     <span className="font-black uppercase bg-amber-100 text-amber-700 px-3 py-1 rounded-lg tracking-widest" style={{fontSize:'10px'}}>{n.Category}</span>
                     <div className="text-right leading-none">
-                       {/* 🌟 Added Recorded By here [cite: 2026-02-26] */}
                        <p className="text-slate-400 font-black uppercase mb-1 tracking-widest italic" style={{fontSize:'8px'}}>By: {n.Recorded_By || 'Academic Office'}</p>
                        <span className="text-slate-400 font-black uppercase" style={{fontSize:'10px'}}>{n.Date}</span>
                     </div>
@@ -236,13 +389,13 @@ export default function MyPerformanceRegistry() {
             </div>
           </div>
 
-          {/* 5. LEAVE HISTORY */}
+          {/* 5. LEAVE HISTORY - UNLIMITED */}
           <div className="bg-white p-10 shadow-xl space-y-8 flex flex-col h-full" style={{borderRadius:'3.5rem', borderTopWidth:'10px', borderColor:'#3B82F6'}}>
             <h2 className="text-2xl font-black uppercase italic text-blue-700 border-b-4 border-blue-100 pb-4 flex items-center gap-3">
               <span className="bg-blue-500 text-white w-10 h-10 flex items-center justify-center rounded-xl text-xl shadow-md">✈️</span>
               Leave History
             </h2>
-            <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar flex-1">
+            <div className="space-y-4 pr-2 custom-scrollbar flex-1">
               {data.leaves.length > 0 ? data.leaves.map((l, i) => (
                 <div key={i} className="bg-slate-50 p-6 border border-slate-200 transition-all hover:-translate-y-1" style={{borderRadius:'2rem'}}>
                   <div className="flex justify-between items-start mb-3">
@@ -302,6 +455,7 @@ export default function MyPerformanceRegistry() {
 }
 
 function PerfStat({ label, value, icon, borderColor, textColor }) {
+  const router = useRouter();
   return (
     <div className="bg-white p-8 shadow-xl flex justify-between items-center group transition-transform hover:-translate-y-2" style={{borderRadius:'3rem', borderBottomWidth:'10px', borderColor: borderColor }}>
       <div className="leading-none flex-1">
@@ -315,6 +469,6 @@ function PerfStat({ label, value, icon, borderColor, textColor }) {
         className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-2.5 border-2 rounded-full font-black uppercase tracking-wider shadow-xl hover:bg-gold hover:text-[#020617] transition-all" style={{background:'#020617', borderColor:'#fbbf24', color:'#fbbf24', fontSize:'10px'}}>
         🏠 Home
       </button>
-</div>
+    </div>
   );
 }

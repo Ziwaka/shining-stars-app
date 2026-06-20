@@ -38,18 +38,6 @@ function convertAllDates(arr) {
   });
 }
 
-// ── DEBUG: Leave record raw data (start_date) ကို စစ်ရန် ──
-function logLeaveSample(records) {
-  if (!records.length) return;
-  console.log('🔍 Leave_Records sample (first 2 rows):');
-  console.log(records.slice(0, 2).map(r => ({
-    User_ID: r.User_ID,
-    Start_Date: r.Start_Date,
-    End_Date: r.End_Date,
-    Date_Applied: r.Date_Applied
-  })));
-}
-
 export default function StudentDirectoryOnly() {
   const [students, setStudents]   = useState([]);
   const [leaveRecords, setLeaveRecords] = useState([]);
@@ -96,7 +84,6 @@ export default function StudentDirectoryOnly() {
         if (leaveData.success) {
           const convertedLeaves = convertAllDates(leaveData.data || []);
           setLeaveRecords(convertedLeaves);
-          logLeaveSample(convertedLeaves);
         }
         if (notesData.success) setStudentNotes(convertAllDates(notesData.data || []));
       } catch(e) {
@@ -117,26 +104,35 @@ export default function StudentDirectoryOnly() {
   const getType     = (s) => s['School/Hostel'] || '';
   const isActive    = (s) => String(s.Status ?? 'TRUE').toUpperCase() === 'TRUE' || s.Status === true;
 
-  // ── Leave History (အားလုံး) ─────────────────────
+  // ── Leave History -> Monthly Summary (လအလိုက် အနှစ်ချုပ်) ──
   const getLeaveHistoryText = (studentId) => {
     if (!studentId) return '';
     const records = leaveRecords.filter(r =>
       String(r.User_ID || '').trim() === String(studentId).trim()
     );
-    // Debug: log count for this student
-    console.log(`📋 Student ${studentId}: ${records.length} leave records found`);
-
     if (!records.length) return '';
-    // နောက်ဆုံးယူထားတဲ့ ခွင့်က အပေါ်ဆုံးမှာ ပေါ်အောင် reverse
-    const sorted = records.slice().reverse();
-    return sorted.map(r => {
-      const start = r['Start_Date']   || '';
-      const end   = r['End_Date']     || start;
-      const type  = r['Leave_Type']   || '';
-      const status= r['Status']       || '';
-      const remark= r['Remark']       || '';
-      return `📌 ${start} → ${end} (${type}) [${status}] ${remark ? '🗒 '+remark : ''}`;
-    }).join('\n');
+
+    const monthlyCount = {};
+    records.forEach(r => {
+      const start = r['Start_Date'] || '';
+      if (!start) return;
+      const monthKey = start.substring(0, 7); // yyyy-MM
+      if (monthKey.length === 7) {
+        monthlyCount[monthKey] = (monthlyCount[monthKey] || 0) + 1;
+      }
+    });
+
+    const sortedMonths = Object.keys(monthlyCount).sort();
+    if (!sortedMonths.length) return '';
+
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const lines = sortedMonths.map(month => {
+      const [year, monthNum] = month.split('-');
+      const monthName = monthNames[parseInt(monthNum,10)-1] || monthNum;
+      return `📅 ${monthName} ${year}: ${monthlyCount[month]} time(s)`;
+    });
+
+    return `📋 Leave Summary\n${lines.join('\n')}`;
   };
 
   // ── Registry Note ────────────────────────────────
@@ -259,11 +255,11 @@ export default function StudentDirectoryOnly() {
           </div>
         </div>
 
-        {/* Leave History (All) */}
+        {/* Leave Summary (Monthly) */}
         {leaveHistoryText && (
           <div className="pt-2 border-t border-white/10">
             <p className="text-[10px] md:text-xs font-black uppercase tracking-wider mb-1"
-               style={{ color: '#facc15' }}>📋 Leave History</p>
+               style={{ color: '#facc15' }}>📋 Leave Summary</p>
             <pre className="text-[11px] md:text-sm leading-relaxed whitespace-pre-wrap break-words font-sans"
                  style={{ color: inactive ? '#ccc' : '#ddd', margin: 0 }}>
               {leaveHistoryText}
@@ -394,7 +390,7 @@ export default function StudentDirectoryOnly() {
               </div>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-              {filtered.map((s, idx) => <StudentCard key={idx} s={s} isInactive={!isActive(s)} />)}
+              {filtered.map((s, idx) => <StudentCard key={idx} s={s} inactive={!isActive(s)} />)}
             </div>
           </div>
         )}
