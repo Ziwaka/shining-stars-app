@@ -4,8 +4,11 @@ import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 import { getPhotoUrl } from '@/lib/cloudinary';
 
-// ─── HELPER FUNCTIONS ───
-const PASS_MARK = 40;  // ★ NEW — fail သတ်မှတ်ချက်
+// ═══════════════════════════════════════════════════════════
+// HELPER FUNCTIONS
+// ═══════════════════════════════════════════════════════════
+
+const PASS_MARK = 40;  // ★ Fail သတ်မှတ်ချက်
 
 const SUBJECT_DISTINCTION_MAP = {
   Myan: 75, Eng: 75, Bio: 75, Eco: 75,
@@ -29,17 +32,72 @@ const getMonthKey = (examName) => {
   return null;
 };
 
-// ★★★ NEW — Rank Engine ★★★
+// ═══════════════════════════════════════════════════════════
+// ★★★ DUPLICATE REMOVER ★★★
+// Timestamp ရှိရင် → အသစ်ဆုံး ယူ
+// Timestamp မရှိရင် → sheet အောက်ဆုံး row (နောက်ဆုံးတင်) ယူ
+// ═══════════════════════════════════════════════════════════
+function dedupeScores(rows) {
+  if (!Array.isArray(rows)) return [];
+  const map = new Map();
+
+  const getTs = (r) => {
+    const raw = r.Timestamp || r.Updated_At || r.Last_Updated || r.Created_At || '';
+    const t = Date.parse(raw);
+    return isNaN(t) ? null : t;
+  };
+
+  const keyOf = (r) => [
+    r.Student_ID || r.User_ID || r['Enrollment No.'] || r['Student ID'] || '',
+    r.Subject || '',
+    r.Exam_Name || r.Term || r.Exam_ID || '',
+    r.Grade || ''
+  ].map(v => String(v).trim()).join('|');
+
+  rows.forEach((r, idx) => {
+    const key = keyOf(r);
+    const newTs = getTs(r);
+    const prev = map.get(key);
+
+    if (!prev) {
+      map.set(key, { row: r, idx, ts: newTs });
+      return;
+    }
+
+    if (newTs !== null && prev.ts !== null) {
+      if (newTs >= prev.ts) map.set(key, { row: r, idx, ts: newTs });
+    } else {
+      if (idx > prev.idx) map.set(key, { row: r, idx, ts: newTs });
+    }
+  });
+
+  return Array.from(map.values()).map(v => v.row);
+}
+
+// ★ Generic dedup — sheet အလိုက် key columns ပေး (နောက်ဆုံးတင် က အနိုင်ရ)
+function dedupeByKeys(rows, keyCols) {
+  if (!Array.isArray(rows)) return [];
+  const map = new Map();
+  rows.forEach((r, idx) => {
+    const key = keyCols.map(c => String(r[c] ?? '').trim()).join('|');
+    map.set(key, { row: r, idx });
+  });
+  return Array.from(map.values()).map(v => v.row);
+}
+
+// ═══════════════════════════════════════════════════════════
+// ★★★ RANK ENGINE ★★★
 // Logic:
-//   1. အကုန်အောင် (fail 0) ကို အရင်
+//   1. အကုန်အောင် (fail 0) အရင်
 //   2. ပြီးရင် 1 ဘာသာကျ (fail 1)
 //   3. ပြီးရင် 2 ဘာသာကျ (fail 2) …
 // တူတဲ့ fail count အတွင်းမှာ total အများဆုံးက အပေါ်
-// Grouping: month × grade × stream (Bio / Eco / General ခွဲ)
+// Group: month × grade × stream (Bio / Eco / General ခွဲ)
+// ═══════════════════════════════════════════════════════════
 function computeRankMap(allScores) {
   if (!Array.isArray(allScores)) return {};
 
-  // ─── Step 1: student × month × grade အလိုက် subject အားလုံး စု ───
+  // Step 1: student × month × grade အလိုက် subject အားလုံး စု
   const buckets = {};
   allScores.forEach(sc => {
     const studentId = String(sc.Student_ID || sc.User_ID || sc['Enrollment No.'] || sc['Student ID'] || '').trim();
@@ -51,10 +109,10 @@ function computeRankMap(allScores) {
 
     const key = `${monthKey}|${grade}|${studentId}`;
     if (!buckets[key]) buckets[key] = { monthKey, grade, studentId, subjects: {} };
-    buckets[key].subjects[subject] = score;
+    buckets[key].subjects[subject] = score;  // ★ တူရင် နောက်ဆုံး က overwrite
   });
 
-  // ─── Step 2: Stream သတ်မှတ် (Bio ရှိ → Bio, Eco ရှိ → Eco, မရှိ → General) ───
+  // Step 2: Stream သတ်မှတ်
   const records = Object.values(buckets).map(r => {
     let stream = 'General';
     if ('Bio' in r.subjects) stream = 'Bio';
@@ -62,15 +120,15 @@ function computeRankMap(allScores) {
     return { ...r, stream };
   });
 
-  // ─── Step 3: month × grade × stream အလိုက် group ပြန်ခွဲ ───
+  // Step 3: month × grade × stream group
   const groups = {};
   records.forEach(r => {
     const gKey = `${r.monthKey}|${r.grade}|${r.stream}`;
     (groups[gKey] ??= []).push(r);
   });
 
-  // ─── Step 4: group တစ်ခုချင်း rank စီ ───
-  const rankMap = {};  // "monthKey|studentId" → { rank, total, failCount, totalInGroup, stream, grade }
+  // Step 4: group တစ်ခုချင်း rank စီ
+  const rankMap = {};
   Object.values(groups).forEach(list => {
     const enriched = list.map(s => {
       let total = 0, failCount = 0;
@@ -87,7 +145,7 @@ function computeRankMap(allScores) {
       return b.total - a.total;
     });
 
-    // Competition ranking (တူတာတွေ rank တူ) — ရိုးရိုး 1,2,3 လိုချင်ရင် i+1 ပဲထား
+    // Competition ranking (တူတာတွေ rank တူ)
     let lastFail = null, lastTotal = null, lastRank = 0;
     enriched.forEach((s, i) => {
       const tied = s.failCount === lastFail && s.total === lastTotal;
@@ -109,7 +167,6 @@ function computeRankMap(allScores) {
 
   return rankMap;
 }
-// ★★★ END NEW ★★★
 
 function formatDateWithDay(dateStr) {
   if (!dateStr || dateStr === '—') return '—';
@@ -130,8 +187,10 @@ function formatDateWithDay(dateStr) {
     return dateStr;
   } catch (e) { return dateStr; }
 }
-// ─── END HELPERS ───
 
+// ═══════════════════════════════════════════════════════════
+// COMPONENT
+// ═══════════════════════════════════════════════════════════
 export default function MyPerformanceRegistry() {
   const [auth, setAuth] = useState(null);
   const [myHouse, setMyHouse] = useState("SYNCING...");
@@ -139,8 +198,7 @@ export default function MyPerformanceRegistry() {
   const [myGrade, setMyGrade] = useState(null);
   const [myStream, setMyStream] = useState(null);
   const [totalActiveByGradeStream, setTotalActiveByGradeStream] = useState({});
-  // ★ NEW — App တွက်ထားတဲ့ rank map (monthKey|studentId → info)
-  const [myComputedRanks, setMyComputedRanks] = useState({});
+  const [myComputedRanks, setMyComputedRanks] = useState({});  // ★ App rank map
   const [data, setData] = useState({
     scores: [], earnedPoints: [], deductedPoints: [],
     notes: [], fees: [], leaves: []
@@ -199,22 +257,29 @@ export default function MyPerformanceRegistry() {
         let studentGrade = null;
         let studentStream = null;
 
-        // ─── Existing totals (Bio/Eco count) ───
-        const totalsFromExam = {};
-        if (scRes.success && Array.isArray(scRes.data)) {
-          scRes.data.forEach(sc => {
-            const grade = sc.Grade ? String(sc.Grade).trim() : '';
-            const subject = sc.Subject ? String(sc.Subject).trim() : '';
-            if (!grade || (subject !== 'Bio' && subject !== 'Eco')) return;
-            const key = `${grade}_${subject}`;
-            if (!totalsFromExam[key]) totalsFromExam[key] = new Set();
-            const studentId = sc.Student_ID ? String(sc.Student_ID).trim() : '';
-            if (studentId) totalsFromExam[key].add(studentId);
-          });
-        }
+        // ─── ★★★ STEP 1: Dedup အားလုံး အရင် လုပ် ★★★ ───
+        const cleanScores = dedupeScores(scRes.data || []);
+        const cleanPoints = dedupeByKeys(pRes.data || [], ['Student_ID','Event_Name','Date','Points']);
+        const cleanNotes  = dedupeByKeys(nRes.data || [], ['Student_ID','Category','Date','Note_Detail']);
+        const cleanFees   = dedupeByKeys(fRes.data || [], ['Student_ID','Fee_Type','Date','Amount_Paid']);
+        const cleanLeaves = dedupeByKeys(lRes.data || [], ['Student_ID','Leave_Type','Start_Date']);
+        const cleanDir    = dedupeByKeys(dirRes.data || [], ['Student_ID']);
 
-        if (dirRes.success && Array.isArray(dirRes.data)) {
-          const studentProfile = dirRes.data.find(s => {
+        // ─── Totals (Bio/Eco count) — clean data နဲ့ ───
+        const totalsFromExam = {};
+        cleanScores.forEach(sc => {
+          const grade = sc.Grade ? String(sc.Grade).trim() : '';
+          const subject = sc.Subject ? String(sc.Subject).trim() : '';
+          if (!grade || (subject !== 'Bio' && subject !== 'Eco')) return;
+          const key = `${grade}_${subject}`;
+          if (!totalsFromExam[key]) totalsFromExam[key] = new Set();
+          const studentId = sc.Student_ID ? String(sc.Student_ID).trim() : '';
+          if (studentId) totalsFromExam[key].add(studentId);
+        });
+
+        // ─── Student Directory ───
+        if (cleanDir.length) {
+          const studentProfile = cleanDir.find(s => {
             const rowID = String(s.Student_ID || s['Enrollment No.'] || s['Student ID'] || "").trim();
             return rowID === myID;
           });
@@ -224,17 +289,16 @@ export default function MyPerformanceRegistry() {
             if (studentProfile.Grade) studentGrade = String(studentProfile.Grade).trim();
           }
 
-          if (scRes.success && Array.isArray(scRes.data)) {
-            const myScores = scRes.data.filter(x => {
-              const rowID = String(x.Student_ID || x.User_ID || x['Enrollment No.'] || x['Student ID'] || "").trim();
-              return rowID === myID;
-            });
-            const hasBio = myScores.some(sc => String(sc.Subject || '').trim() === 'Bio');
-            const hasEco = myScores.some(sc => String(sc.Subject || '').trim() === 'Eco');
-            if (hasBio) studentStream = 'Bio';
-            else if (hasEco) studentStream = 'Eco';
-            else studentStream = 'General';
-          }
+          // Stream — clean scores ကနေ
+          const myScores = cleanScores.filter(x => {
+            const rowID = String(x.Student_ID || x.User_ID || x['Enrollment No.'] || x['Student ID'] || "").trim();
+            return rowID === myID;
+          });
+          const hasBio = myScores.some(sc => String(sc.Subject || '').trim() === 'Bio');
+          const hasEco = myScores.some(sc => String(sc.Subject || '').trim() === 'Eco');
+          if (hasBio) studentStream = 'Bio';
+          else if (hasEco) studentStream = 'Eco';
+          else studentStream = 'General';
         }
 
         setMyHouse(liveHouse);
@@ -248,22 +312,20 @@ export default function MyPerformanceRegistry() {
         });
         setTotalActiveByGradeStream(totalCounts);
 
-        // ★★★ NEW — App-side Rank တွက် ★★★
-        if (scRes.success && Array.isArray(scRes.data)) {
-          const computed = computeRankMap(scRes.data);
-          setMyComputedRanks(computed);
-        }
-        // ★★★ END NEW ★★★
+        // ─── ★★★ STEP 2: Clean data နဲ့ Rank တွက် ★★★ ───
+        const computed = computeRankMap(cleanScores);
+        setMyComputedRanks(computed);
 
-        const filterMyRecords = (result) => {
-          if (!result.success || !Array.isArray(result.data)) return [];
-          return (result.data||[]).filter(x => {
+        // ─── Filter ကို clean data နဲ့ လုပ် ───
+        const filterMyRecords = (rows) => {
+          if (!Array.isArray(rows)) return [];
+          return rows.filter(x => {
              const rowID = String(x.Student_ID || x.User_ID || x['Enrollment No.'] || x['Student ID'] || "").trim();
              return rowID === myID;
           });
         };
 
-        const myPoints = filterMyRecords(pRes);
+        const myPoints = filterMyRecords(cleanPoints);
         let earned = []; let deducted = [];
         myPoints.forEach(pt => {
            const rawPts = pt.Points !== undefined ? pt.Points : (pt.Point !== undefined ? pt.Point : "0");
@@ -275,12 +337,12 @@ export default function MyPerformanceRegistry() {
         });
 
         setData({
-          scores: filterMyRecords(scRes).reverse(),
+          scores: filterMyRecords(cleanScores).reverse(),
           earnedPoints: earned.reverse(),
           deductedPoints: deducted.reverse(),
-          notes: filterMyRecords(nRes).reverse(),
-          fees: filterMyRecords(fRes).reverse(),
-          leaves: filterMyRecords(lRes).reverse()
+          notes: filterMyRecords(cleanNotes).reverse(),
+          fees: filterMyRecords(cleanFees).reverse(),
+          leaves: filterMyRecords(cleanLeaves).reverse()
         });
 
       } catch (err) { console.error("DEBUG PERFORMANCE ERROR:", err); }
@@ -388,7 +450,7 @@ export default function MyPerformanceRegistry() {
             </div>
           </div>
 
-          {/* 3. EXAM REGISTRY — ★ UPDATED with embedded ranking ★ */}
+          {/* 3. EXAM REGISTRY */}
           <div className="bg-slate-950 p-10 shadow-xl space-y-8 text-white flex flex-col h-full" style={{borderRadius:'3.5rem', borderTopWidth:'10px', borderColor:'#8B5CF6'}}>
             <h2 className="text-2xl font-black uppercase italic border-b-4 border-white/10 pb-4 flex items-center gap-3" style={{color:'#A78BFA'}}>
               <span className="text-white w-10 h-10 flex items-center justify-center rounded-xl text-xl shadow-md" style={{background:'#8B5CF6'}}>📊</span>
@@ -474,7 +536,7 @@ export default function MyPerformanceRegistry() {
                         );
                       })}
 
-                      {/* ★★★ RANK ROW — App တွက်ထားတဲ့ rank ကို ဦးစားပေး ★★★ */}
+                      {/* RANK ROW */}
                       <tr className="border-t-2 border-amber-500/30 bg-amber-500/5">
                         <td className="p-3 font-black text-sm md:text-base text-amber-400 sticky left-0 bg-slate-950 z-10">🏆 Rank</td>
                         {monthOrder.map(m => {
@@ -496,7 +558,7 @@ export default function MyPerformanceRegistry() {
                             );
                           }
 
-                          // ★ Fallback — sheet Rank ရှိရင် သုံး
+                          // Fallback — sheet Rank
                           const sheetRank = data.scores.find(sc =>
                             getMonthKey(sc.Exam_Name || sc.Term || '') === m &&
                             (sc.Rank !== undefined && sc.Rank !== null && sc.Rank !== '')
@@ -598,7 +660,7 @@ export default function MyPerformanceRegistry() {
         <div className="text-center py-20 opacity-20 italic font-black text-slate-900">
            <div className="text-5xl mb-4">🌟</div>
            <p className="text-3xl md:text-5xl uppercase tracking-widest font-black leading-none">SHINING STARS</p>
-           <p className="uppercase mt-4 font-black" style={{fontSize:'10px', letterSpacing:'1em'}}>VERSION 5.4 • RANK ENGINE EMBEDDED</p>
+           <p className="uppercase mt-4 font-black" style={{fontSize:'10px', letterSpacing:'1em'}}>VERSION 5.5 • RANK + DEDUP SYNCED</p>
         </div>
 
       </div>
