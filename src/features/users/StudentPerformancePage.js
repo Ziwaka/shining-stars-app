@@ -5,6 +5,8 @@ import { WEB_APP_URL } from '@/lib/api';
 import { getPhotoUrl } from '@/lib/cloudinary';
 
 // ─── HELPER FUNCTIONS ───
+const PASS_MARK = 40;  // ★ NEW — fail သတ်မှတ်ချက်
+
 const SUBJECT_DISTINCTION_MAP = {
   Myan: 75, Eng: 75, Bio: 75, Eco: 75,
   Maths: 80, Phys: 80, Chem: 80, Social: 80
@@ -26,6 +28,88 @@ const getMonthKey = (examName) => {
   if (name.includes('FEB') || name.includes('FEBRUARY')) return 'FEB';
   return null;
 };
+
+// ★★★ NEW — Rank Engine ★★★
+// Logic:
+//   1. အကုန်အောင် (fail 0) ကို အရင်
+//   2. ပြီးရင် 1 ဘာသာကျ (fail 1)
+//   3. ပြီးရင် 2 ဘာသာကျ (fail 2) …
+// တူတဲ့ fail count အတွင်းမှာ total အများဆုံးက အပေါ်
+// Grouping: month × grade × stream (Bio / Eco / General ခွဲ)
+function computeRankMap(allScores) {
+  if (!Array.isArray(allScores)) return {};
+
+  // ─── Step 1: student × month × grade အလိုက် subject အားလုံး စု ───
+  const buckets = {};
+  allScores.forEach(sc => {
+    const studentId = String(sc.Student_ID || sc.User_ID || sc['Enrollment No.'] || sc['Student ID'] || '').trim();
+    const subject   = String(sc.Subject || '').trim();
+    const grade     = String(sc.Grade || '').trim();
+    const monthKey  = getMonthKey(sc.Exam_Name || sc.Term || '');
+    const score     = Number(sc.Score);
+    if (!studentId || !subject || !monthKey || isNaN(score)) return;
+
+    const key = `${monthKey}|${grade}|${studentId}`;
+    if (!buckets[key]) buckets[key] = { monthKey, grade, studentId, subjects: {} };
+    buckets[key].subjects[subject] = score;
+  });
+
+  // ─── Step 2: Stream သတ်မှတ် (Bio ရှိ → Bio, Eco ရှိ → Eco, မရှိ → General) ───
+  const records = Object.values(buckets).map(r => {
+    let stream = 'General';
+    if ('Bio' in r.subjects) stream = 'Bio';
+    else if ('Eco' in r.subjects) stream = 'Eco';
+    return { ...r, stream };
+  });
+
+  // ─── Step 3: month × grade × stream အလိုက် group ပြန်ခွဲ ───
+  const groups = {};
+  records.forEach(r => {
+    const gKey = `${r.monthKey}|${r.grade}|${r.stream}`;
+    (groups[gKey] ??= []).push(r);
+  });
+
+  // ─── Step 4: group တစ်ခုချင်း rank စီ ───
+  const rankMap = {};  // "monthKey|studentId" → { rank, total, failCount, totalInGroup, stream, grade }
+  Object.values(groups).forEach(list => {
+    const enriched = list.map(s => {
+      let total = 0, failCount = 0;
+      Object.values(s.subjects).forEach(v => {
+        total += v;
+        if (v < PASS_MARK) failCount++;
+      });
+      return { ...s, total, failCount };
+    });
+
+    // ★ Sort: failCount ASC → total DESC
+    enriched.sort((a, b) => {
+      if (a.failCount !== b.failCount) return a.failCount - b.failCount;
+      return b.total - a.total;
+    });
+
+    // Competition ranking (တူတာတွေ rank တူ) — ရိုးရိုး 1,2,3 လိုချင်ရင် i+1 ပဲထား
+    let lastFail = null, lastTotal = null, lastRank = 0;
+    enriched.forEach((s, i) => {
+      const tied = s.failCount === lastFail && s.total === lastTotal;
+      const rank = tied ? lastRank : i + 1;
+      lastFail = s.failCount;
+      lastTotal = s.total;
+      lastRank = rank;
+
+      rankMap[`${s.monthKey}|${s.studentId}`] = {
+        rank,
+        total: s.total,
+        failCount: s.failCount,
+        totalInGroup: enriched.length,
+        stream: s.stream,
+        grade: s.grade,
+      };
+    });
+  });
+
+  return rankMap;
+}
+// ★★★ END NEW ★★★
 
 function formatDateWithDay(dateStr) {
   if (!dateStr || dateStr === '—') return '—';
@@ -54,11 +138,12 @@ export default function MyPerformanceRegistry() {
   const [myPhoto, setMyPhoto] = useState(null);
   const [myGrade, setMyGrade] = useState(null);
   const [myStream, setMyStream] = useState(null);
-  // ─── NEW: Store total active from Exam_Records ───
   const [totalActiveByGradeStream, setTotalActiveByGradeStream] = useState({});
-  const [data, setData] = useState({ 
-    scores: [], earnedPoints: [], deductedPoints: [], 
-    notes: [], fees: [], leaves: [] 
+  // ★ NEW — App တွက်ထားတဲ့ rank map (monthKey|studentId → info)
+  const [myComputedRanks, setMyComputedRanks] = useState({});
+  const [data, setData] = useState({
+    scores: [], earnedPoints: [], deductedPoints: [],
+    notes: [], fees: [], leaves: []
   });
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -104,7 +189,7 @@ export default function MyPerformanceRegistry() {
         const [scRes, pRes, nRes, fRes, lRes, dirRes] = await Promise.all([
           fetchSheet('Exam_Records'), fetchSheet('House_Points'),
           fetchSheet('Student_Notes_Log'), fetchSheet('Fees_Management'),
-          fetchSheet('Leave_Records'), fetchSheet('Student_Directory') 
+          fetchSheet('Leave_Records'), fetchSheet('Student_Directory')
         ]);
 
         if (!isMounted) return;
@@ -113,30 +198,22 @@ export default function MyPerformanceRegistry() {
         let photoUrl = null;
         let studentGrade = null;
         let studentStream = null;
-        
-        // ─── Calculate totals from Exam_Records (Ignore Status) ───
+
+        // ─── Existing totals (Bio/Eco count) ───
         const totalsFromExam = {};
         if (scRes.success && Array.isArray(scRes.data)) {
           scRes.data.forEach(sc => {
             const grade = sc.Grade ? String(sc.Grade).trim() : '';
             const subject = sc.Subject ? String(sc.Subject).trim() : '';
-            // Only count Bio or Eco subjects
             if (!grade || (subject !== 'Bio' && subject !== 'Eco')) return;
-            
             const key = `${grade}_${subject}`;
-            if (!totalsFromExam[key]) {
-              // Store unique Student_IDs for this grade+subject
-              totalsFromExam[key] = new Set();
-            }
+            if (!totalsFromExam[key]) totalsFromExam[key] = new Set();
             const studentId = sc.Student_ID ? String(sc.Student_ID).trim() : '';
-            if (studentId) {
-              totalsFromExam[key].add(studentId);
-            }
+            if (studentId) totalsFromExam[key].add(studentId);
           });
         }
-        
+
         if (dirRes.success && Array.isArray(dirRes.data)) {
-          // Find current student
           const studentProfile = dirRes.data.find(s => {
             const rowID = String(s.Student_ID || s['Enrollment No.'] || s['Student ID'] || "").trim();
             return rowID === myID;
@@ -146,8 +223,7 @@ export default function MyPerformanceRegistry() {
             if (studentProfile.Photo_URL) photoUrl = studentProfile.Photo_URL;
             if (studentProfile.Grade) studentGrade = String(studentProfile.Grade).trim();
           }
-          
-          // Determine student's stream from their own scores
+
           if (scRes.success && Array.isArray(scRes.data)) {
             const myScores = scRes.data.filter(x => {
               const rowID = String(x.Student_ID || x.User_ID || x['Enrollment No.'] || x['Student ID'] || "").trim();
@@ -160,18 +236,24 @@ export default function MyPerformanceRegistry() {
             else studentStream = 'General';
           }
         }
-        
+
         setMyHouse(liveHouse);
         setMyPhoto(photoUrl);
         setMyGrade(studentGrade);
         setMyStream(studentStream);
-        
-        // ─── Convert Sets to counts ───
+
         const totalCounts = {};
         Object.keys(totalsFromExam).forEach(key => {
           totalCounts[key] = totalsFromExam[key].size;
         });
         setTotalActiveByGradeStream(totalCounts);
+
+        // ★★★ NEW — App-side Rank တွက် ★★★
+        if (scRes.success && Array.isArray(scRes.data)) {
+          const computed = computeRankMap(scRes.data);
+          setMyComputedRanks(computed);
+        }
+        // ★★★ END NEW ★★★
 
         const filterMyRecords = (result) => {
           if (!result.success || !Array.isArray(result.data)) return [];
@@ -219,24 +301,21 @@ export default function MyPerformanceRegistry() {
   const totalDeducted = data.deductedPoints.reduce((s, x) => s + Math.abs(x.Numeric_Points), 0);
   const leavesTaken = data.leaves.filter(x => String(x.Status).toLowerCase().includes("approved")).length;
   const photoUrl = getPhotoUrl(myPhoto);
-  
-  // ─── Get total from Exam_Records for this Grade + Stream ───
-  const gradeStreamKey = myGrade && myStream ? `${myGrade}_${myStream}` : null;
-  const totalActive = gradeStreamKey ? (totalActiveByGradeStream[gradeStreamKey] || 0) : 0;
+  const myID = (auth?.Student_ID || auth?.['Enrollment No.'] || "").toString().trim();
 
   return (
     <div className="p-4 md:p-10 font-black selection:bg-gold text-slate-950" style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",paddingBottom:"120px",minHeight:0,background:'#FDFCF0'}}>
       <div className="mx-auto space-y-12" style={{maxWidth:'1500px'}}>
-        
+
         {/* HEADER SECTION */}
         <div className="bg-slate-950 p-10 md:p-14 shadow-2xl flex flex-col md:flex-row justify-between items-center gap-10 relative overflow-hidden" style={{borderRadius:'4rem', borderBottomWidth:'15px', borderColor:'#fbbf24'}}>
           <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
           <div className="flex items-center gap-6 md:gap-10 z-10">
             <div className="w-24 h-24 md:w-32 md:h-32 bg-white flex items-center justify-center text-5xl md:text-7xl shadow-2xl border-4 overflow-hidden" style={{borderRadius:'2.5rem', borderColor:'#fbbf24'}}>
               {photoUrl ? (
-                <img 
-                  src={photoUrl} 
-                  alt={auth?.Name || "Student"} 
+                <img
+                  src={photoUrl}
+                  alt={auth?.Name || "Student"}
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
                   onError={(e) => {
@@ -269,7 +348,7 @@ export default function MyPerformanceRegistry() {
 
         {/* DATA SECTIONS */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-          
+
           {/* 1. EARNED POINTS */}
           <div className="bg-white p-10 shadow-xl space-y-8 flex flex-col h-full" style={{borderRadius:'3.5rem', borderTopWidth:'10px', borderColor:'#10B981'}}>
             <h2 className="text-2xl font-black uppercase italic text-emerald-700 border-b-4 border-emerald-100 pb-4 flex items-center gap-3">
@@ -309,7 +388,7 @@ export default function MyPerformanceRegistry() {
             </div>
           </div>
 
-          {/* 3. EXAM REGISTRY */}
+          {/* 3. EXAM REGISTRY — ★ UPDATED with embedded ranking ★ */}
           <div className="bg-slate-950 p-10 shadow-xl space-y-8 text-white flex flex-col h-full" style={{borderRadius:'3.5rem', borderTopWidth:'10px', borderColor:'#8B5CF6'}}>
             <h2 className="text-2xl font-black uppercase italic border-b-4 border-white/10 pb-4 flex items-center gap-3" style={{color:'#A78BFA'}}>
               <span className="text-white w-10 h-10 flex items-center justify-center rounded-xl text-xl shadow-md" style={{background:'#8B5CF6'}}>📊</span>
@@ -319,17 +398,11 @@ export default function MyPerformanceRegistry() {
               {(() => {
                 const subjects = ['Myan', 'Eng', 'Maths', 'Chem', 'Phys', 'Bio/Eco', 'SS'];
                 const monthOrder = ['MAY', 'JUL', 'OCT', 'DEC', 'FEB'];
-                
+
                 const subjectScores = {};
-                const monthRank = {};
                 subjects.forEach(sub => {
                   subjectScores[sub] = {};
-                  monthOrder.forEach(m => {
-                    subjectScores[sub][m] = null;
-                  });
-                });
-                monthOrder.forEach(m => {
-                  monthRank[m] = null;
+                  monthOrder.forEach(m => { subjectScores[sub][m] = null; });
                 });
 
                 data.scores.forEach(sc => {
@@ -337,30 +410,19 @@ export default function MyPerformanceRegistry() {
                   const examName = sc.Exam_Name || sc.Term || '';
                   const monthKey = getMonthKey(examName);
                   if (!monthKey) return;
-                  
-                  const rank = sc.Rank !== undefined ? sc.Rank : sc['Rank'];
-                  if (rank !== undefined && rank !== null && rank !== '') {
-                    monthRank[monthKey] = rank;
-                  }
-                  
+
                   let matchedSubject = null;
-                  if (subject === 'Bio' || subject === 'Eco') {
-                    matchedSubject = 'Bio/Eco';
-                  } else if (subject === 'Social') {
-                    matchedSubject = 'SS';
-                  } else {
-                    matchedSubject = subjects.find(s => s === subject);
-                  }
-                  
+                  if (subject === 'Bio' || subject === 'Eco') matchedSubject = 'Bio/Eco';
+                  else if (subject === 'Social') matchedSubject = 'SS';
+                  else matchedSubject = subjects.find(s => s === subject);
+
                   if (matchedSubject && subjectScores[matchedSubject]) {
                     const score = Number(sc.Score);
-                    if (!isNaN(score)) {
-                      subjectScores[matchedSubject][monthKey] = score;
-                    }
+                    if (!isNaN(score)) subjectScores[matchedSubject][monthKey] = score;
                   }
                 });
 
-                const hasAnyScore = monthOrder.some(m => 
+                const hasAnyScore = monthOrder.some(m =>
                   subjects.some(sub => subjectScores[sub][m] !== null)
                 );
 
@@ -393,7 +455,7 @@ export default function MyPerformanceRegistry() {
                                 display = String(score);
                                 const threshold = SUBJECT_DISTINCTION_MAP[sub === 'Bio/Eco' ? 'Bio' : sub === 'SS' ? 'Social' : sub];
                                 isDist = threshold ? score >= threshold : false;
-                                isFailScore = score < 40;
+                                isFailScore = score < PASS_MARK;
                               }
                               return (
                                 <td key={m} className="p-3 text-center text-sm md:text-base font-black">
@@ -412,7 +474,7 @@ export default function MyPerformanceRegistry() {
                         );
                       })}
 
-                      {/* ─── RANK ROW - Uses total from Exam_Records ─── */}
+                      {/* ★★★ RANK ROW — App တွက်ထားတဲ့ rank ကို ဦးစားပေး ★★★ */}
                       <tr className="border-t-2 border-amber-500/30 bg-amber-500/5">
                         <td className="p-3 font-black text-sm md:text-base text-amber-400 sticky left-0 bg-slate-950 z-10">🏆 Rank</td>
                         {monthOrder.map(m => {
@@ -420,14 +482,32 @@ export default function MyPerformanceRegistry() {
                           if (!hasScore) {
                             return <td key={m} className="p-3 text-center text-slate-600">—</td>;
                           }
-                          const rank = monthRank[m];
-                          if (rank && String(rank).includes('/')) {
-                            return <td key={m} className="p-3 text-center text-sm md:text-base font-black text-amber-400">{rank}</td>;
+
+                          // ★ App-computed rank ကို အရင်ယူ
+                          const computed = myComputedRanks[`${m}|${myID}`];
+                          if (computed) {
+                            return (
+                              <td key={m} className="p-3 text-center text-sm md:text-base font-black text-amber-400">
+                                <div>{computed.rank} / {computed.totalInGroup}</div>
+                                <div className="text-[9px] font-bold text-slate-500 mt-0.5">
+                                  {computed.total} pts{computed.failCount > 0 ? ` · ${computed.failCount}✗` : ' · ✓'}
+                                </div>
+                              </td>
+                            );
                           }
-                          const displayRank = (rank && rank !== '—') ? `${rank} / ${totalActive}` : '—';
+
+                          // ★ Fallback — sheet Rank ရှိရင် သုံး
+                          const sheetRank = data.scores.find(sc =>
+                            getMonthKey(sc.Exam_Name || sc.Term || '') === m &&
+                            (sc.Rank !== undefined && sc.Rank !== null && sc.Rank !== '')
+                          )?.Rank;
+
+                          if (sheetRank && String(sheetRank).includes('/')) {
+                            return <td key={m} className="p-3 text-center text-sm md:text-base font-black text-amber-400">{sheetRank}</td>;
+                          }
                           return (
-                            <td key={m} className="p-3 text-center text-sm md:text-base font-black text-amber-400">
-                              {displayRank}
+                            <td key={m} className="p-3 text-center text-sm md:text-base font-black text-slate-600">
+                              {sheetRank ? `${sheetRank}` : '—'}
                             </td>
                           );
                         })}
@@ -438,7 +518,7 @@ export default function MyPerformanceRegistry() {
               })()}
             </div>
             <div className="text-right text-slate-400 text-[10px] font-black uppercase tracking-widest mt-2">
-              ⚡ SHOWING ONLY MAIN EXAMS (MAY, JUL, OCT, DEC, FEB)
+              ⚡ RANK = ALL-PASS → 1-FAIL → 2-FAIL … (TOTAL DESC) • PASS = {PASS_MARK}
             </div>
           </div>
 
@@ -514,11 +594,11 @@ export default function MyPerformanceRegistry() {
           </div>
 
         </div>
-        
+
         <div className="text-center py-20 opacity-20 italic font-black text-slate-900">
            <div className="text-5xl mb-4">🌟</div>
            <p className="text-3xl md:text-5xl uppercase tracking-widest font-black leading-none">SHINING STARS</p>
-           <p className="uppercase mt-4 font-black" style={{fontSize:'10px', letterSpacing:'1em'}}>VERSION 5.3 • PERSONAL ARCHIVE SYNCED</p>
+           <p className="uppercase mt-4 font-black" style={{fontSize:'10px', letterSpacing:'1em'}}>VERSION 5.4 • RANK ENGINE EMBEDDED</p>
         </div>
 
       </div>
@@ -540,8 +620,7 @@ function PerfStat({ label, value, icon, borderColor, textColor }) {
         <p className="text-3xl md:text-4xl lg:text-5xl font-black italic tracking-tighter" style={{ color: textColor }}>{value}</p>
       </div>
       <span className="text-5xl md:text-6xl drop-shadow-sm transition-transform group-hover:scale-110">{icon}</span>
-    
-      {/* 🏠 Home Button */}
+
       <button onClick={() => router.push('/student')}
         className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-2.5 border-2 rounded-full font-black uppercase tracking-wider shadow-xl hover:bg-gold hover:text-[#020617] transition-all" style={{background:'#020617', borderColor:'#fbbf24', color:'#fbbf24', fontSize:'10px'}}>
         🏠 Home
