@@ -26,6 +26,8 @@ function toMMTDateStr(val) {
 }
 
 // ── Distinction & Fail helpers ──
+const PASS_MARK = 40;  // ★ NEW
+
 const SUBJECT_DISTINCTION_MAP = {
   Myan: 75, Eng: 75, Bio: 75, Eco: 75,
   Maths: 80, Phys: 80, Chem: 80, Social: 80
@@ -50,6 +52,144 @@ function getMonthFromExam(examName) {
   return map[examName] || null;
 }
 
+// ★ NEW — Month key from any exam name (flexible)
+function getMonthKey(examName) {
+  const name = (examName || '').toUpperCase();
+  if (name.includes('MAY')) return 'MAY';
+  if (name.includes('JUL')) return 'JUL';
+  if (name.includes('OCT')) return 'OCT';
+  if (name.includes('DEC')) return 'DEC';
+  if (name.includes('FEB')) return 'FEB';
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════
+// ★★★ DUPLICATE REMOVER ★★★
+// Timestamp ရှိရင် → အသစ်ဆုံး ယူ
+// Timestamp မရှိရင် → sheet အောက်ဆုံး row (နောက်ဆုံးတင်) ယူ
+// ═══════════════════════════════════════════════════════════
+function dedupeScores(rows) {
+  if (!Array.isArray(rows)) return [];
+  const map = new Map();
+
+  const getTs = (r) => {
+    const raw = r.Timestamp || r.Updated_At || r.Last_Updated || r.Created_At || '';
+    const t = Date.parse(raw);
+    return isNaN(t) ? null : t;
+  };
+
+  const keyOf = (r) => [
+    r.Student_ID || r.User_ID || r['Enrollment No.'] || r['Student ID'] || '',
+    r.Subject || '',
+    r.Exam_Name || r.Term || r.Exam_ID || '',
+    r.Grade || ''
+  ].map(v => String(v).trim()).join('|');
+
+  rows.forEach((r, idx) => {
+    const key = keyOf(r);
+    const newTs = getTs(r);
+    const prev = map.get(key);
+
+    if (!prev) {
+      map.set(key, { row: r, idx, ts: newTs });
+      return;
+    }
+
+    if (newTs !== null && prev.ts !== null) {
+      if (newTs >= prev.ts) map.set(key, { row: r, idx, ts: newTs });
+    } else {
+      if (idx > prev.idx) map.set(key, { row: r, idx, ts: newTs });
+    }
+  });
+
+  return Array.from(map.values()).map(v => v.row);
+}
+
+// ═══════════════════════════════════════════════════════════
+// ★★★ RANK ENGINE ★★★
+// Logic:
+//   1. အကုန်အောင် (fail 0) အရင်
+//   2. ပြီးရင် 1 ဘာသာကျ (fail 1)
+//   3. ပြီးရင် 2 ဘာသာကျ (fail 2) …
+// တူတဲ့ fail count အတွင်းမှာ total အများဆုံးက အပေါ်
+// Group: month × grade × stream (Bio / Eco / General ခွဲ)
+// ═══════════════════════════════════════════════════════════
+function computeRankMap(allScores) {
+  if (!Array.isArray(allScores)) return {};
+
+  // Step 1: student × month × grade အလိုက် subject အားလုံး စု
+  const buckets = {};
+  allScores.forEach(sc => {
+    const studentId = String(sc.Student_ID || sc.User_ID || sc['Enrollment No.'] || sc['Student ID'] || '').trim();
+    const subject   = String(sc.Subject || '').trim();
+    const gradeRaw  = String(sc.Grade || '').trim();
+    const grade     = gradeRaw.replace(/^Grade\s*/i, '').trim();
+    const monthKey  = getMonthKey(sc.Exam_Name || sc.Term || '');
+    const score     = Number(sc.Score);
+    if (!studentId || !subject || !monthKey || isNaN(score)) return;
+
+    const key = `${monthKey}|${grade}|${studentId}`;
+    if (!buckets[key]) buckets[key] = { monthKey, grade, studentId, subjects: {} };
+    buckets[key].subjects[subject] = score;  // ★ တူရင် နောက်ဆုံး က overwrite
+  });
+
+  // Step 2: Stream သတ်မှတ်
+  const records = Object.values(buckets).map(r => {
+    let stream = 'General';
+    if ('Bio' in r.subjects) stream = 'Bio';
+    else if ('Eco' in r.subjects) stream = 'Eco';
+    else if ('Social' in r.subjects) stream = 'Social';
+    return { ...r, stream };
+  });
+
+  // Step 3: month × grade × stream group
+  const groups = {};
+  records.forEach(r => {
+    const gKey = `${r.monthKey}|${r.grade}|${r.stream}`;
+    (groups[gKey] ??= []).push(r);
+  });
+
+  // Step 4: group တစ်ခုချင်း rank စီ
+  const rankMap = {};  // "monthKey|studentId" → info
+  Object.values(groups).forEach(list => {
+    const enriched = list.map(s => {
+      let total = 0, failCount = 0;
+      Object.values(s.subjects).forEach(v => {
+        total += v;
+        if (v < PASS_MARK) failCount++;
+      });
+      return { ...s, total, failCount };
+    });
+
+    // ★ Sort: failCount ASC → total DESC
+    enriched.sort((a, b) => {
+      if (a.failCount !== b.failCount) return a.failCount - b.failCount;
+      return b.total - a.total;
+    });
+
+    // Competition ranking (တူတာတွေ rank တူ)
+    let lastFail = null, lastTotal = null, lastRank = 0;
+    enriched.forEach((s, i) => {
+      const tied = s.failCount === lastFail && s.total === lastTotal;
+      const rank = tied ? lastRank : i + 1;
+      lastFail = s.failCount;
+      lastTotal = s.total;
+      lastRank = rank;
+
+      rankMap[`${s.monthKey}|${s.studentId}`] = {
+        rank,
+        total: s.total,
+        failCount: s.failCount,
+        totalInGroup: enriched.length,
+        stream: s.stream,
+        grade: s.grade,
+      };
+    });
+  });
+
+  return rankMap;
+}
+
 export default function StudentDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -60,12 +200,8 @@ export default function StudentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("PROFILE");
 
-  // ── Rank related states ──
-  const [selectedRankExam, setSelectedRankExam] = useState("May Chapter End Test");
-  const [classRankList, setClassRankList] = useState([]);
-  const [studentRank, setStudentRank] = useState(null);
-  const [rankLoading, setRankLoading] = useState(false);
-  const [rankError, setRankError] = useState(null);
+  // ★ NEW — App-computed ranks (all months)
+  const [allMonthRanks, setAllMonthRanks] = useState({});
   const [academicYear, setAcademicYear] = useState('2026-2027');
 
   // ── Annual summary states ──
@@ -110,7 +246,7 @@ export default function StudentDetailPage() {
         if (s.success) {
           const foundStudent = s.data.find(x => (x['Enrollment No.'] || x['Registration No.'] || x['No.'] || '').toString().trim() === studentId.trim());
           setStudent(foundStudent);
-          
+
           // Try to get academic year from config
           try {
             const cfgRes = await fetch(WEB_APP_URL, { method: 'POST', headers, body: JSON.stringify({ action: 'getExamConfig' }) });
@@ -121,7 +257,19 @@ export default function StudentDetailPage() {
           } catch(e) {}
         }
 
-        const studentScores = sc.success ? sc.data.filter(x => (x.Student_ID || '').toString() === studentId) : [];
+        // ★★★ KEY CHANGE — Dedup + Rank Engine ★★★
+        // Exam_Records အားလုံးကို clean လုပ်
+        const cleanAllScores = dedupeScores(sc.success ? (sc.data || []) : []);
+
+        // Rank Map တွက် (ကျောင်းသားအားလုံး × လအားလုံး)
+        const rankMap = computeRankMap(cleanAllScores);
+        setAllMonthRanks(rankMap);
+
+        // ကိုယ့် student record ကို filter (clean data နဲ့)
+        const studentScores = cleanAllScores.filter(x =>
+          String(x.Student_ID || x.User_ID || x['Enrollment No.'] || x['Student ID'] || '').trim() === studentId.trim()
+        );
+
         setAllData({
           scores: studentScores,
           points: p.success ? p.data.filter(x => (x.Student_ID || '').toString() === studentId) : [],
@@ -169,123 +317,6 @@ export default function StudentDetailPage() {
     setFailCount(failSubjects);
   }, [allData.scores]);
 
-  // ── Fetch Class Ranking (FIXED: no Section filter, grade normalization) ──
-  useEffect(() => {
-    if (!student || !selectedRankExam) return;
-    
-    // --- Normalize grade (KG to 12) ---
-    const gradeRaw = student.Grade || '';
-    let grade = gradeRaw.toString().trim();
-    grade = grade.replace(/^Grade\s*/i, '').trim();
-    if (grade.toUpperCase() === 'KG') {
-      grade = 'KG';
-    }
-
-    const studentEnrollNo = (student['Enrollment No.'] || '').toString().trim();
-    const studentIdFromStudent = (student.Student_ID || '').toString().trim();
-
-    const fetchRank = async () => {
-      setRankLoading(true);
-      setRankError(null);
-      try {
-        // ── Payload: do NOT include Section (to avoid filtering out records with no section) ──
-        const payload = {
-          action: 'getExamResults',
-          Academic_Year: academicYear,
-          Exam_Name: selectedRankExam,
-          Grade: grade,
-        };
-
-        console.log('🚀 Fetching rank with payload:', payload);
-
-        const res = await fetch(WEB_APP_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        console.log('📊 Rank API Response:', data);
-        
-        if (data.success) {
-          const fullList = data.rankList || [];
-          setClassRankList(fullList);
-          
-          if (fullList.length === 0) {
-            setStudentRank(null);
-            setRankError('No rank data for this exam.');
-            return;
-          }
-          
-          console.log('🔍 Full rank list (first 5):', fullList.slice(0, 5).map(s => ({ id: s.Student_ID, name: s.Name })));
-
-          // ── Find student ──
-          let foundStudent = null;
-          let foundIndex = -1;
-          
-          // 1. By Enrollment No.
-          fullList.forEach((stu, idx) => {
-            const stuId = (stu.Student_ID || '').toString().trim();
-            if (stuId === studentEnrollNo || stuId === studentIdFromStudent || stuId === studentId) {
-              foundStudent = stu;
-              foundIndex = idx;
-            }
-          });
-          
-          // 2. By Name (fallback)
-          if (!foundStudent) {
-            const studentName = (student['Name (ALL CAPITAL)'] || student.Name || '').toString().trim();
-            fullList.forEach((stu, idx) => {
-              const stuName = (stu.Name || '').toString().trim();
-              if (stuName === studentName) {
-                foundStudent = stu;
-                foundIndex = idx;
-              }
-            });
-          }
-          
-          // 3. Partial ID match
-          if (!foundStudent) {
-            fullList.forEach((stu, idx) => {
-              const stuId = (stu.Student_ID || '').toString().trim();
-              if (stuId.includes(studentEnrollNo) || studentEnrollNo.includes(stuId)) {
-                foundStudent = stu;
-                foundIndex = idx;
-              }
-            });
-          }
-          
-          console.log('🎯 Found student in rank list:', foundStudent ? `YES (rank ${foundIndex+1})` : 'NO', foundStudent);
-          
-          if (foundStudent) {
-            const subjects = foundStudent.subjects || {};
-            let stream = '';
-            if (subjects.Bio) stream = 'Bio';
-            else if (subjects.Eco) stream = 'Eco';
-            else if (subjects.Social) stream = 'Social';
-            
-            setStudentRank({
-              rank: foundIndex + 1,
-              total: fullList.length,
-              stream: stream || 'General'
-            });
-          } else {
-            setStudentRank(null);
-            setRankError(`Student not found in ranking list for ${selectedRankExam}.`);
-          }
-        } else {
-          setRankError(data.message || 'Failed to load ranking.');
-        }
-      } catch (err) {
-        console.error('Rank fetch failed', err);
-        setRankError('Network error while fetching rank.');
-        setStudentRank(null);
-      }
-      setRankLoading(false);
-    };
-
-    fetchRank();
-  }, [student, selectedRankExam, academicYear, studentId]);
-
   const totalPoints = allData.points.reduce((sum, x) => sum + (Number(x.Points) || 0), 0);
   const totalPaid = allData.fees.reduce((sum, x) => sum + (Number(x.Amount_Paid) || 0), 0);
   const lastFee = allData.fees.length > 0 ? allData.fees[allData.fees.length - 1] : null;
@@ -293,6 +324,16 @@ export default function StudentDetailPage() {
   const houseTheme = getHouseTheme(student?.House);
   const previewImg = getPhotoUrl(student?.Photo_URL);
   const vehicle = allData.vehicles.length > 0 ? allData.vehicles[0] : null;
+
+  // ★ Latest available rank for top card
+  const latestRank = (() => {
+    const months = ['FEB', 'DEC', 'OCT', 'JUL', 'MAY'];
+    for (const m of months) {
+      const info = allMonthRanks[`${m}|${studentId.trim()}`];
+      if (info) return { ...info, month: m };
+    }
+    return null;
+  })();
 
   if (loading) return <div className="min-h-screen bg-slate-50 flex items-center justify-center font-black text-[#4c1d95] animate-pulse text-2xl uppercase italic px-6">Loading Profile...</div>;
   if (!student) return <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-black text-rose-600 text-2xl uppercase italic gap-4">Student Not Found <button onClick={() => router.push('/staff/student-dir')} className="text-sm bg-slate-900 text-white px-6 py-2 rounded-full">Go Back</button></div>;
@@ -435,50 +476,37 @@ export default function StudentDetailPage() {
               {/* PERFORMANCE TAB */}
               {/* Top stat cards: Rank, House Points, Total Finance */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
-                {/* Rank Card */}
+                {/* Rank Card — Latest available */}
                 <div className="bg-white p-6 md:p-8 rounded-[2rem] border-2 border-slate-100 shadow-sm flex flex-col justify-center min-w-0">
                   <p className="text-[9px] md:text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 truncate">
-                    RANK {studentRank?.stream ? `(${studentRank.stream})` : ''}
+                    LATEST RANK {latestRank?.stream ? `(${latestRank.stream})` : ''}
                   </p>
-                  {rankLoading ? (
-                    <div className="animate-pulse h-8 bg-slate-200 rounded w-16" />
-                  ) : studentRank ? (
+                  {latestRank ? (
                     <>
                       <p className="text-3xl md:text-5xl font-black font-serif-numbers italic tracking-tighter text-indigo-600 truncate">
-                        {studentRank.rank} / {studentRank.total}
+                        {latestRank.rank} / {latestRank.totalInGroup}
                       </p>
                       <p className="text-[8px] md:text-[9px] font-bold uppercase text-slate-300 italic tracking-widest mt-2 truncate">
-                        {selectedRankExam}
+                        {latestRank.month} • {latestRank.total} pts
+                        {latestRank.failCount > 0 ? ` • ${latestRank.failCount}✗` : ' • ✓'}
                       </p>
                     </>
                   ) : (
-                    <p className="text-sm text-slate-400 italic truncate">{rankError || '—'}</p>
+                    <p className="text-sm text-slate-400 italic truncate">No rank data</p>
                   )}
                 </div>
                 <StatCard label="House Points" value={totalPoints} unit="POINTS" color={houseTheme.text} />
                 <StatCard label="Total Finance" value={totalPaid.toLocaleString()} unit="MMK PAID" color="text-emerald-600" />
               </div>
 
-              {/* Exam selection for ranking & Academic History header */}
+              {/* Academic History header */}
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-2">
                 <h3 className="text-lg md:text-xl font-black uppercase italic text-slate-800 border-l-4 border-indigo-600 pl-4">
                   Academic History
                 </h3>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black uppercase text-slate-400">Rank by:</span>
-                  <select
-                    value={selectedRankExam}
-                    onChange={(e) => setSelectedRankExam(e.target.value)}
-                    className="text-[10px] font-bold bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 text-slate-700"
-                  >
-                    <option>May Chapter End Test</option>
-                    <option>July Chapter End Test</option>
-                    <option>October Midterm Test</option>
-                    <option>December Chapter End Test</option>
-                    <option>February Year End Test</option>
-                    <option>Other (Custom)</option>
-                  </select>
-                </div>
+                <span className="text-[10px] font-black uppercase text-slate-400">
+                  ⚡ Rank = All-Pass → 1-Fail → 2-Fail (Total Desc) • Pass = {PASS_MARK}
+                </span>
               </div>
 
               {/* Annual Distinction & Fail Summary */}
@@ -493,7 +521,7 @@ export default function StudentDetailPage() {
                 </div>
               </div>
 
-              {/* Financial Ledger (same as before) */}
+              {/* Financial Ledger */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
                 <div className="bg-white p-6 md:p-10 rounded-[2.5rem] border-2 border-slate-100 shadow-xl flex flex-col lg:col-span-2">
                   <h3 className="text-lg md:text-xl font-black uppercase italic text-slate-800 border-l-4 border-emerald-500 pl-4 mb-6">Financial Ledger</h3>
@@ -527,7 +555,7 @@ export default function StudentDetailPage() {
                   </div>
                 </div>
 
-                {/* Academic History Table (with Rank row at bottom) */}
+                {/* Academic History Table — Rank for ALL months */}
                 <div className="bg-white p-6 md:p-8 rounded-[2rem] border-2 border-slate-100 shadow-sm flex flex-col lg:col-span-2">
                   <div className="overflow-x-auto rounded-2xl border border-slate-200">
                     <table className="w-full min-w-[600px] text-left border-collapse">
@@ -555,13 +583,7 @@ export default function StudentDetailPage() {
                             const examName = String(rawExam).trim();
                             if (!examName) return;
 
-                            const examUpper = examName.toUpperCase();
-                            let monthKey = null;
-                            if (examUpper.includes('MAY')) monthKey = 'MAY';
-                            else if (examUpper.includes('JUL')) monthKey = 'JUL';
-                            else if (examUpper.includes('OCT')) monthKey = 'OCT';
-                            else if (examUpper.includes('DEC')) monthKey = 'DEC';
-                            else if (examUpper.includes('FEB')) monthKey = 'FEB';
+                            const monthKey = getMonthKey(examName);
                             if (!monthKey) return;
 
                             const scSubject = (sc.Subject || '').trim();
@@ -613,42 +635,35 @@ export default function StudentDetailPage() {
                           );
                         })}
 
-                        {/* Rank Row */}
-                        {(() => {
-                          const examMonth = getMonthFromExam(selectedRankExam);
-                          const months = ['MAY','JUL','OCT','DEC','FEB'];
-                          return (
-                            <tr className="border-t-2 border-indigo-200 bg-indigo-50/50">
-                              <td className="p-3 font-bold text-sm md:text-base text-indigo-700 sticky left-0 bg-indigo-50/50 z-10">
-                                🏆 Rank
+                        {/* ★★★ Rank Row — App-computed for ALL months ★★★ */}
+                        <tr className="border-t-2 border-indigo-200 bg-indigo-50/50">
+                          <td className="p-3 font-bold text-sm md:text-base text-indigo-700 sticky left-0 bg-indigo-50/50 z-10">
+                            🏆 Rank
+                          </td>
+                          {['MAY','JUL','OCT','DEC','FEB'].map(m => {
+                            const info = allMonthRanks[`${m}|${studentId.trim()}`];
+                            if (!info) {
+                              return (
+                                <td key={m} className="p-3 text-center text-sm md:text-base font-black text-slate-300">
+                                  —
+                                </td>
+                              );
+                            }
+                            return (
+                              <td key={m} className="p-3 text-center text-sm md:text-base font-black">
+                                <div className="text-indigo-700">{info.rank} / {info.totalInGroup}</div>
+                                <div className="text-[9px] font-bold text-slate-400 mt-0.5">
+                                  {info.total} pts{info.failCount > 0 ? ` · ${info.failCount}✗` : ' · ✓'}
+                                </div>
                               </td>
-                              {months.map(m => {
-                                const showRank = (examMonth === m && studentRank);
-                                return (
-                                  <td key={m} className="p-3 text-center text-sm md:text-base font-black">
-                                    {rankLoading && examMonth === m ? (
-                                      <span className="text-slate-400 animate-pulse">⏳</span>
-                                    ) : showRank ? (
-                                      <span className="text-indigo-700">
-                                        {studentRank.rank} / {studentRank.total}
-                                      </span>
-                                    ) : (
-                                      <span className="text-slate-300">—</span>
-                                    )}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          );
-                        })()}
+                            );
+                          })}
+                        </tr>
                       </tbody>
                     </table>
                   </div>
                   {allData.scores.length === 0 && (
                     <p className="text-slate-400 text-xs font-bold italic text-center py-6">No Exam Records.</p>
-                  )}
-                  {rankError && (
-                    <p className="text-rose-500 text-xs font-bold text-center py-2">{rankError}</p>
                   )}
                 </div>
               </div>
