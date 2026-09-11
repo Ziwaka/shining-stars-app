@@ -30,6 +30,88 @@ const formatDateDisplay = (d) => {
   } catch(e) { return formatMMDate(d); }
 };
 
+// ═══════════════════════════════════════════════════════════
+// ★ SEARCH HELPERS — Unicode + Zawgyi + English safe
+// ═══════════════════════════════════════════════════════════
+
+// NFC normalize + trim + toLowerCase
+const norm = (s) => {
+  if (s === null || s === undefined) return '';
+  try {
+    return String(s).normalize('NFC').trim().toLowerCase();
+  } catch (e) {
+    return String(s).trim().toLowerCase();
+  }
+};
+
+// Zawgyi → Unicode မဟုတ်ဘူး၊ ဒါပေမယ့် diacritics ဖြုတ်ပြီး compare လုပ်နိုင်တဲ့ key
+// (Myanmar combining marks တွေ ဖြုတ်လိုက်တာ)
+const stripMarks = (s) => {
+  if (!s) return '';
+  try {
+    return String(s)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')  // Latin marks
+      .replace(/[\u102B-\u103E\u103A-\u103F]/g, '')  // Myanmar marks
+      .trim()
+      .toLowerCase();
+  } catch (e) {
+    return String(s).trim().toLowerCase();
+  }
+};
+
+// Student ရဲ့ name fields အားလုံး စု
+const getStudentNames = (s) => {
+  return [
+    s['Name (ALL CAPITAL)'],
+    s.Name,
+    s.name,
+    s['Name_MM'],
+    s['Name (MM)'],
+    s['မြန်မာအမည်'],
+    s['Myanmar Name'],
+    s['Name_Myanmar'],
+  ].filter(Boolean).map(String);
+};
+
+const getStudentIds = (s) => {
+  return [
+    s['Enrollment No.'],
+    s['Enrollment Number'],
+    s['Student_ID'],
+    s['Student ID'],
+    s.Student_ID,
+  ].filter(Boolean).map(String);
+};
+
+// ★ Match test — ၃ ဆင့်
+//   1. Direct NFC substring
+//   2. Lowercase substring
+//   3. Strip-marks (Myanmar marks ဖြုတ်) substring
+const matchStudent = (s, query) => {
+  const q = norm(query);
+  if (!q) return false;
+  const qStripped = stripMarks(query);
+
+  const names = getStudentNames(s);
+  const ids = getStudentIds(s);
+
+  // Name match
+  for (const n of names) {
+    const nNorm = norm(n);
+    if (nNorm.includes(q)) return true;
+    if (stripMarks(n).includes(qStripped)) return true;
+  }
+
+  // ID match
+  for (const id of ids) {
+    const idNorm = norm(id);
+    if (idNorm.includes(q)) return true;
+  }
+
+  return false;
+};
+
 const CATEGORIES = [
   { id: 'Discipline', nameEn: 'Discipline', nameMm: 'စည်းကမ်းပိုင်း', icon: '⚖️', color: 'text-rose-600', bg: 'bg-rose-50' },
   { id: 'Academic', nameEn: 'Academic', nameMm: 'ပညာရေး', icon: '📚', color: 'text-indigo-600', bg: 'bg-indigo-50' },
@@ -88,7 +170,7 @@ export default function RegistryNotes() {
       Name: selectedStudent['Name (ALL CAPITAL)'] || selectedStudent.Name || '',
       Grade: selectedStudent.Grade || selectedStudent.Class || '',
       Category: form.Category,
-      Note_Detail: form.Note.trim(),  // ← ပြင်ဆင်ချက် 1
+      Note_Detail: form.Note.trim(),
       Recorded_By: user.Name || user.username || ''
     }];
 
@@ -108,12 +190,11 @@ export default function RegistryNotes() {
     setSaving(false);
   };
 
-  const filteredStudents = studentSearch.length >= 2 ? students.filter(s => {
-    const q = studentSearch.toLowerCase();
-    const name = (s['Name (ALL CAPITAL)'] || s.Name || '').toLowerCase();
-    const id = (s['Enrollment No.'] || s.Student_ID || '').toString().toLowerCase();
-    return name.includes(q) || id.includes(q);
-  }).slice(0, 5) : [];
+  // ★ ပြင်ထားတဲ့ filter — Unicode + Zawgyi + English + ID
+  //   length >= 1 (မြန်မာအတွက် ၁ လုံးကတည်းက ရှာ)
+  const filteredStudents = studentSearch.trim().length >= 1
+    ? students.filter(s => matchStudent(s, studentSearch)).slice(0, 8)
+    : [];
 
   return (
     <div className="h-screen flex flex-col bg-[#F8FAFC] font-black text-slate-900 overflow-hidden">
@@ -145,12 +226,13 @@ export default function RegistryNotes() {
                     {!selectedStudent ? (
                       <div className="relative">
                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
-                        <input value={studentSearch} onChange={e => setStudentSearch(e.target.value)} placeholder="Search by name or ID..." className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-10 pr-4 py-3.5 text-sm outline-none focus:border-[#fbbf24] focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all" />
+                        <input value={studentSearch} onChange={e => setStudentSearch(e.target.value)} placeholder="Search by name (MM/EN) or ID..." className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-10 pr-4 py-3.5 text-sm outline-none focus:border-[#fbbf24] focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all" />
                         {filteredStudents.length > 0 && (
-                          <div className="absolute top-full left-0 right-0 z-20 bg-white border border-slate-200 rounded-2xl mt-2 overflow-hidden shadow-2xl">
+                          <div className="absolute top-full left-0 right-0 z-20 bg-white border border-slate-200 rounded-2xl mt-2 overflow-hidden shadow-2xl max-h-[400px] overflow-y-auto">
                             {filteredStudents.map((s, i) => (
                               <button key={i} onClick={() => { setSelectedStudent(s); setStudentSearch(''); }} className={`w-full px-5 py-4 text-left hover:bg-amber-50 transition-colors ${i < filteredStudents.length - 1 ? 'border-b border-slate-100' : ''}`}>
                                 <p className="text-sm font-black text-slate-800">{s['Name (ALL CAPITAL)'] || s.Name}</p>
+                                {s['Name_MM'] && <p className="text-xs font-bold text-slate-600 mt-0.5">{s['Name_MM']}</p>}
                                 <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">ID: {s['Enrollment No.'] || s.Student_ID} | G-{s.Grade || s.Class}</p>
                               </button>
                             ))}
@@ -236,12 +318,12 @@ export default function RegistryNotes() {
                             </div>
                             <div className="text-right shrink-0 pl-2">
                               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{formatDateDisplay(note.Date)}</p>
-                              <span className={`inline-block mt-2 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${cat.bg} ${cat.color} border-${cat.color.split('-')[1]}-200`}>{cat.nameEn}</span>
+                              <span className={`inline-block mt-2 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${cat.bg} ${cat.color}`}>{cat.nameEn}</span>
                             </div>
                           </div>
                           <div className="bg-white p-4 rounded-2xl border border-slate-100 mb-3 shadow-sm">
                             <p className="text-[12px] md:text-[13px] text-slate-700 leading-relaxed font-bold break-words">
-                              "{note.Note_Detail}"  {/* ← ပြင်ဆင်ချက် 2 */}
+                              "{note.Note_Detail}"
                             </p>
                           </div>
                           <div className="flex justify-end items-center gap-2">
