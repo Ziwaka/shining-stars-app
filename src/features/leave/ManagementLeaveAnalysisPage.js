@@ -10,8 +10,29 @@ import PrintableView from '@/features/leave/components/PrintableView';
 import DurationBadge from '@/features/leave/components/DurationBadge';
 import { getTodayMM, formatMMDate, formatDateDisplay } from '@/features/leave/components/DateHelpers';
 
+// ═══════════════════════════════════════════════════════════
+// ★ SEARCH HELPERS — Myanmar + English + ID
+// ═══════════════════════════════════════════════════════════
+const norm = (s) => {
+  if (s === null || s === undefined) return '';
+  try { return String(s).normalize('NFC').trim().toLowerCase(); }
+  catch (e) { return String(s).trim().toLowerCase(); }
+};
+
+const stripMarks = (s) => {
+  if (!s) return '';
+  try {
+    return String(s)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[\u102B-\u103E\u103A-\u103F]/g, '')
+      .trim()
+      .toLowerCase();
+  } catch (e) { return String(s).trim().toLowerCase(); }
+};
+
 // Watchlist Group Component
-const EnhancedWatchlistGroup = ({ title, users, icon, color, onViewDetails }) => (
+const EnhancedWatchlistGroup = ({ title, users, icon, color, onViewDetails, getMyanmarName }) => (
   <div className="bg-white border border-slate-200 p-6 rounded-3xl flex flex-col max-h-[600px] shadow-xl">
     <div className="flex justify-between items-center mb-5 border-b border-slate-100 pb-4 shrink-0">
       <p className={`text-sm font-black uppercase tracking-widest leading-tight ${color}`}>
@@ -22,11 +43,14 @@ const EnhancedWatchlistGroup = ({ title, users, icon, color, onViewDetails }) =>
     <div className="space-y-4 overflow-y-auto pr-2 flex-1 scrollbar-thin">
       {users.length === 0 ? (
         <p className="text-xs text-slate-400 italic text-center py-10">No records found</p>
-      ) : users.map((u, i) => (
+      ) : users.map((u, i) => {
+        const mmName = getMyanmarName ? getMyanmarName(u.id, u.name) : '';
+        return (
         <div key={i} className="bg-slate-50 rounded-xl p-4 border border-slate-100 hover:bg-white hover:shadow-md transition-all cursor-pointer" onClick={() => onViewDetails(u)}>
           <div className="flex justify-between items-start mb-3">
             <div>
-              <p className="font-black text-slate-900 text-base">{u.name}</p>
+              <p className="font-black text-slate-900 text-base">{mmName || u.name}</p>
+              {mmName && <p className="text-[10px] font-bold text-slate-500 -mt-0.5">{u.name}</p>}
               <div className="flex gap-2 mt-2 flex-wrap">
                 <span className="text-[9px] px-2 py-1 rounded-md bg-white border border-slate-200 text-slate-600 font-black">{u.id}</span>
                 <span className={`text-[9px] px-2 py-1 rounded-md font-black uppercase ${u.type === 'STUDENT' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>
@@ -75,7 +99,8 @@ const EnhancedWatchlistGroup = ({ title, users, icon, color, onViewDetails }) =>
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   </div>
 );
@@ -118,6 +143,29 @@ export default function AnalysisPage() {
   const [selectedCalDate, setSelectedCalDate] = useState(null);
 
   const printRef = useRef();
+
+  // ── Helper: Myanmar name ကို ID/Name နဲ့ ရှာ ──────────────────────
+  const getMyanmarName = (userId, userName) => {
+    if (!userId && !userName) return '';
+    // Student ထဲ ရှာ
+    const student = allStudents?.find(s => 
+      s.Student_ID === userId || 
+      s['Enrollment No.'] === userId || 
+      String(s['Enrollment No.'] || '') === String(userId || '') ||
+      s['Name (ALL CAPITAL)'] === userName || 
+      s.Name === userName ||
+      s['အမည်'] === userName
+    );
+    if (student) return student['အမည်'] || '';
+    // Staff ထဲ ရှာ
+    const staff = allStaff?.find(s =>
+      s.Staff_ID === userId ||
+      s.Name === userName ||
+      s['Name (ALL CAPITAL)'] === userName
+    );
+    if (staff) return staff['အမည်'] || staff.Name_MM || '';
+    return '';
+  };
 
   // Helper: get student grade from allStudents by ID or name
   const getStudentGrade = (userId, userName) => {
@@ -173,7 +221,6 @@ export default function AnalysisPage() {
   const topAbsenteesByGrade = useMemo(() => {
     const byGrade = {};
     topAbsentees.forEach(u => {
-      // topAbsentees are already student objects, may have grade directly
       const grade = u.grade || getStudentGrade(u.id, u.name);
       const gradeKey = grade && grade !== '' && grade !== 'undefined' ? String(grade) : 'Unknown';
       if (!byGrade[gradeKey]) byGrade[gradeKey] = [];
@@ -269,14 +316,35 @@ export default function AnalysisPage() {
     return cells;
   }, [calDate, allLeaves]);
 
-  // ── Debounced individual search result ────────────────────────────
+  // ── Debounced individual search — Myanmar + English + ID ──────────
   const searchedUsers = useMemo(() => {
-    if (historySearchQuery.trim().length < 2) return [];
-    return statsList.filter(u =>
-      u.name.toLowerCase().includes(historySearchQuery.toLowerCase()) ||
-      u.id.toLowerCase().includes(historySearchQuery.toLowerCase())
-    );
-  }, [statsList, historySearchQuery]);
+    const q = historySearchQuery.trim();
+    if (q.length < 1) return [];
+
+    const qNorm = norm(q);
+    const qStripped = stripMarks(q);
+
+    return statsList.filter(u => {
+      // 1. English / direct name
+      const nameNorm = norm(u.name || '');
+      if (nameNorm.includes(qNorm)) return true;
+      if (stripMarks(u.name || '').includes(qStripped)) return true;
+
+      // 2. ID
+      const idStr = String(u.id || '');
+      if (norm(idStr).includes(qNorm)) return true;
+      if (stripMarks(idStr).includes(qStripped)) return true;
+
+      // 3. ★ Myanmar name — allStudents/allStaff ကနေ ရှာ
+      const myanName = getMyanmarName(u.id, u.name);
+      if (myanName) {
+        if (norm(myanName).includes(qNorm)) return true;
+        if (stripMarks(myanName).includes(qStripped)) return true;
+      }
+
+      return false;
+    });
+  }, [statsList, historySearchQuery, allStudents, allStaff]);
 
   const handlePrint = (title, data) => {
     setPrintView({ title, data });
@@ -349,6 +417,7 @@ export default function AnalysisPage() {
               ) : allLeaves.filter(l => l.Status === 'Approved' && formatMMDate(l.Start_Date) <= selectedCalDate && (formatMMDate(l.End_Date) || formatMMDate(l.Start_Date)) >= selectedCalDate).map((l, i) => {
                 const userStat = statsList.find(s => s.id === l.User_ID || s.name === l.Name);
                 const userForModal = userStat ? { ...userStat, id: l.User_ID, name: l.Name } : null;
+                const mmName = getMyanmarName(l.User_ID, l.Name);
                 return (
                   <div 
                     key={i} 
@@ -356,7 +425,10 @@ export default function AnalysisPage() {
                     onClick={() => { if(userForModal) { const full = statsList.find(s => s.id === l.User_ID || s.name === l.Name); setSelectedUser(full || userForModal); } }}
                   >
                     <div className="flex justify-between items-start mb-3">
-                      <p className="font-black text-slate-900 text-[16px] italic uppercase tracking-tighter">{l.Name}</p>
+                      <div>
+                        <p className="font-black text-slate-900 text-[16px] italic uppercase tracking-tighter">{mmName || l.Name}</p>
+                        {mmName && <p className="text-[10px] font-bold text-slate-500">{l.Name}</p>}
+                      </div>
                       <span className="text-[9px] uppercase font-black bg-white px-3 py-1.5 rounded-xl text-sky-600 border border-sky-100 shadow-sm">{l.Leave_Type}</span>
                     </div>
                     <div className="flex gap-2 mb-4 flex-wrap">
@@ -433,16 +505,18 @@ export default function AnalysisPage() {
         <input
           value={historySearchRaw}
           onChange={e => setHistorySearchRaw(e.target.value)}
-          placeholder="နာမည် သို့မဟုတ် ID ရိုက်ထည့်ပါ..."
+          placeholder="မြန်မာ / English / ID နဲ့ ရှာပါ..."
           className="w-full bg-slate-50 border border-slate-200 rounded-full px-5 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-sky-200 transition-all mb-4"
         />
 
-        {historySearchQuery.trim().length >= 2 && (
+        {historySearchQuery.trim().length >= 1 && (
           <div className="max-h-[400px] overflow-y-auto flex flex-col gap-3 pr-2 scrollbar-thin">
             {searchedUsers.length === 0 ? (
               <p className="py-10 text-center italic text-slate-300 font-black">မတွေ့ပါ။</p>
             ) : (
-              searchedUsers.map((u, i) => (
+              searchedUsers.map((u, i) => {
+                const mmName = getMyanmarName(u.id, u.name);
+                return (
                 <div
                   key={i}
                   className="bg-slate-50 p-4 rounded-xl border border-slate-100 hover:bg-white hover:shadow cursor-pointer transition-all"
@@ -450,7 +524,8 @@ export default function AnalysisPage() {
                 >
                   <div className="flex justify-between items-start">
                     <div>
-                      <p className="font-black text-slate-900">{u.name}</p>
+                      <p className="font-black text-slate-900">{mmName || u.name}</p>
+                      {mmName && <p className="text-[10px] font-bold text-slate-500 -mt-0.5">{u.name}</p>}
                       <div className="flex gap-2 mt-1">
                         <span className="text-[8px] bg-white border border-slate-200 px-2 py-0.5 rounded-full font-black">ID: {u.id}</span>
                         <span className={`text-[8px] px-2 py-0.5 rounded-full font-black ${u.type === 'STUDENT' ? 'bg-indigo-100' : 'bg-amber-100'}`}>{u.type}</span>
@@ -459,7 +534,8 @@ export default function AnalysisPage() {
                     <span className="text-sm font-black text-amber-600">{u.totalDays}d</span>
                   </div>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         )}
@@ -485,7 +561,9 @@ export default function AnalysisPage() {
             <span className="text-sm bg-rose-500 text-white px-3 py-1 rounded-full font-black">{getTodayAbsentCount} ဦး</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {getTodayAbsentUsers.map((user, idx) => (
+            {getTodayAbsentUsers.map((user, idx) => {
+              const mmName = getMyanmarName(user.id, user.name);
+              return (
               <div
                 key={idx}
                 className="bg-white/90 backdrop-blur-sm rounded-2xl p-4 border border-rose-200 shadow-md hover:shadow-lg transition-all cursor-pointer"
@@ -496,7 +574,8 @@ export default function AnalysisPage() {
               >
                 <div className="flex justify-between items-start mb-2">
                   <div>
-                    <p className="font-black text-slate-900 text-base">{user.name}</p>
+                    <p className="font-black text-slate-900 text-base">{mmName || user.name}</p>
+                    {mmName && <p className="text-[10px] font-bold text-slate-500">{user.name}</p>}
                     <div className="flex gap-1 mt-1">
                       <span className={`text-[8px] px-2 py-0.5 rounded-full font-black uppercase ${user.type === 'STUDENT' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>
                         {user.type}
@@ -522,7 +601,8 @@ export default function AnalysisPage() {
                   <span>Click for full history →</span>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -562,6 +642,7 @@ export default function AnalysisPage() {
           <EnhancedWatchlistGroup
             {...watchGroups[watchFilter]}
             onViewDetails={setSelectedUser}
+            getMyanmarName={getMyanmarName}
           />
         )}
       </div>
