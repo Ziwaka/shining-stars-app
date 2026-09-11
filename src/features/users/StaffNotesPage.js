@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { WEB_APP_URL } from '@/lib/api';
 
@@ -21,95 +21,66 @@ const formatDateDisplay = (d) => {
   if (!d || d === '-') return '-';
   try {
     const dateObj = new Date(d);
-    if (isNaN(dateObj.getTime())) return d;
-    const day = String(dateObj.getDate()).padStart(2, '0');
-    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const year = dateObj.getFullYear();
-    const weekday = dateObj.toLocaleDateString('en-US', { weekday: 'short', timeZone: MM_TZ });
-    return `${day}/${month}/${year}, ${weekday}`;
-  } catch(e) { return formatMMDate(d); }
+    if (!isNaN(dateObj.getTime())) {
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const year = dateObj.getFullYear();
+      const weekday = dateObj.toLocaleDateString('en-US', { weekday: 'short', timeZone: MM_TZ });
+      return `${day}/${month}/${year}, ${weekday}`;
+    }
+  } catch(e) {}
+  return formatMMDate(d);
 };
 
 // ═══════════════════════════════════════════════════════════
-// ★ SEARCH HELPERS — Unicode + Zawgyi + English safe
+// ★ SEARCH HELPERS
 // ═══════════════════════════════════════════════════════════
 
-// NFC normalize + trim + toLowerCase
+// NFC normalize + lowercase + trim
 const norm = (s) => {
   if (s === null || s === undefined) return '';
-  try {
-    return String(s).normalize('NFC').trim().toLowerCase();
-  } catch (e) {
-    return String(s).trim().toLowerCase();
-  }
+  try { return String(s).normalize('NFC').trim().toLowerCase(); }
+  catch (e) { return String(s).trim().toLowerCase(); }
 };
 
-// Zawgyi → Unicode မဟုတ်ဘူး၊ ဒါပေမယ့် diacritics ဖြုတ်ပြီး compare လုပ်နိုင်တဲ့ key
-// (Myanmar combining marks တွေ ဖြုတ်လိုက်တာ)
+// Myanmar combining marks ဖြုတ် — Zawgyi/Unicode ရောနှောမှုကို ကာကွယ်
 const stripMarks = (s) => {
   if (!s) return '';
   try {
     return String(s)
       .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')  // Latin marks
-      .replace(/[\u102B-\u103E\u103A-\u103F]/g, '')  // Myanmar marks
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[\u102B-\u103E\u103A-\u103F]/g, '')
       .trim()
       .toLowerCase();
-  } catch (e) {
-    return String(s).trim().toLowerCase();
-  }
+  } catch (e) { return String(s).trim().toLowerCase(); }
 };
 
-// Student ရဲ့ name fields အားလုံး စု
-const getStudentNames = (s) => {
-  return [
+// ★ Student ရဲ့ ရှာလို့ရတဲ့ field အားလုံး — pre-compute
+const buildSearchIndex = (s) => {
+  const fields = [
+    s['အမည်'],                    // ← ★ အဓိက fix
     s['Name (ALL CAPITAL)'],
-    s.Name,
-    s.name,
+    s['Name'],
+    s['name'],
     s['Name_MM'],
     s['Name (MM)'],
     s['မြန်မာအမည်'],
     s['Myanmar Name'],
-    s['Name_Myanmar'],
-  ].filter(Boolean).map(String);
-};
-
-const getStudentIds = (s) => {
-  return [
     s['Enrollment No.'],
     s['Enrollment Number'],
     s['Student_ID'],
     s['Student ID'],
-    s.Student_ID,
-  ].filter(Boolean).map(String);
-};
+    s['Registration No.'],
+  ].filter(Boolean);
 
-// ★ Match test — ၃ ဆင့်
-//   1. Direct NFC substring
-//   2. Lowercase substring
-//   3. Strip-marks (Myanmar marks ဖြုတ်) substring
-const matchStudent = (s, query) => {
-  const q = norm(query);
-  if (!q) return false;
-  const qStripped = stripMarks(query);
+  const normParts = fields.map(norm);
+  const stripParts = fields.map(stripMarks);
 
-  const names = getStudentNames(s);
-  const ids = getStudentIds(s);
-
-  // Name match
-  for (const n of names) {
-    const nNorm = norm(n);
-    if (nNorm.includes(q)) return true;
-    if (stripMarks(n).includes(qStripped)) return true;
-  }
-
-  // ID match
-  for (const id of ids) {
-    const idNorm = norm(id);
-    if (idNorm.includes(q)) return true;
-  }
-
-  return false;
+  return {
+    combined: normParts.join(' '),
+    combinedStripped: stripParts.join(' '),
+  };
 };
 
 const CATEGORIES = [
@@ -159,6 +130,11 @@ export default function RegistryNotes() {
 
   const showMsg = (text, type = 'success') => { setMsg({ text, type }); setTimeout(() => setMsg(null), 3000); };
 
+  // ★ Pre-index students — 788 students အတွက် performance ကောင်း
+  const indexedStudents = useMemo(() => {
+    return students.map(s => ({ student: s, index: buildSearchIndex(s) }));
+  }, [students]);
+
   const handleSave = async () => {
     if (!selectedStudent) return showMsg('ကျောင်းသား ရွေးချယ်ရန် လိုအပ်ပါသည် (Select a student)', 'error');
     if (!form.Note.trim()) return showMsg('မှတ်တမ်း အသေးစိတ် ရေးသားရန် လိုအပ်ပါသည် (Write description)', 'error');
@@ -190,11 +166,24 @@ export default function RegistryNotes() {
     setSaving(false);
   };
 
-  // ★ ပြင်ထားတဲ့ filter — Unicode + Zawgyi + English + ID
-  //   length >= 1 (မြန်မာအတွက် ၁ လုံးကတည်းက ရှာ)
-  const filteredStudents = studentSearch.trim().length >= 1
-    ? students.filter(s => matchStudent(s, studentSearch)).slice(0, 8)
-    : [];
+  // ★ ပြင်ထားတဲ့ filter — မြန်မာ + English + ID
+  const filteredStudents = useMemo(() => {
+    const q = studentSearch.trim();
+    if (q.length < 1) return [];
+    
+    const qNorm = norm(q);
+    const qStripped = stripMarks(q);
+    
+    const results = [];
+    for (const item of indexedStudents) {
+      const { combined, combinedStripped } = item.index;
+      if (combined.includes(qNorm) || combinedStripped.includes(qStripped)) {
+        results.push(item.student);
+        if (results.length >= 10) break;
+      }
+    }
+    return results;
+  }, [studentSearch, indexedStudents]);
 
   return (
     <div className="h-screen flex flex-col bg-[#F8FAFC] font-black text-slate-900 overflow-hidden">
@@ -226,29 +215,44 @@ export default function RegistryNotes() {
                     {!selectedStudent ? (
                       <div className="relative">
                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
-                        <input value={studentSearch} onChange={e => setStudentSearch(e.target.value)} placeholder="Search by name (MM/EN) or ID..." className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-10 pr-4 py-3.5 text-sm outline-none focus:border-[#fbbf24] focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all" />
+                        <input 
+                          value={studentSearch} 
+                          onChange={e => setStudentSearch(e.target.value)} 
+                          placeholder="မြန်မာ / English / ID နဲ့ ရှာပါ..." 
+                          className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-10 pr-4 py-3.5 text-sm outline-none focus:border-[#fbbf24] focus:ring-2 focus:ring-amber-100 focus:bg-white transition-all" 
+                        />
                         {filteredStudents.length > 0 && (
                           <div className="absolute top-full left-0 right-0 z-20 bg-white border border-slate-200 rounded-2xl mt-2 overflow-hidden shadow-2xl max-h-[400px] overflow-y-auto">
                             {filteredStudents.map((s, i) => (
-                              <button key={i} onClick={() => { setSelectedStudent(s); setStudentSearch(''); }} className={`w-full px-5 py-4 text-left hover:bg-amber-50 transition-colors ${i < filteredStudents.length - 1 ? 'border-b border-slate-100' : ''}`}>
-                                <p className="text-sm font-black text-slate-800">{s['Name (ALL CAPITAL)'] || s.Name}</p>
-                                {s['Name_MM'] && <p className="text-xs font-bold text-slate-600 mt-0.5">{s['Name_MM']}</p>}
+                              <button 
+                                key={i} 
+                                onClick={() => { setSelectedStudent(s); setStudentSearch(''); }} 
+                                className={`w-full px-5 py-4 text-left hover:bg-amber-50 transition-colors ${i < filteredStudents.length - 1 ? 'border-b border-slate-100' : ''}`}
+                              >
+                                <p className="text-sm font-black text-slate-800">{s['အမည်'] || s['Name (ALL CAPITAL)'] || s.Name}</p>
+                                <p className="text-[11px] font-bold text-slate-500 mt-0.5">{s['Name (ALL CAPITAL)'] || s.Name}</p>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">ID: {s['Enrollment No.'] || s.Student_ID} | G-{s.Grade || s.Class}</p>
                               </button>
                             ))}
                           </div>
                         )}
+                        {studentSearch.trim().length >= 1 && filteredStudents.length === 0 && (
+                          <div className="absolute top-full left-0 right-0 z-20 bg-white border border-slate-200 rounded-2xl mt-2 px-5 py-4 shadow-xl">
+                            <p className="text-xs text-slate-400 text-center font-bold">မတွေ့ပါ — တခြားစာလုံးနဲ့ ရှာကြည့်ပါ</p>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="flex justify-between items-center bg-emerald-50 border border-emerald-200 rounded-2xl p-4 shadow-sm">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-white rounded-xl shadow-sm border border-emerald-100 flex items-center justify-center text-xl">🎓</div>
-                          <div>
-                            <p className="font-black text-sm text-emerald-900 m-0 uppercase">{selectedStudent['Name (ALL CAPITAL)'] || selectedStudent.Name}</p>
-                            <p className="text-[10px] font-bold text-emerald-600 m-0 mt-1 uppercase tracking-wider">ID: {selectedStudent['Enrollment No.'] || selectedStudent.Student_ID} | G-{selectedStudent.Grade || selectedStudent.Class}</p>
+                        <div className="flex items-center gap-4 min-w-0">
+                          <div className="w-12 h-12 bg-white rounded-xl shadow-sm border border-emerald-100 flex items-center justify-center text-xl shrink-0">🎓</div>
+                          <div className="min-w-0">
+                            <p className="font-black text-sm text-emerald-900 m-0 uppercase truncate">{selectedStudent['အမည်'] || selectedStudent['Name (ALL CAPITAL)'] || selectedStudent.Name}</p>
+                            <p className="text-[10px] font-bold text-emerald-600 m-0 mt-1 uppercase tracking-wider truncate">{selectedStudent['Name (ALL CAPITAL)'] || selectedStudent.Name}</p>
+                            <p className="text-[10px] font-bold text-emerald-600 m-0 mt-0.5 uppercase tracking-wider">ID: {selectedStudent['Enrollment No.'] || selectedStudent.Student_ID} | G-{selectedStudent.Grade || selectedStudent.Class}</p>
                           </div>
                         </div>
-                        <button onClick={() => setSelectedStudent(null)} className="text-[10px] uppercase tracking-widest px-3 py-2 bg-white border border-rose-200 text-rose-600 rounded-xl hover:bg-rose-50 font-black shadow-sm transition-colors">Change</button>
+                        <button onClick={() => setSelectedStudent(null)} className="text-[10px] uppercase tracking-widest px-3 py-2 bg-white border border-rose-200 text-rose-600 rounded-xl hover:bg-rose-50 font-black shadow-sm transition-colors shrink-0 ml-2">Change</button>
                       </div>
                     )}
                   </div>
