@@ -7,6 +7,52 @@ import { WEB_APP_URL } from '@/lib/api';
 
 const LEAVE_DEFAULTS = ['Casual Leave', 'Medical Leave', 'Emergency Leave', 'Personal Leave', 'Sick Leave', 'Funeral', 'Personal Affair'];
 
+// ═══════════════════════════════════════════════════════════
+// ★ SEARCH HELPERS — Myanmar + English + ID
+// ═══════════════════════════════════════════════════════════
+const norm = (s) => {
+  if (s === null || s === undefined) return '';
+  try { return String(s).normalize('NFC').trim().toLowerCase(); }
+  catch (e) { return String(s).trim().toLowerCase(); }
+};
+
+const stripMarks = (s) => {
+  if (!s) return '';
+  try {
+    return String(s)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[\u102B-\u103E\u103A-\u103F]/g, '')
+      .trim()
+      .toLowerCase();
+  } catch (e) { return String(s).trim().toLowerCase(); }
+};
+
+// ★ Student/Staff ရဲ့ ရှာလို့ရတဲ့ field အားလုံး စု
+const buildSearchFields = (s) => {
+  return [
+    s['အမည်'],                    // ← ★ Myanmar name (Student_Directory)
+    s['Name (ALL CAPITAL)'],       // English
+    s['Name'],
+    s['name'],
+    s['Staff_Name'],
+    s['Name_MM'],
+    s['Name (MM)'],
+    s['မြန်မာအမည်'],
+    s['Myanmar Name'],
+    s['Enrollment No.'],
+    s['Enrollment Number'],
+    s['Student_ID'],
+    s['Student ID'],
+    s['Staff_ID'],
+    s['ID'],
+  ].filter(Boolean);
+};
+
+// ★ Myan + Eng name ကို ပြဖို့ — display helper
+const getMyanName = (s) => s['အမည်'] || s['Name_MM'] || s['Name (MM)'] || s['မြန်မာအမည်'] || '';
+const getEngName = (s) => s['Name (ALL CAPITAL)'] || s['Name'] || s['name'] || s['Staff_Name'] || '';
+
 export default function SubmitPage() {
   const { allStaff, allStudents, configs, allLeaves, fetchLeaves } = useLeaveData();
   const [user, setUser] = useState(() => {
@@ -46,14 +92,26 @@ export default function SubmitPage() {
   const fileInputRef = useRef();
   const cameraInputRef = useRef();
 
+  // ★ ပြင်ထားတဲ့ filter — Myanmar + English + ID
   const filteredOther = useMemo(() => {
     const list = otherTarget === 'STAFF' ? allStaff : allStudents;
     if (!otherSearch.trim()) return [];
-    const q = otherSearch.toLowerCase();
-    return list.filter(s =>
-      getDisplayName(s).toLowerCase().includes(q) ||
-      (s['Enrollment No.'] || s.Student_ID || s.Staff_ID || '').toString().includes(q)
-    );
+
+    const qNorm = norm(otherSearch);
+    const qStripped = stripMarks(otherSearch);
+
+    const results = [];
+    for (const s of list) {
+      const fields = buildSearchFields(s);
+      const combined = fields.map(norm).join(' ');
+      const combinedStripped = fields.map(stripMarks).join(' ');
+
+      if (combined.includes(qNorm) || combinedStripped.includes(qStripped)) {
+        results.push(s);
+        if (results.length >= 20) break;  // performance limit
+      }
+    }
+    return results;
   }, [otherTarget, allStaff, allStudents, otherSearch]);
 
   const staffAllowance = useMemo(() => {
@@ -192,21 +250,22 @@ export default function SubmitPage() {
         </label>
         {otherSel ? (
           <div className="flex items-center justify-between bg-amber-50 rounded-xl p-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-amber-200 rounded-lg flex items-center justify-center text-lg">👤</div>
-              <div>
-                <p className="font-black text-sm text-amber-900">{getDisplayName(otherSel)}</p>
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-8 h-8 bg-amber-200 rounded-lg flex items-center justify-center text-lg shrink-0">👤</div>
+              <div className="min-w-0">
+                <p className="font-black text-sm text-amber-900 truncate">{getMyanName(otherSel) || getDisplayName(otherSel)}</p>
+                <p className="text-[9px] text-amber-700 font-bold truncate">{getEngName(otherSel)}</p>
                 <p className="text-[8px] text-amber-600">ID: {otherSel['Enrollment No.'] || otherSel.Staff_ID}</p>
               </div>
             </div>
-            <button onClick={() => { setOtherSel(null); setOtherSearchRaw(''); }} className="w-6 h-6 rounded-full bg-amber-200 text-amber-800 text-xs">✕</button>
+            <button onClick={() => { setOtherSel(null); setOtherSearchRaw(''); }} className="w-6 h-6 rounded-full bg-amber-200 text-amber-800 text-xs shrink-0 ml-2">✕</button>
           </div>
         ) : (
           <div className="relative">
             <input
               value={otherSearchRaw}
               onChange={e => setOtherSearchRaw(e.target.value)}
-              placeholder="Search name or ID..."
+              placeholder="မြန်မာ / English / ID နဲ့ ရှာပါ..."
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-amber-200"
             />
             {filteredOther.length > 0 && (
@@ -215,15 +274,21 @@ export default function SubmitPage() {
                   <button
                     key={i}
                     onClick={() => { setOtherSel(s); setOtherSearchRaw(''); }}
-                    className="w-full px-3 py-2 text-left hover:bg-slate-50 rounded-lg text-sm"
+                    className="w-full px-3 py-2 text-left hover:bg-slate-50 rounded-lg"
                   >
-                    <p className="font-bold">{getDisplayName(s)}</p>
-                    <p className="text-[9px] text-slate-400">{s['Enrollment No.'] || s.Staff_ID}</p>
+                    <p className="font-bold text-sm text-slate-900">{getMyanName(s) || getDisplayName(s)}</p>
+                    <p className="text-[10px] text-slate-500 font-bold">{getEngName(s)}</p>
+                    <p className="text-[9px] text-slate-400">ID: {s['Enrollment No.'] || s.Staff_ID}</p>
                   </button>
                 ))}
                 {filteredOther.length > 5 && (
                   <p className="text-[9px] text-slate-400 text-center py-1">+{filteredOther.length - 5} more</p>
                 )}
+              </div>
+            )}
+            {otherSearchRaw.trim().length >= 1 && filteredOther.length === 0 && (
+              <div className="absolute top-full left-0 right-0 z-30 bg-white border border-slate-200 rounded-xl mt-1 shadow-lg px-4 py-3">
+                <p className="text-[10px] text-slate-400 text-center font-bold">မတွေ့ပါ — တခြားစာလုံးနဲ့ ရှာကြည့်ပါ</p>
               </div>
             )}
           </div>
